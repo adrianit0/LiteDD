@@ -1,10 +1,15 @@
 package dev.litedd;
 
 import dev.litedd.http.HttpServer;
+import dev.litedd.mysql.ConnectionApi;
+import dev.litedd.mysql.ConnectionFile;
+import dev.litedd.mysql.MySqlGateway;
+import dev.litedd.mysql.SqlApi;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.NotesApi;
 import dev.litedd.session.SessionApi;
 import dev.litedd.settings.SettingsApi;
+import dev.litedd.sqlengine.SqlEngine;
 import dev.litedd.store.DataPaths;
 import dev.litedd.store.Store;
 import org.slf4j.Logger;
@@ -45,14 +50,21 @@ public final class Main {
         if (purged > 0) {
             log.info("Adjuntos sin referencias eliminados: {}", purged);
         }
+        ConnectionFile connectionFile = new ConnectionFile(DataPaths.connectionFile());
+        MySqlGateway gateway = new MySqlGateway();
         HttpServer server = new HttpServer(port, sessionToken(), List.of(
                 new NotesApi(notes),
                 new SettingsApi(store),
-                new SessionApi(store))).start();
+                new SessionApi(store),
+                new SqlApi(notes, new SqlEngine(), gateway),
+                new ConnectionApi(connectionFile, gateway))).start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();
+            gateway.close();
             store.close();
         }, "litedd-shutdown"));
+        // C-02: las notas funcionan mientras se comprueba la conexión, que puede tardar unos segundos.
+        Thread.ofVirtual().name("litedd-mysql-start").start(() -> connectionFile.load().ifPresent(gateway::configure));
         log.info("{} {} escuchando en http://{}:{}/", AppInfo.NAME, AppInfo.VERSION, HttpServer.HOST, port);
     }
 

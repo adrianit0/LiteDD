@@ -1,5 +1,7 @@
 package dev.litedd.sqlengine;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+
 import java.util.Locale;
 import java.util.Map;
 
@@ -31,6 +33,8 @@ public enum SqlType {
         this.label = label;
     }
 
+    /** Nombre en la API y en la interfaz. */
+    @JsonValue
     public String label() {
         return label;
     }
