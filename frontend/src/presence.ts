@@ -52,6 +52,7 @@ export function startPresence(): () => void {
       return;
     }
     retrying = false;
+    await api.refreshToken();
     useUi.getState().setContactLost(false);
     void listen();
     await useTabs.getState().savePending();

@@ -5,7 +5,7 @@ import { useUi } from './stores/uiStore';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
-  return { ...actual, api: { health: vi.fn(), bye: vi.fn() } };
+  return { ...actual, api: { health: vi.fn(), bye: vi.fn(), refreshToken: vi.fn().mockResolvedValue(undefined) } };
 });
 
 const mocked = vi.mocked(api);
@@ -79,7 +79,17 @@ describe('presencia y contacto', () => {
     expect(mocked.health).toHaveBeenCalledTimes(2);
     expect(useUi.getState().contactLost).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocked.refreshToken).toHaveBeenCalledTimes(1);
     expect(savePending).toHaveBeenCalledTimes(1);
+  });
+
+  it('U-11 tras un reinicio del servidor se relee el token de la página inicial', async () => {
+    const { api: real } = await vi.importActual<typeof import('./api')>('./api');
+    document.head.innerHTML = '<meta name="litedd-token" content="viejo" />';
+    fetchMock.mockResolvedValueOnce({ text: async () => '<html><head><meta name="litedd-token" content="nuevo" /></head></html>' });
+    await real.refreshToken();
+    expect(fetchMock).toHaveBeenCalledWith('/', { cache: 'no-store' });
+    expect(document.querySelector<HTMLMetaElement>('meta[name="litedd-token"]')!.content).toBe('nuevo');
   });
 
   it('U-11 una petición sin respuesta también muestra la banda', async () => {

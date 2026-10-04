@@ -269,6 +269,20 @@ export const api = {
       return false;
     }
   },
+  /**
+   * U-11: si el servidor se ha reiniciado, el token de sesión ha cambiado (S-12). Se relee de la página
+   * inicial, del mismo origen, para que lo pendiente se pueda guardar sin recargar la ventana.
+   */
+  refreshToken: async () => {
+    try {
+      const html = await (await fetch('/', { cache: 'no-store' })).text();
+      const token = /<meta[^>]*name="litedd-token"[^>]*content="([^"]+)"/.exec(html)?.[1];
+      const meta = document.querySelector<HTMLMetaElement>('meta[name="litedd-token"]');
+      if (token && meta) meta.content = token;
+    } catch {
+      // Sin página no hay token nuevo; las peticiones siguientes lo indicarán.
+    }
+  },
   /** Ciclo de vida: la ventana se cierra. */
   bye: () =>
     fetch('/api/presence/bye', { method: 'POST', keepalive: true, headers: { 'X-LiteDD-Token': sessionToken() } }).catch(() => undefined),
