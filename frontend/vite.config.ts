@@ -39,6 +39,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // theme.test.ts lee el CSS del tema como texto.
+    css: { include: [/theme\.css/] },
     globals: true,
   },
 });
