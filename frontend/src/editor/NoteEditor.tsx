@@ -4,8 +4,11 @@ import { EditorView, keymap, placeholder, type KeyBinding } from '@codemirror/vi
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
+import { MySQL, sql } from '@codemirror/lang-sql';
 import { tags } from '@lezer/highlight';
 import { applyFormat, type FormatAction } from './formatting';
+import { mybatisHighlight } from './mybatis';
+import { insertSnippet, type SnippetKind } from '../sql/snippets';
 import type { NoteType } from '../types';
 
 interface Props {
@@ -22,6 +25,8 @@ interface Props {
 
 export interface EditorControls {
   format: (action: FormatAction) => void;
+  /** Q-81: inserciones del editor SQL. */
+  snippet: (kind: SnippetKind) => void;
   focus: () => void;
 }
 
@@ -37,6 +42,11 @@ const theme = EditorView.theme(
       backgroundColor: 'var(--selection)',
     },
     '.cm-placeholder': { color: 'var(--text-muted)' },
+    // Q-80: etiquetas MyBatis, #{} y ${} en otro color.
+    '.cm-mb-tag': { color: 'var(--link)' },
+    '.cm-mb-param': { color: 'var(--warning)' },
+    '.cm-mb-textual': { color: 'var(--error)', fontWeight: '600' },
+    '.cm-mb-comment': { color: 'var(--text-muted)', fontStyle: 'italic' },
   },
   { dark: true },
 );
@@ -50,6 +60,12 @@ const highlight = HighlightStyle.define([
   { tag: tags.monospace, color: 'var(--code)' },
   { tag: tags.quote, color: 'var(--text-muted)' },
   { tag: [tags.processingInstruction, tags.contentSeparator, tags.meta], color: 'var(--text-muted)' },
+  // SQL (Q-80)
+  { tag: tags.keyword, color: 'var(--accent)' },
+  { tag: [tags.string, tags.special(tags.string)], color: 'var(--code)' },
+  { tag: tags.number, color: 'var(--code)' },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'var(--text-muted)', fontStyle: 'italic' },
+  { tag: tags.typeName, color: 'var(--link)' },
 ]);
 
 /** N-22: Ctrl+B y Ctrl+I; Intro continúa la lista y el tabulador sangra. */
@@ -61,7 +77,10 @@ export function markdownBindings(format: (action: FormatAction) => void): KeyBin
   return [{ key: 'Mod-b', run: run('bold') }, { key: 'Mod-i', run: run('italic') }, ...markdownKeymap, indentWithTab];
 }
 
-/** Editor de texto plano (N-11) con barra de formato y atajos para Markdown (N-20 a N-22). */
+/**
+ * Editor de texto plano (N-11): Markdown con barra de formato y atajos (N-20 a N-22), o SQL de MySQL con
+ * resaltado de MyBatis (Q-80).
+ */
 export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScroll = 0, onScroll }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -73,6 +92,12 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
       const v = view.current;
       if (!v) return;
       v.dispatch(applyFormat(v.state, action));
+      v.focus();
+    };
+    const snippet = (kind: SnippetKind) => {
+      const v = view.current;
+      if (!v) return;
+      v.dispatch(insertSnippet(v.state, kind));
       v.focus();
     };
 
@@ -95,7 +120,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
     if (type === 'md') {
       extensions.push(markdown(), keymap.of(markdownBindings(format)));
     } else {
-      extensions.push(keymap.of([indentWithTab]));
+      extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of([indentWithTab]));
     }
     extensions.push(keymap.of([...defaultKeymap, ...historyKeymap]));
 
@@ -115,7 +140,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
     requestAnimationFrame(() => {
       v.scrollDOM.scrollTop = initialScroll;
     });
-    onReady?.({ format, focus: () => v.focus() });
+    onReady?.({ format, snippet, focus: () => v.focus() });
     return () => {
       v.destroy();
       view.current = null;

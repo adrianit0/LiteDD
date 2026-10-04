@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api, ApiError, type SessionTab } from '../api';
+import { api, ApiError, type SessionTab, type SqlTabState } from '../api';
+import { DEFAULT_PAGE_SIZE } from '../sql/types';
 import type { Mode, Note } from '../types';
 import { useTree } from './treeStore';
 import { useUi } from './uiStore';
@@ -28,7 +29,11 @@ export interface Tab {
   conflict: Note | null;
   /** N-06: seleccionar el título al abrir una nota nueva. */
   focusTitle: boolean;
+  /** P-06: valores, tamaño de página, orden y página de una nota SQL; null hasta que se analiza. */
+  sql: SqlTabState | null;
 }
+
+export const DEFAULT_SQL_STATE: SqlTabState = { values: {}, pageSize: DEFAULT_PAGE_SIZE, sort: null, page: 1 };
 
 interface OpenOptions {
   /** P-03: abrir siempre en una pestaña nueva. */
@@ -61,6 +66,7 @@ interface TabsState {
   reload: (id: string) => Promise<void>;
   resolveConflict: (id: string, choice: 'reload' | 'overwrite') => Promise<void>;
   setScroll: (id: string, scroll: number) => void;
+  setSql: (id: string, changes: Partial<SqlTabState>) => void;
   flushOnUnload: () => void;
 }
 
@@ -87,6 +93,7 @@ function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = fa
     status: 'saved',
     conflict: null,
     focusTitle,
+    sql: null,
   };
 }
 
@@ -198,6 +205,7 @@ export const useTabs = create<TabsState>((set, get) => {
           ...blankTab(s.noteId, s.mode, null),
           id: s.id,
           scroll: s.state?.scroll ?? 0,
+          sql: s.state?.sql ?? null,
         }));
         // Lo que se haya abierto mientras se restauraba se conserva detrás.
         const opened = get().tabs;
@@ -336,6 +344,11 @@ export const useTabs = create<TabsState>((set, get) => {
       await get().saveNow(id);
     },
 
+    setSql(id, changes) {
+      const t = tab(id);
+      if (t) patch(id, { sql: { ...(t.sql ?? DEFAULT_SQL_STATE), ...changes } });
+    },
+
     setScroll(id, scroll) {
       if (tab(id) && tab(id)!.scroll !== scroll) patch(id, { scroll });
     },
@@ -357,7 +370,13 @@ export function useActiveTab(): Tab | undefined {
 
 /** P-09: la sesión se guarda en cada cambio de pestañas, orden, activa, modo o desplazamiento. */
 export function sessionSnapshot(tabs: Tab[], activeId: string | null): SessionTab[] {
-  return tabs.map((t) => ({ id: t.id, noteId: t.noteId, mode: t.mode, active: t.id === activeId, state: { scroll: t.scroll } }));
+  return tabs.map((t) => ({
+    id: t.id,
+    noteId: t.noteId,
+    mode: t.mode,
+    active: t.id === activeId,
+    state: { scroll: t.scroll, sql: t.sql },
+  }));
 }
 
 let sessionTimer: ReturnType<typeof setTimeout> | undefined;

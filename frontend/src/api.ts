@@ -1,4 +1,5 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
+import type { Analysis, ExecuteResponse, Sort } from './sql/types';
 
 /** Error de la API con el cuerpo de A-02. status 0 = sin contacto con el servidor. */
 export class ApiError extends Error {
@@ -55,12 +56,30 @@ export async function request<T>(method: string, path: string, body?: unknown, o
 
 export type Settings = Record<string, unknown>;
 
+/** P-06: estado SQL de una pestaña que se guarda en la sesión. */
+export interface SqlTabState {
+  values: Record<string, string>;
+  pageSize: number | null;
+  sort: Sort | null;
+  page: number;
+}
+
 export interface SessionTab {
   id: string;
   noteId: string;
   mode: Mode;
   active: boolean;
-  state: { scroll?: number } | null;
+  state: { scroll?: number; sql?: SqlTabState | null } | null;
+}
+
+export interface ExecuteRequest {
+  noteId: string;
+  version: number;
+  executionId: string;
+  values: Record<string, string>;
+  page: number;
+  pageSize: number | null;
+  sort: Sort | null;
 }
 
 /** C-09, C-10 */
@@ -111,6 +130,10 @@ export const api = {
   emptyTrash: () => request<void>('DELETE', '/api/trash'),
   getSession: () => request<{ tabs: SessionTab[] }>('GET', '/api/session'),
   putSession: (tabs: SessionTab[]) => request<{ tabs: SessionTab[] }>('PUT', '/api/session', { tabs }),
+  analyze: (content: string, noteId?: string) => request<Analysis>('POST', '/api/sql/analyze', { content, noteId }),
+  execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
+  count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
+  cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
   getConnection: () => request<ConnectionView>('GET', '/api/connection'),
   saveConnection: (form: ConnectionForm) => request<ConnectionStatus>('PUT', '/api/connection', form),
   testConnection: (form: Omit<ConnectionForm, 'schema'>) => request<{ schemas: string[] }>('POST', '/api/connection/test', form),

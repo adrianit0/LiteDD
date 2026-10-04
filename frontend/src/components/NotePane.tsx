@@ -5,6 +5,8 @@ import { ancestorsOf } from '../tree';
 import { formatDateTime } from '../format';
 import { NoteEditor, type EditorControls } from '../editor/NoteEditor';
 import { FormatToolbar } from '../editor/FormatToolbar';
+import { SqlView } from './sql/SqlView';
+import { SqlAnalysisPanel, SqlToolbar } from './sql/SqlEditorPanels';
 import { MarkdownView } from './MarkdownView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote } from '../actions';
@@ -114,6 +116,7 @@ export function NotePane({ tab }: { tab: Tab }) {
       </header>
 
       {mode === 'edit' && note.type === 'md' && <FormatToolbar onFormat={(a) => editor.current?.format(a)} />}
+      {mode === 'edit' && note.type === 'sql' && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
 
       <div
         className={`note-body mode-${mode}`}
@@ -136,10 +139,10 @@ export function NotePane({ tab }: { tab: Tab }) {
         ) : note.type === 'md' ? (
           <MarkdownView content={content} onOpenNote={(id, newTab) => void openNote(id, newTab)} />
         ) : (
-          // La vista ejecutable de las notas SQL llega en el Sprint 4.
-          <pre className="sql-source">{content || '—'}</pre>
+          <SqlView tab={tab} />
         )}
       </div>
+      {mode === 'edit' && note.type === 'sql' && <SqlAnalysisPanel content={content} />}
 
       {status === 'conflict' && conflict && (
         <Dialog

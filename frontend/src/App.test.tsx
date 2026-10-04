@@ -20,6 +20,7 @@ vi.mock('./api', async (importOriginal) => {
       getSession: vi.fn(),
       putSession: vi.fn(),
       connectionStatus: vi.fn(),
+      analyze: vi.fn(),
     },
   };
 });
@@ -48,6 +49,7 @@ beforeEach(() => {
   mocked.putSettings.mockResolvedValue({});
   mocked.createNote.mockResolvedValue(created);
   mocked.getSession.mockResolvedValue({ tabs: [] });
+  mocked.analyze.mockResolvedValue({ variables: [], kind: 'query', forbiddenClause: null, errors: [], lastValues: {} });
   mocked.connectionStatus.mockResolvedValue({ state: 'not_configured', user: null, host: null, port: null, schema: null, message: null });
   mocked.putSession.mockResolvedValue({ tabs: [] });
   useTabs.setState({ tabs: [], activeId: null, restored: false });
@@ -100,7 +102,9 @@ describe('App', () => {
       fireEvent.click(row);
     });
     expect(mocked.getNote).toHaveBeenCalledWith('a');
-    expect(await screen.findByText('SELECT 1')).toBeTruthy();
+    // U-06: una nota SQL en consulta muestra su vista ejecutable; Q-40: sin ejecutar.
+    expect(await screen.findByRole('button', { name: 'Ejecutar' })).toBeTruthy();
+    expect(mocked.analyze).toHaveBeenCalledWith('SELECT 1', 'a');
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {

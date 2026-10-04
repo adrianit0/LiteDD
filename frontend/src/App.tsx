@@ -11,6 +11,7 @@ import { DialogHost } from './components/DialogHost';
 import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { ConnectionDialog } from './components/ConnectionDialog';
 import { useConnection } from './stores/connectionStore';
+import { useSqlRuns } from './stores/sqlRunStore';
 
 /** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
 export function App() {
@@ -49,6 +50,17 @@ export function App() {
         case 'nextTab':
           tabs.cycle(1);
           break;
+        case 'execute': {
+          // Q-23: Ctrl+Intro ejecuta la nota SQL activa; desde edición, pasa antes a consulta.
+          const tab = tabs.tabs.find((t) => t.id === active);
+          if (!tab?.note || tab.note.type !== 'sql') break;
+          const run = async () => {
+            if (tab.mode === 'edit') await tabs.toggleMode(tab.id);
+            await useSqlRuns.getState().execute(tab.id);
+          };
+          void run();
+          break;
+        }
         case 'newMarkdown':
           void createAndOpen(null, 'md');
           break;

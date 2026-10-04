@@ -7,7 +7,8 @@ export type Shortcut =
   | 'toggleSidebar'
   | 'closeTab'
   | 'previousTab'
-  | 'nextTab';
+  | 'nextTab'
+  | 'execute';
 
 export interface KeyLike {
   key: string;
@@ -23,6 +24,8 @@ export function matchShortcut(e: KeyLike): Shortcut | null {
   if (e.ctrlKey && !e.altKey && !e.shiftKey) {
     if (key === 'e') return 'toggleMode';
     if (key === 's') return 'save';
+    // Q-23: Ctrl+Intro ejecuta la consulta.
+    if (e.key === 'Enter') return 'execute';
   }
   if (e.altKey && !e.ctrlKey) {
     if (key === 'n') return e.shiftKey ? 'newSql' : 'newMarkdown';
