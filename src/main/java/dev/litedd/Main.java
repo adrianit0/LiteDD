@@ -6,6 +6,7 @@ import dev.litedd.mysql.ConnectionFile;
 import dev.litedd.mysql.MySqlGateway;
 import dev.litedd.mysql.SqlApi;
 import dev.litedd.notes.NoteService;
+import dev.litedd.notes.AttachmentsApi;
 import dev.litedd.notes.NotesApi;
 import dev.litedd.notes.VariableValues;
 import dev.litedd.session.SessionApi;
@@ -55,6 +56,7 @@ public final class Main {
         MySqlGateway gateway = new MySqlGateway();
         HttpServer server = new HttpServer(port, sessionToken(), List.of(
                 new NotesApi(notes),
+                new AttachmentsApi(store),
                 new SettingsApi(store),
                 new SessionApi(store),
                 new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway),

@@ -1,11 +1,15 @@
 package dev.litedd.store;
 
+import dev.litedd.notes.ContentMapper;
+import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.NoteMapper;
 import dev.litedd.notes.VariableValueMapper;
 import dev.litedd.session.SessionMapper;
 import dev.litedd.settings.SettingMapper;
 import org.apache.ibatis.logging.nologging.NoLoggingImpl;
 import org.apache.ibatis.mapping.Environment;
+import org.apache.ibatis.type.ByteArrayTypeHandler;
+import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -153,10 +157,14 @@ public final class Store implements AutoCloseable {
         // S-22: MyBatis registraría en depuración los parámetros de cada consulta, valores incluidos.
         cfg.setLogImpl(NoLoggingImpl.class);
         cfg.setArgNameBasedConstructorAutoMapping(true);
+        // sqlite-jdbc no implementa getBlob(): los BLOB se leen como byte[] con getBytes().
+        cfg.getTypeHandlerRegistry().register(byte[].class, JdbcType.BLOB, new ByteArrayTypeHandler());
         cfg.addMapper(NoteMapper.class);
         cfg.addMapper(SettingMapper.class);
         cfg.addMapper(SessionMapper.class);
         cfg.addMapper(VariableValueMapper.class);
+        cfg.addMapper(ContentMapper.class);
+        cfg.addMapper(AttachmentMapper.class);
         return new SqlSessionFactoryBuilder().build(cfg);
     }
 }

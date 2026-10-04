@@ -71,6 +71,7 @@ Por la constitución (punto 2) no se instalan antes de usarse, pero la versión 
 | @codemirror/view | 6.43.13 | 1 |
 | @codemirror/lang-markdown | 6.5.2 | 1 |
 | @codemirror/lang-sql | 6.10.0 | 3 |
+| @codemirror/autocomplete | 6.20.3 | 5 |
 | markdown-it | 15.0.2 | 1 |
 | @types/markdown-it | 14.2.0 | 1 |
 | highlight.js | 11.12.0 | 1 |
@@ -83,6 +84,8 @@ Por la constitución (punto 2) no se instalan antes de usarse, pero la versión 
 ## Cambios
 
 - 2026-10-04, Sprint 1: no se usa el paquete agregado `codemirror` (su `basicSetup` trae funciones que no se piden). En su lugar se usan los subpaquetes `@codemirror/language` y `@codemirror/commands` (indentación y atajos de lista) y `@lezer/highlight` (colores del tema oscuro).
+
+- 2026-10-04, Sprint 5: se añade `@codemirror/autocomplete` para el autocompletado de `[[` (N-90, ADR-0016).
 
 ## Consecuencias
 

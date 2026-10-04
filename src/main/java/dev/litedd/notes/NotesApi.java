@@ -4,13 +4,25 @@ import dev.litedd.http.ApiError;
 import dev.litedd.http.ApiRoutes;
 import io.javalin.config.RoutesConfig;
 
+import java.util.Arrays;
+import java.util.List;
+
 /** Rutas /api/tree, /api/notes y /api/trash. */
 public final class NotesApi implements ApiRoutes {
 
     record CreateRequest(String parentId, String type, String title) {
     }
 
-    record SaveRequest(String title, String content, Long baseVersion) {
+    record SaveRequest(String title, String content, Long baseVersion, Boolean snapshot) {
+    }
+
+    record RestoreRequest(Long baseVersion) {
+    }
+
+    record TagsRequest(List<String> tags) {
+    }
+
+    record FavoriteRequest(Boolean favorite) {
     }
 
     record MoveRequest(String parentId, Integer position) {
@@ -38,7 +50,39 @@ public final class NotesApi implements ApiRoutes {
             if (req.baseVersion() == null) {
                 throw new ApiError(400, "missing_base_version", "Falta la versión de partida (baseVersion)");
             }
-            ctx.json(notes.save(ctx.pathParam("id"), req.title(), req.content(), req.baseVersion()));
+            ctx.json(notes.save(ctx.pathParam("id"), req.title(), req.content(), req.baseVersion(),
+                    Boolean.TRUE.equals(req.snapshot())));
+        });
+
+        routes.get("/api/notes/{id}/versions", ctx -> ctx.json(notes.versions(ctx.pathParam("id"))));
+        routes.post("/api/notes/{id}/versions/{versionId}/restore", ctx -> {
+            RestoreRequest req = ctx.bodyAsClass(RestoreRequest.class);
+            if (req.baseVersion() == null) {
+                throw new ApiError(400, "missing_base_version", "Falta la versión de partida (baseVersion)");
+            }
+            long versionId;
+            try {
+                versionId = Long.parseLong(ctx.pathParam("versionId"));
+            } catch (NumberFormatException e) {
+                throw new ApiError(404, "not_found", "La versión no existe");
+            }
+            ctx.json(notes.restoreVersion(ctx.pathParam("id"), versionId, req.baseVersion()));
+        });
+
+        routes.put("/api/notes/{id}/tags", ctx -> {
+            TagsRequest req = ctx.bodyAsClass(TagsRequest.class);
+            ctx.json(notes.setTags(ctx.pathParam("id"), req.tags()));
+        });
+        routes.put("/api/notes/{id}/favorite", ctx -> {
+            FavoriteRequest req = ctx.bodyAsClass(FavoriteRequest.class);
+            ctx.json(notes.setFavorite(ctx.pathParam("id"), Boolean.TRUE.equals(req.favorite())));
+        });
+        routes.get("/api/tags", ctx -> ctx.json(notes.tags()));
+        routes.get("/api/search", ctx -> {
+            String tags = ctx.queryParam("tags");
+            ctx.json(notes.search(new NoteService.SearchQuery(ctx.queryParam("q"), ctx.queryParam("type"),
+                    tags == null || tags.isBlank() ? List.of() : Arrays.asList(tags.split(",")),
+                    "true".equals(ctx.queryParam("favorite")), ctx.queryParam("since"))));
         });
 
         routes.post("/api/notes/{id}/move", ctx -> {

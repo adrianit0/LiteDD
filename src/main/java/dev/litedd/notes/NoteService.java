@@ -5,13 +5,20 @@ import dev.litedd.notes.NoteMapper.NoteRow;
 import dev.litedd.store.Store;
 import org.apache.ibatis.session.SqlSession;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Operaciones sobre notas y árbol. Cada operación va en una transacción (D-03). */
 public final class NoteService {
@@ -19,10 +26,41 @@ public final class NoteService {
     public static final String DEFAULT_TITLE = "Sin título";
     private static final Set<String> TYPES = Set.of("md", "sql");
 
+    /** N-44 */
+    static final int VERSIONS_KEPT = 20;
+    static final Duration VERSION_INTERVAL = Duration.ofMinutes(5);
+    private static final Pattern SEARCH_WORD = Pattern.compile("[\\p{L}\\p{N}_]+");
+
+    /**
+     * N-70, N-72. text vacío busca solo por filtros.
+     *
+     * @param since fecha ISO-8601 UTC mínima de modificación, o null
+     */
+    public record SearchQuery(String text, String type, List<String> tags, boolean favorite, String since) {
+
+        public static SearchQuery text(String text) {
+            return new SearchQuery(text, null, List.of(), false, null);
+        }
+    }
+
+    /** @param fragment y titleMarked con lo encontrado entre \u0002 y \u0003 (N-71) */
+    public record SearchHit(String id, String parentId, String type, String title, boolean favorite, String updatedAt,
+                            String fragment, String titleMarked) {
+    }
+
+    public record TagCount(String name, int count) {
+    }
+
     private final Store store;
+    private final Clock clock;
 
     public NoteService(Store store) {
+        this(store, Clock.systemUTC());
+    }
+
+    public NoteService(Store store, Clock clock) {
         this.store = store;
+        this.clock = clock;
     }
 
     public List<TreeNode> tree() {
@@ -57,16 +95,136 @@ public final class NoteService {
 
     /** N-40, N-42: guarda título y contenido si la versión de partida sigue vigente. */
     public Note save(String id, String title, String content, long baseVersion) {
+        return save(id, title, content, baseVersion, false);
+    }
+
+    /**
+     * N-44: con snapshot (al salir del modo edición) se guarda una versión si algo cambió; sin él, como
+     * mucho una cada 5 minutos.
+     */
+    public Note save(String id, String title, String content, long baseVersion, boolean snapshot) {
         if (title == null || title.isBlank()) {
             throw new ApiError(400, "invalid_title", "El título no puede estar vacío");
         }
         String finalContent = content == null ? "" : content;
         return store.write(s -> {
-            int updated = s.getMapper(NoteMapper.class).updateContent(id, title.strip(), finalContent, baseVersion, now());
-            if (updated == 0) {
-                Note current = load(s, id);
-                throw new ApiError(409, "conflict",
-                        "La nota ha cambiado desde que se abrió. Recárgala o sobrescríbela.", current);
+            Note current = load(s, id);
+            // Sin cambios no se toca la nota: así un snapshot al salir de edición no altera la versión.
+            boolean unchanged = current.version() == baseVersion && current.title().equals(title.strip())
+                    && current.content().equals(finalContent);
+            if (!unchanged) {
+                update(s, id, title.strip(), finalContent, baseVersion);
+            }
+            Note saved = unchanged ? current : load(s, id);
+            recordVersion(s, saved, snapshot);
+            return saved;
+        });
+    }
+
+    public List<NoteVersion> versions(String id) {
+        return store.read(s -> {
+            load(s, id);
+            return s.getMapper(ContentMapper.class).selectVersions(id);
+        });
+    }
+
+    /** N-45: restaura una versión; la actual se guarda antes como versión. */
+    public Note restoreVersion(String id, long versionId, long baseVersion) {
+        return store.write(s -> {
+            ContentMapper c = s.getMapper(ContentMapper.class);
+            NoteVersion v = c.selectVersion(id, versionId);
+            if (v == null) {
+                throw new ApiError(404, "not_found", "La versión no existe");
+            }
+            recordVersion(s, load(s, id), true);
+            update(s, id, v.title(), v.content(), baseVersion);
+            return load(s, id);
+        });
+    }
+
+    private void update(SqlSession s, String id, String title, String content, long baseVersion) {
+        int updated = s.getMapper(NoteMapper.class).updateContent(id, title, content, baseVersion, now());
+        if (updated == 0) {
+            Note current = load(s, id);
+            throw new ApiError(409, "conflict", "La nota ha cambiado desde que se abrió. Recárgala o sobrescríbela.", current);
+        }
+    }
+
+    private void recordVersion(SqlSession s, Note note, boolean snapshot) {
+        ContentMapper c = s.getMapper(ContentMapper.class);
+        NoteVersion latest = c.selectLatestVersion(note.id());
+        if (latest != null && latest.title().equals(note.title()) && latest.content().equals(note.content())) {
+            return;
+        }
+        boolean due = latest == null
+                || !Instant.parse(latest.savedAt()).plus(VERSION_INTERVAL).isAfter(clock.instant());
+        if (snapshot || due) {
+            c.insertVersion(note.id(), note.title(), note.content(), now());
+            c.pruneVersions(note.id(), VERSIONS_KEPT);
+        }
+    }
+
+    /** N-70 a N-74 */
+    public List<SearchHit> search(SearchQuery q) {
+        String match = null;
+        if (q.text() != null && !q.text().isBlank()) {
+            // N-74: solo letras y números, cada palabra entre comillas y por prefijo.
+            List<String> words = new ArrayList<>();
+            Matcher m = SEARCH_WORD.matcher(q.text());
+            while (m.find()) {
+                words.add("\"" + m.group() + "\"*");
+            }
+            if (words.isEmpty()) {
+                return List.of();
+            }
+            match = String.join(" ", words);
+        }
+        Map<String, String> tags = new LinkedHashMap<>();
+        for (String t : q.tags() == null ? List.<String>of() : q.tags()) {
+            if (!t.isBlank()) {
+                tags.putIfAbsent(t.strip().toLowerCase(Locale.ROOT), t.strip());
+            }
+        }
+        String finalMatch = match;
+        String type = q.type() == null || q.type().isBlank() ? null : q.type();
+        return store.read(s -> s.getMapper(ContentMapper.class).search(finalMatch, type, q.favorite(),
+                q.since() == null || q.since().isBlank() ? null : q.since(), List.copyOf(tags.values()), tags.size()));
+    }
+
+    /** N-80: sustituye las etiquetas; se crean al usarlas y desaparecen sin notas. */
+    public Note setTags(String id, List<String> names) {
+        Map<String, String> clean = new LinkedHashMap<>();
+        for (String n : names == null ? List.<String>of() : names) {
+            String t = n == null ? "" : n.strip();
+            if (t.length() > 50) {
+                throw new ApiError(400, "invalid_tag", "Una etiqueta no puede tener más de 50 caracteres");
+            }
+            if (!t.isEmpty()) {
+                clean.putIfAbsent(t.toLowerCase(Locale.ROOT), t);
+            }
+        }
+        return store.write(s -> {
+            load(s, id);
+            ContentMapper c = s.getMapper(ContentMapper.class);
+            c.deleteNoteTags(id);
+            for (String name : clean.values()) {
+                c.insertTag(name);
+                c.insertNoteTag(id, c.selectTagId(name));
+            }
+            c.deleteOrphanTags();
+            return load(s, id);
+        });
+    }
+
+    public List<TagCount> tags() {
+        return store.read(s -> s.getMapper(ContentMapper.class).selectTags());
+    }
+
+    /** N-81 */
+    public Note setFavorite(String id, boolean favorite) {
+        return store.write(s -> {
+            if (s.getMapper(ContentMapper.class).updateFavorite(id, favorite) == 0) {
+                throw notFound();
             }
             return load(s, id);
         });
@@ -161,6 +319,7 @@ public final class NoteService {
             if (m.deleteTrashed(id) == 0) {
                 throw new ApiError(404, "not_found", "La nota no está en la papelera");
             }
+            s.getMapper(ContentMapper.class).deleteOrphanTags();
             return null;
         });
     }
@@ -171,6 +330,7 @@ public final class NoteService {
             NoteMapper m = s.getMapper(NoteMapper.class);
             m.detachAllTrashedChildren();
             m.deleteAllTrashed();
+            s.getMapper(ContentMapper.class).deleteOrphanTags();
             return null;
         });
     }
@@ -205,7 +365,7 @@ public final class NoteService {
         return new ApiError(404, "not_found", "La nota no existe");
     }
 
-    private static String now() {
-        return Instant.now().truncatedTo(ChronoUnit.MILLIS).toString();
+    private String now() {
+        return clock.instant().truncatedTo(ChronoUnit.MILLIS).toString();
     }
 }
