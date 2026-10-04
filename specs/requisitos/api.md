@@ -47,6 +47,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/data/export | Descargar ZIP |
 | POST | /api/data/import | Subir ZIP con el modo elegido |
 | POST | /api/data/backup | Crear copia ahora |
+| POST | /api/data/open-folder | Abrir la carpeta de datos (X-10, ADR-0017) |
 | GET | /api/health | Firma y versión de la aplicación |
 | GET | /api/events | Canal SSE de presencia |
 | POST | /api/presence/bye | Aviso de cierre de ventana |

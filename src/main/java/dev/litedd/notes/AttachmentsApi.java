@@ -59,7 +59,7 @@ public final class AttachmentsApi implements ApiRoutes {
     }
 
     /** Firma de PNG, JPEG, GIF o WebP; null si no es ninguna. */
-    static String detect(byte[] d) {
+    public static String detect(byte[] d) {
         if (starts(d, new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A})) {
             return "image/png";
         }

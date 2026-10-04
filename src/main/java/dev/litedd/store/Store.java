@@ -5,6 +5,7 @@ import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.NoteMapper;
 import dev.litedd.notes.VariableValueMapper;
 import dev.litedd.session.SessionMapper;
+import dev.litedd.transfer.TransferMapper;
 import dev.litedd.settings.SettingMapper;
 import org.apache.ibatis.logging.nologging.NoLoggingImpl;
 import org.apache.ibatis.mapping.Environment;
@@ -105,6 +106,23 @@ public final class Store implements AutoCloseable {
         }
     }
 
+    /** X-08, X-09: copia coherente de la base de datos, fuera de cualquier transacción. */
+    public void vacuumInto(java.nio.file.Path target) {
+        writeLock.lock();
+        try {
+            writer.setAutoCommit(true);
+            try (java.sql.Statement st = writer.createStatement()) {
+                st.execute("VACUUM INTO '" + target.toAbsolutePath().toString().replace("'", "''") + "'");
+            } finally {
+                writer.setAutoCommit(false);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("No se pudo crear la copia " + target.getFileName() + ": " + e.getMessage(), e);
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
     @Override
     public void close() {
         writeLock.lock();
@@ -165,6 +183,7 @@ public final class Store implements AutoCloseable {
         cfg.addMapper(VariableValueMapper.class);
         cfg.addMapper(ContentMapper.class);
         cfg.addMapper(AttachmentMapper.class);
+        cfg.addMapper(TransferMapper.class);
         return new SqlSessionFactoryBuilder().build(cfg);
     }
 }

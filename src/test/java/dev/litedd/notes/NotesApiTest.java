@@ -103,7 +103,8 @@ class NotesApiTest {
 
     @Test
     void settings_round_trip_ui_state() throws Exception {
-        assertThat(call("GET", "/api/settings", null).json.size()).isZero();
+        // Sin estado de interfaz guardado, solo la clave «config» (ADR-0017).
+        assertThat(call("GET", "/api/settings", null).json.fieldNames()).toIterable().containsExactly("config");
         Res put = call("PUT", "/api/settings", "{\"ui.sidebarWidth\":320,\"ui.collapsed\":[\"a\",\"b\"]}");
         assertThat(put.status).isEqualTo(200);
         call("PUT", "/api/settings", "{\"ui.sidebarWidth\":280}");

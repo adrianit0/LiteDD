@@ -9,6 +9,7 @@ import dev.litedd.mysql.QueryRunner.Result;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.VariableValues;
+import dev.litedd.settings.AppConfig;
 import dev.litedd.sqlengine.SqlEngine.Analysis;
 import dev.litedd.sqlengine.SqlError;
 import dev.litedd.sqlengine.Variable;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** Rutas /api/sql: analizar, renderizar, ejecutar, contar y cancelar (Q-40 a Q-57, A-04, A-05). */
 public final class SqlApi implements ApiRoutes {
@@ -81,8 +83,8 @@ public final class SqlApi implements ApiRoutes {
     private final VariableValues variableValues;
     private final SqlEngine engine;
     private final MySqlGateway gateway;
-    private final int timeoutSeconds;
-    private final int rowCap;
+    /** U-10: el tiempo máximo y el tope se leen de los ajustes en cada ejecución. */
+    private final Supplier<AppConfig> config;
 
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway) {
         this(notes, variableValues, engine, gateway, DEFAULT_TIMEOUT_SECONDS, DEFAULT_ROW_CAP);
@@ -90,12 +92,25 @@ public final class SqlApi implements ApiRoutes {
 
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
                   int timeoutSeconds, int rowCap) {
+        this(notes, variableValues, engine, gateway,
+                () -> new AppConfig(AppConfig.DEFAULT.defaultPageSize(), rowCap, timeoutSeconds, AppConfig.DEFAULT.port(), null));
+    }
+
+    public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
+                  Supplier<AppConfig> config) {
         this.notes = notes;
         this.variableValues = variableValues;
         this.engine = engine;
         this.gateway = gateway;
-        this.timeoutSeconds = timeoutSeconds;
-        this.rowCap = rowCap;
+        this.config = config;
+    }
+
+    private int timeoutSeconds() {
+        return config.get().queryTimeoutSeconds();
+    }
+
+    private int rowCap() {
+        return config.get().rowCap();
     }
 
     @Override
@@ -170,14 +185,14 @@ public final class SqlApi implements ApiRoutes {
                     plan.classification().forbiddenClause());
         }
         boolean meta = plan.classification().kind() == StatementKind.META;
-        String sql = meta ? plan.rendered().sql() : Pagination.pageSql(plan.rendered().sql(), page, rowCap);
-        int maxRows = meta ? rowCap + 1 : Pagination.fetchLimit(page, rowCap);
+        String sql = meta ? plan.rendered().sql() : Pagination.pageSql(plan.rendered().sql(), page, rowCap());
+        int maxRows = meta ? rowCap() + 1 : Pagination.fetchLimit(page, rowCap());
         String executionId = req.executionId() == null ? UUID.randomUUID().toString() : req.executionId();
         boolean wrapped = !meta && sql.startsWith("SELECT * FROM (\n");
 
         Result result = run(executionId, wrapped, () -> gateway.withConnection(c -> QueryRunner.query(c, sql,
-                values(plan), maxRows, timeoutSeconds, executionId, gateway.running())));
-        Page assembled = Pagination.assemble(result.rows(), page, rowCap, meta);
+                values(plan), maxRows, timeoutSeconds(), executionId, gateway.running())));
+        Page assembled = Pagination.assemble(result.rows(), page, rowCap(), meta);
         List<List<Integer>> truncated = result.truncatedCells().stream()
                 .filter(cell -> cell.getFirst() < assembled.rows().size()).toList();
         return new ExecuteResponse(meta ? "meta" : "query", result.columns(), assembled.rows(), truncated,
@@ -195,12 +210,12 @@ public final class SqlApi implements ApiRoutes {
         String sql = plan.rendered().sql();
         return run(executionId, false, () -> gateway.withConnection(c -> {
             try {
-                return QueryRunner.count(c, Pagination.countSql(sql), values, timeoutSeconds, executionId, gateway.running(), false);
+                return QueryRunner.count(c, Pagination.countSql(sql), values, timeoutSeconds(), executionId, gateway.running(), false);
             } catch (SQLException e) {
                 if (e.getErrorCode() != ER_DUP_FIELDNAME) {
                     throw e;
                 }
-                return QueryRunner.count(c, sql, values, timeoutSeconds, executionId, gateway.running(), true);
+                return QueryRunner.count(c, sql, values, timeoutSeconds(), executionId, gateway.running(), true);
             }
         }));
     }
@@ -223,7 +238,7 @@ public final class SqlApi implements ApiRoutes {
                 throw new ApiError(422, "cancelled", "Consulta cancelada a los " + seconds(seconds));
             }
             if (e instanceof SQLTimeoutException || e.getErrorCode() == ER_QUERY_TIMEOUT) {
-                throw new ApiError(422, "timeout", "La consulta superó el tiempo máximo de " + timeoutSeconds
+                throw new ApiError(422, "timeout", "La consulta superó el tiempo máximo de " + timeoutSeconds()
                         + " s y se canceló (" + seconds(seconds) + ")");
             }
             if (MySqlGateway.isUnknownSchema(e)) {

@@ -1,15 +1,34 @@
 <configuration>
-  <!-- Sprint 0: solo consola. El fichero con rotación (5 MB x 3) llega con el ciclo de vida. -->
+  <!-- Registro con rotación: 5 MB por fichero, 3 ficheros (litedd.log, litedd.1.log y litedd.2.log). -->
+  <property name="LOG_DIR" value="${litedd.logdir:-${java.io.tmpdir}/litedd}"/>
+
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
     </encoder>
   </appender>
 
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>${LOG_DIR}/litedd.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+      <fileNamePattern>${LOG_DIR}/litedd.%i.log</fileNamePattern>
+      <minIndex>1</minIndex>
+      <maxIndex>2</maxIndex>
+    </rollingPolicy>
+    <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+      <maxFileSize>5MB</maxFileSize>
+    </triggeringPolicy>
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
   <logger name="org.eclipse.jetty" level="WARN"/>
   <logger name="io.javalin" level="WARN"/>
+  <logger name="com.zaxxer.hikari" level="WARN"/>
 
   <root level="INFO">
     <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="FILE"/>
   </root>
 </configuration>

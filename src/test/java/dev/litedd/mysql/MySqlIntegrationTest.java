@@ -263,6 +263,34 @@ class MySqlIntegrationTest {
         }
     }
 
+    // --- Sprint 6: resistencia ---
+
+    @Test
+    void sprint6_two_thousand_executions_keep_memory_stable() throws Exception {
+        Note n = sqlNote("SELECT b.id, b.title FROM book b <where><if test=\"y != null\">AND b.year > #{y,int}</if></where>");
+        // Calentamiento: cachés, pool y clases cargadas.
+        for (int i = 0; i < 100; i++) {
+            execute(n, Map.of("y", String.valueOf(1990 + i % 10)), 1 + i % 2, 10, null);
+        }
+        long before = usedAfterGc();
+        for (int i = 0; i < 2000; i++) {
+            Res r = execute(n, Map.of("y", String.valueOf(1990 + i % 10)), 1 + i % 2, 10, i % 3 == 0 ? Map.of("column", 2, "direction", "desc") : null);
+            assertThat(r.status).isEqualTo(200);
+        }
+        long after = usedAfterGc();
+        // Sin fugas: el crecimiento queda muy por debajo del máximo de 384 MB.
+        assertThat(after - before).isLessThan(32L * 1024 * 1024);
+    }
+
+    private static long usedAfterGc() throws InterruptedException {
+        Runtime rt = Runtime.getRuntime();
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(200);
+        }
+        return rt.totalMemory() - rt.freeMemory();
+    }
+
     // --- Utilidades ---
 
     private Note sqlNote(String content) {
