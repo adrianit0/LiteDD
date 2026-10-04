@@ -1,0 +1,78 @@
+/* U-02: tema oscuro único. Contraste del texto sobre el fondo por encima de AA. */
+:root {
+  color-scheme: dark;
+  --bg: #16181d;
+  --surface: #1f2229;
+  --border: #343944;
+  --text: #e4e6eb;
+  --text-muted: #a0a6b3;
+  --accent: #6ea8fe;
+  --error: #f28b82;
+  --warning: #f2c46d;
+
+  /* U-04 */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Ubuntu, Cantarell, sans-serif;
+  --font-mono: ui-monospace, 'DejaVu Sans Mono', 'Ubuntu Mono', Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+/* U-08: foco siempre visible */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.empty h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--text-muted);
+}

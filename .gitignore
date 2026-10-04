@@ -1,0 +1,23 @@
+# Build
+target/
+frontend/node_modules/
+frontend/dist/
+
+# Datos, configuración y registros de LiteDD (S-34)
+*.db
+*.db-wal
+*.db-shm
+*.zip
+*.log
+config.json
+connection.json
+backups/
+.env
+.env.*
+
+# IDE y sistema
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
