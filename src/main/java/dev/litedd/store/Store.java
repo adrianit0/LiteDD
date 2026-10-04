@@ -1,6 +1,7 @@
 package dev.litedd.store;
 
 import dev.litedd.notes.NoteMapper;
+import dev.litedd.session.SessionMapper;
 import dev.litedd.settings.SettingMapper;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
@@ -150,6 +151,7 @@ public final class Store implements AutoCloseable {
         cfg.setArgNameBasedConstructorAutoMapping(true);
         cfg.addMapper(NoteMapper.class);
         cfg.addMapper(SettingMapper.class);
+        cfg.addMapper(SessionMapper.class);
         return new SqlSessionFactoryBuilder().build(cfg);
     }
 }

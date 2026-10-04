@@ -7,6 +7,7 @@ import org.apache.ibatis.session.SqlSession;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -69,6 +70,125 @@ public final class NoteService {
             }
             return load(s, id);
         });
+    }
+
+    /**
+     * N-60, N-61: mueve la nota con su descendencia. position es el índice entre las nuevas hermanas,
+     * sin contar la propia nota; se ajusta al final si es mayor.
+     */
+    public Note move(String id, String parentId, int position) {
+        return store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            NoteRow note = m.selectActive(id);
+            if (note == null) {
+                throw notFound();
+            }
+            if (parentId != null) {
+                if (m.selectActive(parentId) == null) {
+                    throw new ApiError(404, "not_found", "La nota de destino no existe");
+                }
+                // D-05, N-62: ni sobre sí misma ni sobre una descendiente.
+                if (m.countInAncestry(id, parentId) > 0) {
+                    throw new ApiError(409, "cycle",
+                            "No se puede mover una nota dentro de sí misma ni de una de sus descendientes");
+                }
+            }
+            List<String> siblings = new ArrayList<>(m.selectChildIds(parentId));
+            siblings.remove(id);
+            siblings.add(Math.max(0, Math.min(position, siblings.size())), id);
+            m.place(id, parentId, 0);
+            renumber(m, siblings);
+            if (!sameParent(note.parentId(), parentId)) {
+                renumber(m, m.selectChildIds(note.parentId()));
+            }
+            return load(s, id);
+        });
+    }
+
+    /** N-50, N-51: a la papelera; con hijas, solo si se suben un nivel (promote). */
+    public void delete(String id, boolean promoteChildren) {
+        store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            NoteRow note = m.selectActive(id);
+            if (note == null) {
+                throw notFound();
+            }
+            List<String> children = m.selectChildIds(id);
+            if (!children.isEmpty() && !promoteChildren) {
+                throw new ApiError(409, "has_children",
+                        "La nota tiene hijas. Súbelas un nivel para poder eliminarla.", children.size());
+            }
+            // Las hijas ocupan el lugar de la nota, en su mismo orden.
+            List<String> siblings = new ArrayList<>(m.selectChildIds(note.parentId()));
+            int at = siblings.indexOf(id);
+            siblings.remove(at);
+            siblings.addAll(at, children);
+            for (String child : children) {
+                m.place(child, note.parentId(), 0);
+            }
+            m.markDeleted(id, now());
+            m.deleteTabs(id);
+            renumber(m, siblings);
+            return null;
+        });
+    }
+
+    public List<TrashItem> trash() {
+        return store.read(s -> s.getMapper(NoteMapper.class).selectTrash());
+    }
+
+    /** N-53: vuelve a su madre, al final; a la raíz si la madre ya no está activa. */
+    public Note restore(String id) {
+        return store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            if (m.countTrashed(id) == 0) {
+                throw new ApiError(404, "not_found", "La nota no está en la papelera");
+            }
+            String parent = m.selectTrashedParent(id);
+            if (parent != null && m.selectActive(parent) == null) {
+                parent = null;
+            }
+            m.markRestored(id, parent, m.countChildren(parent));
+            return load(s, id);
+        });
+    }
+
+    /** N-55: eliminación definitiva; historial, variables y pestañas caen en cascada. */
+    public void purge(String id) {
+        store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            m.detachTrashedChildren(id);
+            if (m.deleteTrashed(id) == 0) {
+                throw new ApiError(404, "not_found", "La nota no está en la papelera");
+            }
+            return null;
+        });
+    }
+
+    /** N-52: vaciar la papelera. */
+    public void emptyTrash() {
+        store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            m.detachAllTrashedChildren();
+            m.deleteAllTrashed();
+            return null;
+        });
+    }
+
+    /** N-55: se ejecuta al arrancar. */
+    public int purgeOrphanAttachments() {
+        return store.write(s -> s.getMapper(NoteMapper.class).deleteOrphanAttachments());
+    }
+
+    /** D-03: posiciones contiguas desde 0 en el orden dado. */
+    private static void renumber(NoteMapper m, List<String> orderedIds) {
+        for (int i = 0; i < orderedIds.size(); i++) {
+            m.setPosition(orderedIds.get(i), i);
+        }
+    }
+
+    private static boolean sameParent(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     private static Note load(SqlSession s, String id) {

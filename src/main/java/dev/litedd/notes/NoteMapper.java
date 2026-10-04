@@ -1,5 +1,6 @@
 package dev.litedd.notes;
 
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -54,4 +55,61 @@ public interface NoteMapper {
             WHERE id = #{id} AND version = #{baseVersion} AND deleted_at IS NULL""")
     int updateContent(@Param("id") String id, @Param("title") String title, @Param("content") String content,
                       @Param("baseVersion") long baseVersion, @Param("now") String now);
+
+    @Select("SELECT id FROM note WHERE parent_id IS #{parentId} AND deleted_at IS NULL ORDER BY position, rid")
+    List<String> selectChildIds(@Param("parentId") String parentId);
+
+    /** D-05: ¿está noteId en la cadena de antepasados de target, incluido el propio target? */
+    @Select("""
+            WITH RECURSIVE up(id, parent_id) AS (
+                SELECT id, parent_id FROM note WHERE id = #{target}
+                UNION ALL
+                SELECT n.id, n.parent_id FROM note n JOIN up ON n.id = up.parent_id)
+            SELECT count(*) FROM up WHERE id = #{noteId}""")
+    int countInAncestry(@Param("noteId") String noteId, @Param("target") String target);
+
+    @Update("UPDATE note SET parent_id = #{parentId}, position = #{position} WHERE id = #{id}")
+    void place(@Param("id") String id, @Param("parentId") String parentId, @Param("position") int position);
+
+    @Update("UPDATE note SET position = #{position} WHERE id = #{id}")
+    void setPosition(@Param("id") String id, @Param("position") int position);
+
+    @Update("UPDATE note SET deleted_at = #{now} WHERE id = #{id} AND deleted_at IS NULL")
+    int markDeleted(@Param("id") String id, @Param("now") String now);
+
+    @Update("UPDATE note SET deleted_at = NULL, parent_id = #{parentId}, position = #{position} WHERE id = #{id}")
+    void markRestored(@Param("id") String id, @Param("parentId") String parentId, @Param("position") int position);
+
+    @Select("""
+            SELECT id, parent_id, type, title, deleted_at FROM note
+            WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, title""")
+    List<TrashItem> selectTrash();
+
+    @Select("SELECT parent_id FROM note WHERE id = #{id} AND deleted_at IS NOT NULL")
+    String selectTrashedParent(@Param("id") String id);
+
+    @Select("SELECT count(*) FROM note WHERE id = #{id} AND deleted_at IS NOT NULL")
+    int countTrashed(@Param("id") String id);
+
+    /** ADR-0010: las notas de la papelera que la tenían como madre pasan a la raíz. */
+    @Update("UPDATE note SET parent_id = NULL WHERE parent_id = #{id} AND deleted_at IS NOT NULL")
+    void detachTrashedChildren(@Param("id") String id);
+
+    @Delete("DELETE FROM note WHERE id = #{id} AND deleted_at IS NOT NULL")
+    int deleteTrashed(@Param("id") String id);
+
+    @Update("""
+            UPDATE note SET parent_id = NULL
+            WHERE deleted_at IS NOT NULL
+              AND parent_id IN (SELECT id FROM note WHERE deleted_at IS NOT NULL)""")
+    void detachAllTrashedChildren();
+
+    @Delete("DELETE FROM note WHERE deleted_at IS NOT NULL")
+    int deleteAllTrashed();
+
+    @Delete("DELETE FROM tab WHERE note_id = #{id}")
+    void deleteTabs(@Param("id") String id);
+
+    @Delete("DELETE FROM attachment WHERE note_id IS NULL")
+    int deleteOrphanAttachments();
 }

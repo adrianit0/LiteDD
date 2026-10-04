@@ -3,6 +3,7 @@ package dev.litedd;
 import dev.litedd.http.HttpServer;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.NotesApi;
+import dev.litedd.session.SessionApi;
 import dev.litedd.settings.SettingsApi;
 import dev.litedd.store.DataPaths;
 import dev.litedd.store.Store;
@@ -39,9 +40,15 @@ public final class Main {
         }
 
         Store store = Store.open(DataPaths.database(), DataPaths.backups());
+        NoteService notes = new NoteService(store);
+        int purged = notes.purgeOrphanAttachments();
+        if (purged > 0) {
+            log.info("Adjuntos sin referencias eliminados: {}", purged);
+        }
         HttpServer server = new HttpServer(port, sessionToken(), List.of(
-                new NotesApi(new NoteService(store)),
-                new SettingsApi(store))).start();
+                new NotesApi(notes),
+                new SettingsApi(store),
+                new SessionApi(store))).start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();
             store.close();
