@@ -17,3 +17,11 @@ export interface Note extends TreeNode {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface TrashItem {
+  id: string;
+  parentId: string | null;
+  type: NoteType;
+  title: string;
+  deletedAt: string;
+}

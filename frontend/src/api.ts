@@ -1,4 +1,4 @@
-import type { Note, NoteType, TreeNode } from './types';
+import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 
 /** Error de la API con el cuerpo de A-02. status 0 = sin contacto con el servidor. */
 export class ApiError extends Error {
@@ -55,6 +55,14 @@ export async function request<T>(method: string, path: string, body?: unknown, o
 
 export type Settings = Record<string, unknown>;
 
+export interface SessionTab {
+  id: string;
+  noteId: string;
+  mode: Mode;
+  active: boolean;
+  state: { scroll?: number } | null;
+}
+
 export const api = {
   tree: () => request<TreeNode[]>('GET', '/api/tree'),
   createNote: (parentId: string | null, type: NoteType, title?: string) =>
@@ -62,6 +70,16 @@ export const api = {
   getNote: (id: string) => request<Note>('GET', `/api/notes/${encodeURIComponent(id)}`),
   saveNote: (id: string, title: string, content: string, baseVersion: number, options?: RequestOptions) =>
     request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}`, { title, content, baseVersion }, options),
+  moveNote: (id: string, parentId: string | null, position: number) =>
+    request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/move`, { parentId, position }),
+  deleteNote: (id: string, promoteChildren: boolean) =>
+    request<void>('DELETE', `/api/notes/${encodeURIComponent(id)}${promoteChildren ? '?children=promote' : ''}`),
+  trash: () => request<TrashItem[]>('GET', '/api/trash'),
+  restore: (id: string) => request<Note>('POST', `/api/trash/${encodeURIComponent(id)}/restore`),
+  purge: (id: string) => request<void>('DELETE', `/api/trash/${encodeURIComponent(id)}`),
+  emptyTrash: () => request<void>('DELETE', '/api/trash'),
+  getSession: () => request<{ tabs: SessionTab[] }>('GET', '/api/session'),
+  putSession: (tabs: SessionTab[]) => request<{ tabs: SessionTab[] }>('PUT', '/api/session', { tabs }),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   putSettings: (changes: Settings) => request<Settings>('PUT', '/api/settings', changes),
 };

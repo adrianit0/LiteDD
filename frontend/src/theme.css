@@ -570,3 +570,232 @@ input {
   background: transparent;
   padding: 0 4px;
 }
+
+/* Pestañas (P-01, P-10) */
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 220px;
+  height: 34px;
+  padding: 0 6px 0 10px;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab:hover {
+  background: var(--surface-raised);
+}
+
+.tab.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.tab.dragging {
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-status {
+  flex: none;
+  width: 8px;
+  font-size: 10px;
+  color: var(--warning);
+}
+
+.tab-status.status-error,
+.tab-status.status-conflict {
+  color: var(--error);
+}
+
+.tab-close,
+.tab-list-button {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 6px;
+}
+
+.tab-close:hover,
+.tab-list-button:hover {
+  color: var(--text);
+}
+
+.tab-list-button {
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 10px;
+}
+
+/* Arrastrar y soltar en el árbol (N-60) */
+.tree-row.dragging {
+  opacity: 0.4;
+}
+
+.tree-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.tree-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tree-row.drop-inside {
+  background: var(--selection);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tree-row.drop-invalid {
+  cursor: no-drop;
+  box-shadow: inset 0 0 0 1px var(--error);
+}
+
+.drag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 40%);
+  white-space: nowrap;
+}
+
+/* Pie del panel y papelera (N-52) */
+.sidebar-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-footer button {
+  width: 100%;
+  text-align: left;
+}
+
+.trash {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.trash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trash-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.trash-empty {
+  padding: 12px;
+}
+
+.trash-list {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trash-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.trash-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trash-date {
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+
+.trash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trash-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* «Mover a…» (N-64) */
+.move-dialog {
+  width: min(560px, 90vw);
+}
+
+.move-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.move-options {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.move-options li {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.move-options li.selected {
+  background: var(--selection);
+}
+
+.move-path {
+  font-size: 12px;
+}

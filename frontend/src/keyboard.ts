@@ -1,5 +1,13 @@
 /** Atajos globales de «Atajos de teclado». Ninguno usa combinaciones reservadas del navegador (U-09). */
-export type Shortcut = 'toggleMode' | 'save' | 'newMarkdown' | 'newSql' | 'toggleSidebar';
+export type Shortcut =
+  | 'toggleMode'
+  | 'save'
+  | 'newMarkdown'
+  | 'newSql'
+  | 'toggleSidebar'
+  | 'closeTab'
+  | 'previousTab'
+  | 'nextTab';
 
 export interface KeyLike {
   key: string;
@@ -19,6 +27,10 @@ export function matchShortcut(e: KeyLike): Shortcut | null {
   if (e.altKey && !e.ctrlKey) {
     if (key === 'n') return e.shiftKey ? 'newSql' : 'newMarkdown';
     if (key === 'b' && !e.shiftKey) return 'toggleSidebar';
+    // P-04: Alt+W, porque Ctrl+W está reservado (U-09).
+    if (key === 'w' && !e.shiftKey) return 'closeTab';
+    if (e.key === 'PageUp' && !e.shiftKey) return 'previousTab';
+    if (e.key === 'PageDown' && !e.shiftKey) return 'nextTab';
   }
   return null;
 }

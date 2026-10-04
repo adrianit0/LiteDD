@@ -1,15 +1,37 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragMoveEvent,
+} from '@dnd-kit/core';
 import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
-import { useNote } from '../stores/noteStore';
+import { useActiveTab } from '../stores/tabsStore';
 import { visibleRows, type VisibleRow } from '../tree';
-import { createAndOpen, openNote, renameNote } from '../actions';
+import { dropDestination, keyboardDestination, zoneAt, type Destination, type DropZone, type KeyboardMove } from '../treeOps';
+import { createAndOpen, deleteNote, moveNote, openNote, renameNote } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
 
 const ROW_HEIGHT = 28;
 const INDENT = 16;
+/** N-65: tiempo sobre un nodo plegado para desplegarlo durante un arrastre. */
+export const EXPAND_ON_HOVER_MS = 600;
+
+const ARROW_MOVES: Record<string, KeyboardMove> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+};
 
 interface MenuState {
   id: string;
@@ -17,16 +39,27 @@ interface MenuState {
   y: number;
 }
 
-/** Árbol virtualizado de notas (N-01 a N-06, N-13), manejable con teclado (U-08). */
+interface DropTarget {
+  id: string;
+  zone: DropZone;
+  dest: Destination | null;
+}
+
+/** Árbol virtualizado de notas (N-01 a N-06, N-13, N-60 a N-65), manejable con teclado (U-08). */
 export function Tree() {
   const nodes = useTree((s) => s.nodes);
   const collapsed = useUi((s) => s.collapsed);
-  const openId = useNote((s) => s.note?.id);
+  const openId = useActiveTab()?.noteId;
   const rows = useMemo(() => visibleRows(nodes, collapsed), [nodes, collapsed]);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [drop, setDrop] = useState<DropTarget | null>(null);
+  const hover = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -57,11 +90,27 @@ export function Tree() {
     { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
     { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
     { label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) },
+    { label: 'Mover a…', onSelect: () => setMovingId(id) },
+    { label: 'Eliminar', shortcut: 'Supr', onSelect: () => void deleteNote(id) },
   ];
+
+  const openMenuAt = (e: KeyboardEvent, id: string) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ id, x: rect.left + 24, y: rect.bottom });
+  };
 
   const onKeyDown = (e: KeyboardEvent, row: VisibleRow, index: number) => {
     if (renamingId) return;
     const ui = useUi.getState();
+    // N-63: Alt+flechas mueven la nota.
+    if (e.altKey && ARROW_MOVES[e.key]) {
+      e.preventDefault();
+      const dest = keyboardDestination(nodes, row.node.id, ARROW_MOVES[e.key]);
+      if (dest) {
+        void moveNote(row.node.id, dest).then(() => setFocusId(row.node.id));
+      }
+      return;
+    }
     switch (e.key) {
       case 'ArrowDown':
         moveFocus(index + 1);
@@ -89,15 +138,15 @@ export function Tree() {
       case 'F2':
         setRenamingId(row.node.id);
         break;
-      case 'ContextMenu': {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        setMenu({ id: row.node.id, x: rect.left + 24, y: rect.bottom });
+      case 'Delete':
+        void deleteNote(row.node.id);
         break;
-      }
+      case 'ContextMenu':
+        openMenuAt(e, row.node.id);
+        break;
       default:
         if (e.key === 'F10' && e.shiftKey) {
-          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          setMenu({ id: row.node.id, x: rect.left + 24, y: rect.bottom });
+          openMenuAt(e, row.node.id);
           break;
         }
         return;
@@ -105,69 +154,185 @@ export function Tree() {
     e.preventDefault();
   };
 
+  const clearHover = () => {
+    if (hover.current) clearTimeout(hover.current.timer);
+    hover.current = null;
+  };
+
+  const onDragMove = (e: DragMoveEvent) => {
+    const over = e.over;
+    if (!over) {
+      clearHover();
+      setDrop(null);
+      return;
+    }
+    const targetId = String(over.id);
+    const pointerY = (e.activatorEvent as PointerEvent).clientY + e.delta.y;
+    const zone = zoneAt((pointerY - over.rect.top) / over.rect.height);
+    const dest = dropDestination(nodes, String(e.active.id), targetId, zone);
+    setDrop((prev) => (prev?.id === targetId && prev.zone === zone && prev.dest === dest ? prev : { id: targetId, zone, dest }));
+
+    // N-65: mantener el arrastre sobre un nodo plegado lo despliega.
+    if (hover.current?.id !== targetId) {
+      clearHover();
+      const row = rows.find((r) => r.node.id === targetId);
+      if (row?.hasChildren && !row.expanded) {
+        hover.current = {
+          id: targetId,
+          timer: setTimeout(() => useUi.getState().expand(targetId), EXPAND_ON_HOVER_MS),
+        };
+      }
+    }
+  };
+
+  const endDrag = () => {
+    clearHover();
+    setDragId(null);
+    setDrop(null);
+  };
+
   if (rows.length === 0) {
     return <p className="tree-empty muted">Todavía no hay notas.</p>;
   }
 
+  const dragged = dragId ? nodes.find((n) => n.id === dragId) : undefined;
+
   return (
-    <div className="tree" ref={scroller} role="tree" aria-label="Notas">
-      <div className="tree-inner" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const row = rows[item.index];
-          const { node } = row;
-          const active = node.id === openId;
-          return (
-            <div
-              key={node.id}
-              data-id={node.id}
-              className={`tree-row${active ? ' active' : ''}`}
-              role="treeitem"
-              aria-level={row.depth + 1}
-              aria-expanded={row.hasChildren ? row.expanded : undefined}
-              aria-selected={active}
-              tabIndex={item.index === focusIndex ? 0 : -1}
-              style={{ transform: `translateY(${item.start}px)`, paddingLeft: 6 + row.depth * INDENT }}
-              onClick={() => {
-                setFocusId(node.id);
-                void openNote(node.id);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setFocusId(node.id);
-                setMenu({ id: node.id, x: e.clientX, y: e.clientY });
-              }}
-              onKeyDown={(e) => onKeyDown(e, row, item.index)}
-            >
-              <button
-                type="button"
-                className={`twisty${row.hasChildren ? '' : ' hidden'}`}
-                tabIndex={-1}
-                aria-label={row.expanded ? 'Plegar' : 'Desplegar'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  useUi.getState().toggleCollapsed(node.id);
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={(e) => setDragId(String(e.active.id))}
+      onDragMove={onDragMove}
+      onDragEnd={(e) => {
+        const target = drop;
+        endDrag();
+        // N-62: un destino no válido no hace nada.
+        if (target?.dest) void moveNote(String(e.active.id), target.dest);
+      }}
+      onDragCancel={endDrag}
+    >
+      <div className="tree" ref={scroller} role="tree" aria-label="Notas">
+        <div className="tree-inner" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index];
+            const id = row.node.id;
+            return (
+              <TreeRow
+                key={id}
+                row={row}
+                start={item.start}
+                active={id === openId}
+                focusable={item.index === focusIndex}
+                dropZone={drop?.id === id ? (drop.dest ? drop.zone : 'invalid') : null}
+                renaming={renamingId === id}
+                onOpen={(newTab) => {
+                  setFocusId(id);
+                  void openNote(id, newTab);
                 }}
-              >
-                {row.expanded ? '▾' : '▸'}
-              </button>
-              <TypeIcon type={node.type} />
-              {renamingId === node.id ? (
-                <RenameInput
-                  initial={node.title}
-                  onDone={(value) => {
-                    setRenamingId(null);
-                    setFocusId(node.id);
-                    if (value !== null) void renameNote(node.id, value);
-                  }}
-                />
-              ) : (
-                <span className="tree-title">{node.title}</span>
-              )}
-            </div>
-          );
-        })}
+                onContextMenu={(x, y) => {
+                  setFocusId(id);
+                  setMenu({ id, x, y });
+                }}
+                onKeyDown={(e) => onKeyDown(e, row, item.index)}
+                onRenamed={(value) => {
+                  setRenamingId(null);
+                  setFocusId(id);
+                  if (value !== null) void renameNote(id, value);
+                }}
+              />
+            );
+          })}
+        </div>
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.id)} onClose={() => setMenu(null)} />}
+        {movingId && <MoveDialog noteId={movingId} onClose={() => setMovingId(null)} />}
       </div>
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.id)} onClose={() => setMenu(null)} />}
+      <DragOverlay dropAnimation={null}>
+        {dragged && (
+          <div className="drag-chip">
+            <TypeIcon type={dragged.type} />
+            <span>{dragged.title}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+interface RowProps {
+  row: VisibleRow;
+  start: number;
+  active: boolean;
+  focusable: boolean;
+  dropZone: DropZone | 'invalid' | null;
+  renaming: boolean;
+  onOpen: (newTab: boolean) => void;
+  onContextMenu: (x: number, y: number) => void;
+  onKeyDown: (e: KeyboardEvent) => void;
+  onRenamed: (value: string | null) => void;
+}
+
+function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, onContextMenu, onKeyDown, onRenamed }: RowProps) {
+  const { node } = row;
+  const drag = useDraggable({ id: node.id, disabled: renaming });
+  const dropRef = useDroppable({ id: node.id });
+  const setRef = (el: HTMLDivElement | null) => {
+    drag.setNodeRef(el);
+    dropRef.setNodeRef(el);
+  };
+
+  const classes = ['tree-row'];
+  if (active) classes.push('active');
+  if (drag.isDragging) classes.push('dragging');
+  if (dropZone) classes.push(`drop-${dropZone}`);
+
+  return (
+    <div
+      // Primero lo de dnd-kit: el rol y el foco del árbol mandan sobre los suyos.
+      {...drag.attributes}
+      {...drag.listeners}
+      aria-roledescription={undefined}
+      aria-describedby={undefined}
+      ref={setRef}
+      data-id={node.id}
+      className={classes.join(' ')}
+      role="treeitem"
+      aria-level={row.depth + 1}
+      aria-expanded={row.hasChildren ? row.expanded : undefined}
+      aria-selected={active}
+      tabIndex={focusable ? 0 : -1}
+      style={{ transform: `translateY(${start}px)`, paddingLeft: 6 + row.depth * INDENT }}
+      onClick={() => onOpen(false)}
+      // N-03, P-03: clic central abre siempre una pestaña nueva.
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault();
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          onOpen(true);
+        }
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e.clientX, e.clientY);
+      }}
+      onKeyDown={onKeyDown}
+    >
+      <button
+        type="button"
+        className={`twisty${row.hasChildren ? '' : ' hidden'}`}
+        tabIndex={-1}
+        aria-label={row.expanded ? 'Plegar' : 'Desplegar'}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          useUi.getState().toggleCollapsed(node.id);
+        }}
+      >
+        {row.expanded ? '▾' : '▸'}
+      </button>
+      <TypeIcon type={node.type} />
+      {renaming ? <RenameInput initial={node.title} onDone={onRenamed} /> : <span className="tree-title">{node.title}</span>}
     </div>
   );
 }
@@ -191,6 +356,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (value: str
       aria-label="Nuevo título"
       defaultValue={initial}
       onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Enter') finish(e.currentTarget.value);

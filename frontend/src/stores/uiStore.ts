@@ -13,7 +13,12 @@ export interface Notice {
   text: string;
 }
 
+export type SidebarView = 'tree' | 'trash';
+
 interface UiState {
+  /** ADR-0009: el panel izquierdo muestra el árbol o la papelera. */
+  sidebarView: SidebarView;
+  setSidebarView: (view: SidebarView) => void;
   sidebarWidth: number;
   sidebarVisible: boolean;
   collapsed: ReadonlySet<string>;
@@ -47,6 +52,8 @@ function persist(changes: Record<string, unknown>) {
 const clamp = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
 
 export const useUi = create<UiState>((set, get) => ({
+  sidebarView: 'tree',
+  setSidebarView: (view) => set({ sidebarView: view }),
   sidebarWidth: SIDEBAR_DEFAULT,
   sidebarVisible: true,
   collapsed: new Set(),

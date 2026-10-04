@@ -1,14 +1,26 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { App } from './App';
 import { api } from './api';
-import { useNote } from './stores/noteStore';
+import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import type { Note } from './types';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
-  return { ...actual, api: { getNote: vi.fn(), saveNote: vi.fn(), tree: vi.fn(), createNote: vi.fn(), getSettings: vi.fn(), putSettings: vi.fn() } };
+  return {
+    ...actual,
+    api: {
+      getNote: vi.fn(),
+      saveNote: vi.fn(),
+      tree: vi.fn(),
+      createNote: vi.fn(),
+      getSettings: vi.fn(),
+      putSettings: vi.fn(),
+      getSession: vi.fn(),
+      putSession: vi.fn(),
+    },
+  };
 });
 
 const mocked = vi.mocked(api);
@@ -34,7 +46,9 @@ beforeEach(() => {
   mocked.getSettings.mockResolvedValue({});
   mocked.putSettings.mockResolvedValue({});
   mocked.createNote.mockResolvedValue(created);
-  useNote.setState({ note: null });
+  mocked.getSession.mockResolvedValue({ tabs: [] });
+  mocked.putSession.mockResolvedValue({ tabs: [] });
+  useTabs.setState({ tabs: [], activeId: null, restored: false });
   useTree.setState({ nodes: [] });
   useUi.setState({ sidebarVisible: true });
 });
@@ -100,15 +114,66 @@ describe('App', () => {
 
   it('N-11 N-32 en consulta se ve el Markdown y un enlace a nota la abre', async () => {
     mocked.getNote.mockResolvedValue({ ...created, id: 'destino', title: 'Destino', content: 'texto destino' });
-    await act(async () => {
-      await useNote.getState().openNote({ ...created, title: 'Origen', content: '# Hola\n\n[ir](litedd://note/destino)' });
-    });
     render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('origen', {
+        note: { ...created, id: 'origen', title: 'Origen', content: '# Hola\n\n[ir](litedd://note/destino)' },
+      });
+    });
     expect(screen.getByRole('heading', { name: 'Hola' })).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole('link', { name: 'ir' }));
     });
     expect(mocked.getNote).toHaveBeenCalledWith('destino');
     expect(await screen.findByText('texto destino')).toBeTruthy();
+    expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['origen', 'destino']);
+
+    // P-03: clic central sobre el enlace abre otra pestaña aunque la nota ya esté abierta.
+    await act(async () => {
+      useTabs.getState().activate(useTabs.getState().tabs[0].id);
+    });
+    await act(async () => {
+      fireEvent(screen.getByRole('link', { name: 'ir' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    });
+    expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['origen', 'destino', 'destino']);
+  });
+
+  it('P-01 P-12 la barra muestra icono, título, estado y cierre; sin pestañas vuelve la pantalla vacía', async () => {
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros', type: 'sql' } });
+    });
+    const tab = screen.getByRole('tab', { name: /Libros/ });
+    expect(tab.querySelector('[aria-label="SQL"]')).toBeTruthy();
+    expect(tab.querySelector('[aria-label="Guardado"]')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar Libros' }));
+    });
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.getByText('No hay ninguna nota abierta.')).toBeTruthy();
+  });
+
+  it('P-04 clic central sobre una pestaña la cierra', async () => {
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros' } });
+    });
+    await act(async () => {
+      fireEvent(screen.getByRole('tab', { name: /Libros/ }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    });
+    expect(useTabs.getState().tabs).toHaveLength(0);
+  });
+
+  it('N-52 el botón «Papelera» muestra la papelera en el panel y «Volver al árbol» la cierra', async () => {
+    const trash = vi.fn().mockResolvedValue([{ id: 'x', parentId: null, type: 'md', title: 'Vieja', deletedAt: '2026-10-04T08:00:00Z' }]);
+    (api as unknown as { trash: typeof trash }).trash = trash;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Papelera/ }));
+    expect(await screen.findByText('Vieja')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Restaurar' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Eliminar definitivamente' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Vaciar la papelera' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Volver al árbol' }));
+    expect(screen.getByRole('button', { name: '+ Nueva nota Markdown' })).toBeTruthy();
   });
 });

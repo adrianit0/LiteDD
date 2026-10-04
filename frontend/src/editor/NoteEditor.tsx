@@ -13,6 +13,9 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
+  /** P-06: desplazamiento inicial y avisos de desplazamiento de esta pestaña. */
+  initialScroll?: number;
+  onScroll?: (top: number) => void;
   /** Recibe las funciones para aplicar formatos desde la barra y para dar el foco al editor. */
   onReady?: (controls: EditorControls) => void;
 }
@@ -59,11 +62,11 @@ export function markdownBindings(format: (action: FormatAction) => void): KeyBin
 }
 
 /** Editor de texto plano (N-11) con barra de formato y atajos para Markdown (N-20 a N-22). */
-export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
+export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScroll = 0, onScroll }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const callbacks = useRef({ onChange, onBlur });
-  callbacks.current = { onChange, onBlur };
+  const callbacks = useRef({ onChange, onBlur, onScroll });
+  callbacks.current = { onChange, onBlur, onScroll };
 
   useEffect(() => {
     const format = (action: FormatAction) => {
@@ -83,7 +86,10 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
       EditorView.updateListener.of((u) => {
         if (u.docChanged) callbacks.current.onChange(u.state.doc.toString());
       }),
-      EditorView.domEventHandlers({ blur: () => callbacks.current.onBlur() }),
+      EditorView.domEventHandlers({
+        blur: () => callbacks.current.onBlur(),
+        scroll: (_event, view) => callbacks.current.onScroll?.(view.scrollDOM.scrollTop),
+      }),
       EditorView.contentAttributes.of({ 'aria-label': 'Contenido de la nota', spellcheck: 'false' }),
     ];
     if (type === 'md') {
@@ -106,6 +112,9 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
       state: EditorState.create({ doc: value, extensions }),
     });
     view.current = v;
+    requestAnimationFrame(() => {
+      v.scrollDOM.scrollTop = initialScroll;
+    });
     onReady?.({ format, focus: () => v.focus() });
     return () => {
       v.destroy();

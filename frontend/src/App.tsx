@@ -1,33 +1,47 @@
 import { useEffect, useState } from 'react';
 import { matchShortcut } from './keyboard';
 import { createAndOpen } from './actions';
-import { useNote } from './stores/noteStore';
+import { useActiveTab, useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import { Sidebar } from './components/Sidebar';
 import { NotePane } from './components/NotePane';
+import { TabBar } from './components/TabBar';
+import { DialogHost } from './components/DialogHost';
 
-/** Disposición de tres zonas: barra superior, panel izquierdo y área principal. */
+/** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
 export function App() {
   const sidebarVisible = useUi((s) => s.sidebarVisible);
   const notices = useUi((s) => s.notices);
-  const hasNote = useNote((s) => s.note !== null);
+  const activeTab = useActiveTab();
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([useTree.getState().load(), useUi.getState().load()]).catch((e: Error) => setLoadError(e.message));
+    Promise.all([useTree.getState().load(), useUi.getState().load(), useTabs.getState().restore()]).catch((e: Error) =>
+      setLoadError(e.message),
+    );
 
     const onKeyDown = (e: KeyboardEvent) => {
       const shortcut = matchShortcut(e);
       if (!shortcut) return;
       e.preventDefault();
-      const note = useNote.getState();
+      const tabs = useTabs.getState();
+      const active = tabs.activeId;
       switch (shortcut) {
         case 'toggleMode':
-          if (note.note) void note.toggleMode();
+          if (active) void tabs.toggleMode(active);
           break;
         case 'save':
-          void note.saveNow();
+          if (active) void tabs.saveNow(active);
+          break;
+        case 'closeTab':
+          if (active) void tabs.close(active);
+          break;
+        case 'previousTab':
+          tabs.cycle(-1);
+          break;
+        case 'nextTab':
+          tabs.cycle(1);
           break;
         case 'newMarkdown':
           void createAndOpen(null, 'md');
@@ -41,7 +55,7 @@ export function App() {
       }
     };
     // N-40: al cerrar la ventana se guarda lo pendiente.
-    const onPageHide = () => useNote.getState().flushOnUnload();
+    const onPageHide = () => useTabs.getState().flushOnUnload();
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('pagehide', onPageHide);
     return () => {
@@ -62,24 +76,31 @@ export function App() {
             <div className="empty">
               <p className="error-text">No se pudieron cargar las notas: {loadError}</p>
             </div>
-          ) : hasNote ? (
-            <NotePane />
           ) : (
-            <div className="empty">
-              <h1>LiteDD</h1>
-              <p className="muted">No hay ninguna nota abierta.</p>
-              <div className="empty-actions">
-                <button type="button" onClick={() => void createAndOpen(null, 'md')}>
-                  Nueva nota Markdown
-                </button>
-                <button type="button" onClick={() => void createAndOpen(null, 'sql')}>
-                  Nueva nota SQL
-                </button>
-              </div>
-            </div>
+            <>
+              <TabBar />
+              {activeTab ? (
+                <NotePane key={activeTab.id} tab={activeTab} />
+              ) : (
+                // P-12: sin pestañas, accesos a nueva nota.
+                <div className="empty">
+                  <h1>LiteDD</h1>
+                  <p className="muted">No hay ninguna nota abierta.</p>
+                  <div className="empty-actions">
+                    <button type="button" onClick={() => void createAndOpen(null, 'md')}>
+                      Nueva nota Markdown
+                    </button>
+                    <button type="button" onClick={() => void createAndOpen(null, 'sql')}>
+                      Nueva nota SQL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>
+      <DialogHost />
       <div className="notices" aria-live="polite">
         {notices.map((n) => (
           <div key={n.id} className={`notice notice-${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>

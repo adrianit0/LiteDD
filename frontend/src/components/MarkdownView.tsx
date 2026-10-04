@@ -3,7 +3,8 @@ import { renderMarkdown } from '../markdown/render';
 
 interface Props {
   content: string;
-  onOpenNote: (id: string) => void;
+  /** newTab: clic central (P-03). */
+  onOpenNote: (id: string, newTab: boolean) => void;
 }
 
 /** N-11, N-30 a N-33: vista renderizada de una nota Markdown. */
@@ -22,7 +23,7 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     e.preventDefault();
     const noteId = a.dataset.noteId;
     if (noteId) {
-      onOpenNote(noteId);
+      onOpenNote(noteId, false);
       return;
     }
     // N-32: los enlaces externos se abren en el navegador.
@@ -30,8 +31,16 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     if (href && /^(https?:|mailto:)/i.test(href)) window.open(href, '_blank', 'noopener,noreferrer');
   };
 
+  // N-32, P-03: clic central sobre un enlace a nota abre una pestaña nueva.
+  const onAuxClick = (e: MouseEvent<HTMLDivElement>) => {
+    const a = (e.target as HTMLElement).closest('a');
+    if (e.button !== 1 || !a) return;
+    e.preventDefault();
+    if (a.dataset.noteId) onOpenNote(a.dataset.noteId, true);
+  };
+
   if (content.trim() === '') {
     return <p className="muted view-empty">Nota vacía. Pulsa «Editar» o Ctrl+E para escribir.</p>;
   }
-  return <div className="markdown" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="markdown" onClick={onClick} onAuxClick={onAuxClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }

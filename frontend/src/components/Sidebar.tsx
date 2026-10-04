@@ -2,10 +2,12 @@ import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { useUi, SIDEBAR_MAX, SIDEBAR_MIN } from '../stores/uiStore';
 import { createAndOpen } from '../actions';
 import { Tree } from './Tree';
+import { TrashPanel } from './TrashPanel';
 
-/** Panel izquierdo (U-01): botones de nueva nota (N-05) y árbol; redimensionable. */
+/** Panel izquierdo (U-01): botones de nueva nota (N-05), árbol y papelera (N-52); redimensionable. */
 export function Sidebar() {
   const width = useUi((s) => s.sidebarWidth);
+  const view = useUi((s) => s.sidebarView);
   const drag = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -29,15 +31,26 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar" style={{ width }} aria-label="Panel de notas">
-      <div className="sidebar-actions">
-        <button type="button" onClick={() => void createAndOpen(null, 'md')} aria-keyshortcuts="Alt+N" title="Alt+N">
-          + Nueva nota Markdown
-        </button>
-        <button type="button" onClick={() => void createAndOpen(null, 'sql')} aria-keyshortcuts="Alt+Shift+N" title="Alt+Mayús+N">
-          + Nueva nota SQL
-        </button>
-      </div>
-      <Tree />
+      {view === 'trash' ? (
+        <TrashPanel />
+      ) : (
+        <>
+          <div className="sidebar-actions">
+            <button type="button" onClick={() => void createAndOpen(null, 'md')} aria-keyshortcuts="Alt+N" title="Alt+N">
+              + Nueva nota Markdown
+            </button>
+            <button type="button" onClick={() => void createAndOpen(null, 'sql')} aria-keyshortcuts="Alt+Shift+N" title="Alt+Mayús+N">
+              + Nueva nota SQL
+            </button>
+          </div>
+          <Tree />
+          <div className="sidebar-footer">
+            <button type="button" onClick={() => useUi.getState().setSidebarView('trash')}>
+              🗑 Papelera
+            </button>
+          </div>
+        </>
+      )}
       <div
         className="sidebar-resizer"
         role="separator"

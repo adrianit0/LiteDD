@@ -1,17 +1,32 @@
 import { api, ApiError } from './api';
-import { useNote } from './stores/noteStore';
+import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
+import { ask } from './stores/dialogStore';
+import type { Destination } from './treeOps';
 import type { NoteType } from './types';
+
+function fail(e: unknown, fallback: string) {
+  useUi.getState().notify(e instanceof Error ? e.message : fallback, 'error');
+}
+
+/** N-03, P-02, P-03: clic abre o activa; clic central abre siempre una pestaña nueva. */
+export async function openNote(id: string, newTab = false): Promise<void> {
+  try {
+    await useTabs.getState().open(id, { newTab });
+  } catch (e) {
+    fail(e, 'No se pudo abrir la nota');
+  }
+}
 
 /** N-05, N-06: crea la nota al final y la abre en edición con el título seleccionado. */
 export async function createAndOpen(parentId: string | null, type: NoteType): Promise<void> {
   try {
     if (parentId) useUi.getState().expand(parentId);
     const note = await useTree.getState().create(parentId, type);
-    await useNote.getState().openNote(note, { mode: 'edit', focusTitle: true });
+    await useTabs.getState().open(note.id, { newTab: true, mode: 'edit', focusTitle: true, note });
   } catch (e) {
-    useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo crear la nota', 'error');
+    fail(e, 'No se pudo crear la nota');
   }
 }
 
@@ -19,11 +34,12 @@ export async function createAndOpen(parentId: string | null, type: NoteType): Pr
 export async function renameNote(id: string, title: string): Promise<void> {
   const clean = title.trim();
   if (clean === '') return;
-  const open = useNote.getState();
+  const tabs = useTabs.getState();
   try {
-    if (open.note?.id === id) {
-      open.edit({ title: clean });
-      await open.saveNow();
+    const open = tabs.tabs.find((t) => t.noteId === id && t.note);
+    if (open) {
+      tabs.edit(open.id, { title: clean });
+      await tabs.saveNow(open.id);
       return;
     }
     const note = await api.getNote(id);
@@ -31,20 +47,115 @@ export async function renameNote(id: string, title: string): Promise<void> {
     const saved = await api.saveNote(id, clean, note.content, note.version);
     useTree.getState().applyNote(saved);
   } catch (e) {
-    const text =
-      e instanceof ApiError && e.status === 409
-        ? 'La nota cambió mientras se renombraba. Inténtalo de nuevo.'
-        : e instanceof Error
-          ? e.message
-          : 'No se pudo renombrar';
-    useUi.getState().notify(text, 'error');
+    fail(e instanceof ApiError && e.status === 409 ? new Error('La nota cambió mientras se renombraba. Inténtalo de nuevo.') : e, 'No se pudo renombrar');
   }
 }
 
-export async function openNote(id: string): Promise<void> {
+/** N-60 a N-64: mueve la nota con toda su descendencia. */
+export async function moveNote(id: string, dest: Destination): Promise<void> {
   try {
-    await useNote.getState().open(id);
+    await api.moveNote(id, dest.parentId, dest.position);
+    if (dest.parentId) useUi.getState().expand(dest.parentId);
   } catch (e) {
-    useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo abrir la nota', 'error');
+    fail(e, 'No se pudo mover la nota');
+  } finally {
+    await useTree.getState().load();
+  }
+}
+
+/** N-50, N-51, N-54: a la papelera tras confirmar; con hijas, solo subiéndolas un nivel. */
+export async function deleteNote(id: string): Promise<void> {
+  const { nodes } = useTree.getState();
+  const node = nodes.find((n) => n.id === id);
+  if (!node) return;
+  const children = nodes.filter((n) => n.parentId === id).length;
+
+  const choice =
+    children === 0
+      ? await ask({
+          title: 'Eliminar nota',
+          body: `«${node.title}» irá a la papelera.`,
+          options: [
+            { value: 'delete', label: 'Eliminar', primary: true },
+            { value: 'cancel', label: 'Cancelar' },
+          ],
+          cancelValue: 'cancel',
+        })
+      : await ask({
+          title: 'La nota tiene hijas',
+          body: `«${node.title}» tiene ${children === 1 ? 'una hija' : `${children} hijas`}. No se eliminan en cascada: pueden subir un nivel y ocupar su lugar.`,
+          options: [
+            { value: 'promote', label: 'Subir las hijas un nivel y eliminar', primary: true },
+            { value: 'cancel', label: 'Cancelar' },
+          ],
+          cancelValue: 'cancel',
+        });
+  if (choice === 'cancel') return;
+
+  try {
+    // Lo que se estuviera escribiendo se guarda antes, para que llegue a la papelera.
+    await useTabs.getState().saveNote(id);
+    await api.deleteNote(id, choice === 'promote');
+    useTabs.getState().dropNote(id);
+    useUi.getState().notify(`«${node.title}» se ha movido a la papelera`);
+  } catch (e) {
+    fail(e, 'No se pudo eliminar la nota');
+  } finally {
+    await useTree.getState().load();
+  }
+}
+
+/** N-53 */
+export async function restoreNote(id: string): Promise<boolean> {
+  try {
+    const note = await api.restore(id);
+    useUi.getState().notify(`«${note.title}» se ha restaurado`);
+    await useTree.getState().load();
+    return true;
+  } catch (e) {
+    fail(e, 'No se pudo restaurar la nota');
+    return false;
+  }
+}
+
+/** N-52, N-55: eliminación definitiva tras confirmar. */
+export async function purgeNote(id: string, title: string): Promise<boolean> {
+  const choice = await ask({
+    title: 'Eliminar definitivamente',
+    body: `«${title}» se borrará para siempre, con su historial. No se puede deshacer.`,
+    options: [
+      { value: 'purge', label: 'Eliminar definitivamente', primary: true },
+      { value: 'cancel', label: 'Cancelar' },
+    ],
+    cancelValue: 'cancel',
+  });
+  if (choice !== 'purge') return false;
+  try {
+    await api.purge(id);
+    return true;
+  } catch (e) {
+    fail(e, 'No se pudo eliminar la nota');
+    return false;
+  }
+}
+
+/** N-52 */
+export async function emptyTrash(count: number): Promise<boolean> {
+  const choice = await ask({
+    title: 'Vaciar la papelera',
+    body: `Se borrarán para siempre ${count === 1 ? 'una nota' : `${count} notas`}. No se puede deshacer.`,
+    options: [
+      { value: 'empty', label: 'Vaciar la papelera', primary: true },
+      { value: 'cancel', label: 'Cancelar' },
+    ],
+    cancelValue: 'cancel',
+  });
+  if (choice !== 'empty') return false;
+  try {
+    await api.emptyTrash();
+    return true;
+  } catch (e) {
+    fail(e, 'No se pudo vaciar la papelera');
+    return false;
   }
 }

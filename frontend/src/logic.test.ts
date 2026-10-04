@@ -59,6 +59,12 @@ describe('atajos', () => {
     expect(matchShortcut(key('b', { altKey: true }))).toBe('toggleSidebar');
   });
 
+  it('P-04 Alt+W cierra la pestaña; Alt+RePág y Alt+AvPág cambian de pestaña', () => {
+    expect(matchShortcut(key('w', { altKey: true }))).toBe('closeTab');
+    expect(matchShortcut(key('PageUp', { altKey: true }))).toBe('previousTab');
+    expect(matchShortcut(key('PageDown', { altKey: true }))).toBe('nextTab');
+  });
+
   it('U-09 no usa atajos reservados del navegador', () => {
     for (const k of ['n', 't', 'w', 'Tab']) {
       expect(matchShortcut(key(k, { ctrlKey: true }))).toBeNull();
