@@ -153,6 +153,20 @@ describe('App', () => {
     expect(screen.getByText('No hay ninguna nota abierta.')).toBeTruthy();
   });
 
+  it('P-10 un menú lista todas las pestañas y activa la elegida', async () => {
+    render(<App />);
+    await act(async () => {
+      for (const t of ['Uno', 'Dos', 'Tres']) await useTabs.getState().open(t, { note: { ...created, id: t, title: t } });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Todas las pestañas' }));
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((i) => i.textContent)).toEqual(['Uno', 'Dos', 'Tres']);
+    await act(async () => {
+      fireEvent.click(items[0]);
+    });
+    expect(useTabs.getState().tabs.find((t) => t.id === useTabs.getState().activeId)?.noteId).toBe('Uno');
+  });
+
   it('P-04 clic central sobre una pestaña la cierra', async () => {
     render(<App />);
     await act(async () => {

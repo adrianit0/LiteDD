@@ -10,12 +10,21 @@ import {
   useSensor,
   useSensors,
   type DragMoveEvent,
+  type UniqueIdentifier,
 } from '@dnd-kit/core';
 import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
 import { useActiveTab } from '../stores/tabsStore';
 import { visibleRows, type VisibleRow } from '../tree';
-import { dropDestination, keyboardDestination, zoneAt, type Destination, type DropZone, type KeyboardMove } from '../treeOps';
+import {
+  createHoverExpander,
+  dropDestination,
+  keyboardDestination,
+  zoneAt,
+  type Destination,
+  type DropZone,
+  type KeyboardMove,
+} from '../treeOps';
 import { createAndOpen, deleteNote, moveNote, openNote, renameNote } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
@@ -23,9 +32,6 @@ import { TypeIcon } from './TypeIcon';
 
 const ROW_HEIGHT = 28;
 const INDENT = 16;
-/** N-65: tiempo sobre un nodo plegado para desplegarlo durante un arrastre. */
-export const EXPAND_ON_HOVER_MS = 600;
-
 const ARROW_MOVES: Record<string, KeyboardMove> = {
   ArrowUp: 'up',
   ArrowDown: 'down',
@@ -45,6 +51,10 @@ interface DropTarget {
   dest: Destination | null;
 }
 
+function sameDest(a: Destination | null, b: Destination | null): boolean {
+  return a === b || (a !== null && b !== null && a.parentId === b.parentId && a.position === b.position);
+}
+
 /** Árbol virtualizado de notas (N-01 a N-06, N-13, N-60 a N-65), manejable con teclado (U-08). */
 export function Tree() {
   const nodes = useTree((s) => s.nodes);
@@ -57,7 +67,7 @@ export function Tree() {
   const [movingId, setMovingId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<DropTarget | null>(null);
-  const hover = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const hover = useRef(createHoverExpander((id) => useUi.getState().expand(id)));
   const scroller = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -154,39 +164,35 @@ export function Tree() {
     e.preventDefault();
   };
 
-  const clearHover = () => {
-    if (hover.current) clearTimeout(hover.current.timer);
-    hover.current = null;
+  /** Zona y destino según dónde está el puntero sobre el nodo de destino (N-60, N-62). */
+  const dropAt = (
+    activeId: UniqueIdentifier,
+    over: { id: UniqueIdentifier; rect: { top: number; height: number } },
+    e: { activatorEvent: Event; delta: { y: number } },
+  ): DropTarget => {
+    const pointerY = (e.activatorEvent as PointerEvent).clientY + e.delta.y;
+    const zone = zoneAt((pointerY - over.rect.top) / over.rect.height);
+    return { id: String(over.id), zone, dest: dropDestination(nodes, String(activeId), String(over.id), zone) };
   };
 
   const onDragMove = (e: DragMoveEvent) => {
     const over = e.over;
     if (!over) {
-      clearHover();
+      hover.current.clear();
       setDrop(null);
       return;
     }
     const targetId = String(over.id);
-    const pointerY = (e.activatorEvent as PointerEvent).clientY + e.delta.y;
-    const zone = zoneAt((pointerY - over.rect.top) / over.rect.height);
-    const dest = dropDestination(nodes, String(e.active.id), targetId, zone);
-    setDrop((prev) => (prev?.id === targetId && prev.zone === zone && prev.dest === dest ? prev : { id: targetId, zone, dest }));
+    const next = dropAt(e.active.id, over, e);
+    setDrop((prev) => (prev?.id === next.id && prev.zone === next.zone && sameDest(prev.dest, next.dest) ? prev : next));
 
     // N-65: mantener el arrastre sobre un nodo plegado lo despliega.
-    if (hover.current?.id !== targetId) {
-      clearHover();
-      const row = rows.find((r) => r.node.id === targetId);
-      if (row?.hasChildren && !row.expanded) {
-        hover.current = {
-          id: targetId,
-          timer: setTimeout(() => useUi.getState().expand(targetId), EXPAND_ON_HOVER_MS),
-        };
-      }
-    }
+    const row = rows.find((r) => r.node.id === targetId);
+    hover.current.over(targetId, Boolean(row?.hasChildren && !row.expanded));
   };
 
   const endDrag = () => {
-    clearHover();
+    hover.current.clear();
     setDragId(null);
     setDrop(null);
   };
@@ -204,7 +210,8 @@ export function Tree() {
       onDragStart={(e) => setDragId(String(e.active.id))}
       onDragMove={onDragMove}
       onDragEnd={(e) => {
-        const target = drop;
+        // El destino se calcula con la posición final del puntero, no con el último indicador pintado.
+        const target = e.over ? dropAt(e.active.id, e.over, e) : null;
         endDrag();
         // N-62: un destino no válido no hace nada.
         if (target?.dest) void moveNote(String(e.active.id), target.dest);
@@ -300,7 +307,8 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
       aria-expanded={row.hasChildren ? row.expanded : undefined}
       aria-selected={active}
       tabIndex={focusable ? 0 : -1}
-      style={{ transform: `translateY(${start}px)`, paddingLeft: 6 + row.depth * INDENT }}
+      // Con top y no con transform: dnd-kit mide las zonas de soltado sin transformaciones.
+      style={{ top: start, paddingLeft: 6 + row.depth * INDENT }}
       onClick={() => onOpen(false)}
       // N-03, P-03: clic central abre siempre una pestaña nueva.
       onMouseDown={(e) => {

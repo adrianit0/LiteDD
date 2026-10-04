@@ -1,4 +1,13 @@
-import { descendantIds, dropDestination, keyboardDestination, moveCandidates, normalize, zoneAt } from './treeOps';
+import {
+  EXPAND_ON_HOVER_MS,
+  createHoverExpander,
+  descendantIds,
+  dropDestination,
+  keyboardDestination,
+  moveCandidates,
+  normalize,
+  zoneAt,
+} from './treeOps';
 import type { TreeNode } from './types';
 
 const n = (id: string, parentId: string | null, position: number): TreeNode => ({
@@ -89,5 +98,34 @@ describe('N-64 «Mover a…»', () => {
 
   it('la búsqueda no distingue mayúsculas ni acentos', () => {
     expect(normalize('Guía DE Uso')).toBe('guia de uso');
+  });
+});
+
+describe('N-65 desplegar al mantener el arrastre', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('despliega un nodo plegado tras 600 ms sobre él', () => {
+    const expand = vi.fn();
+    const hover = createHoverExpander(expand);
+    hover.over('A', true);
+    vi.advanceTimersByTime(EXPAND_ON_HOVER_MS - 1);
+    hover.over('A', true);
+    expect(expand).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(expand).toHaveBeenCalledWith('A');
+  });
+
+  it('no despliega si el puntero se va antes o el nodo no está plegado', () => {
+    const expand = vi.fn();
+    const hover = createHoverExpander(expand);
+    hover.over('A', true);
+    vi.advanceTimersByTime(300);
+    hover.over('B', false);
+    vi.advanceTimersByTime(EXPAND_ON_HOVER_MS * 2);
+    hover.over('C', true);
+    hover.clear();
+    vi.advanceTimersByTime(EXPAND_ON_HOVER_MS * 2);
+    expect(expand).not.toHaveBeenCalled();
   });
 });

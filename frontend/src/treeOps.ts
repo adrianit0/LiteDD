@@ -96,3 +96,26 @@ export function normalize(text: string): string {
 function isNoOp(node: TreeNode, dest: Destination): boolean {
   return node.parentId === dest.parentId && node.position === dest.position;
 }
+
+/** N-65: tiempo sobre un nodo plegado para desplegarlo durante un arrastre. */
+export const EXPAND_ON_HOVER_MS = 600;
+
+/**
+ * N-65: despliega un nodo plegado cuando el arrastre se mantiene sobre él. over() se llama en cada
+ * movimiento; solo cuenta el tiempo mientras el nodo bajo el puntero no cambia.
+ */
+export function createHoverExpander(expand: (id: string) => void, delay = EXPAND_ON_HOVER_MS) {
+  let current: { id: string; timer: ReturnType<typeof setTimeout> | undefined } | null = null;
+  return {
+    over(id: string | null, collapsedWithChildren: boolean) {
+      if (current?.id === id) return;
+      this.clear();
+      if (id === null) return;
+      current = { id, timer: collapsedWithChildren ? setTimeout(() => expand(id), delay) : undefined };
+    },
+    clear() {
+      if (current?.timer) clearTimeout(current.timer);
+      current = null;
+    },
+  };
+}
