@@ -52,6 +52,8 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/presence/bye | Aviso de cierre de ventana |
 | POST | /api/shutdown | Apagado ordenado |
 
+El 409 de `PUT /api/notes/{id}` lleva en `details` la nota guardada (ADR-0007). `GET` y `PUT /api/settings` guardan además el estado de interfaz en la tabla `setting` (ADR-0005).
+
 Petición y respuesta de `POST /api/sql/execute`:
 
 ```json

@@ -138,6 +138,10 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${maven-compiler-plugin.version}</version>
+        <configuration>
+          <!-- Nombres de parámetros para mapear registros con MyBatis -->
+          <parameters>true</parameters>
+        </configuration>
       </plugin>
 
       <plugin>

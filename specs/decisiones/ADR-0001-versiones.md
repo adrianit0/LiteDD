@@ -64,7 +64,9 @@ Por la constitución (punto 2) no se instalan antes de usarse, pero la versión 
 | Paquete | Versión | Sprint |
 |---|---|---|
 | zustand | 5.0.15 | 1 |
-| codemirror | 6.0.2 | 1 |
+| @codemirror/language | 6.12.4 | 1 |
+| @codemirror/commands | 6.11.1 | 1 |
+| @lezer/highlight | 1.2.5 | 1 |
 | @codemirror/state | 6.7.6 | 1 |
 | @codemirror/view | 6.43.13 | 1 |
 | @codemirror/lang-markdown | 6.5.2 | 1 |
@@ -77,6 +79,10 @@ Por la constitución (punto 2) no se instalan antes de usarse, pero la versión 
 | @dnd-kit/core | 6.3.1 | 2 |
 | @dnd-kit/sortable | 10.0.0 | 2 |
 | mermaid | 12.1.0 | 5 |
+
+## Cambios
+
+- 2026-10-04, Sprint 1: no se usa el paquete agregado `codemirror` (su `basicSetup` trae funciones que no se piden). En su lugar se usan los subpaquetes `@codemirror/language` y `@codemirror/commands` (indentación y atajos de lista) y `@lezer/highlight` (colores del tema oscuro).
 
 ## Consecuencias
 

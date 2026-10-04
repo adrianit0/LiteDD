@@ -1,11 +1,17 @@
 package dev.litedd;
 
 import dev.litedd.http.HttpServer;
+import dev.litedd.notes.NoteService;
+import dev.litedd.notes.NotesApi;
+import dev.litedd.settings.SettingsApi;
+import dev.litedd.store.DataPaths;
+import dev.litedd.store.Store;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 
 /** Punto de entrada. El ciclo de vida completo (ventana, --stop, apagado) llega en el Sprint 6. */
 public final class Main {
@@ -32,8 +38,14 @@ public final class Main {
             }
         }
 
-        HttpServer server = new HttpServer(port, sessionToken()).start();
-        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "litedd-shutdown"));
+        Store store = Store.open(DataPaths.database(), DataPaths.backups());
+        HttpServer server = new HttpServer(port, sessionToken(), List.of(
+                new NotesApi(new NoteService(store)),
+                new SettingsApi(store))).start();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stop();
+            store.close();
+        }, "litedd-shutdown"));
         log.info("{} {} escuchando en http://{}:{}/", AppInfo.NAME, AppInfo.VERSION, HttpServer.HOST, port);
     }
 
