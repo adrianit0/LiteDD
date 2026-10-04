@@ -799,3 +799,80 @@ input {
 .move-path {
   font-size: 12px;
 }
+
+/* Conexión (C-01, C-09) */
+.topbar {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.connection-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.connection-indicator span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-dot {
+  font-size: 10px;
+}
+
+.state-connected .connection-dot {
+  color: var(--accent);
+}
+
+.state-not_configured .connection-dot {
+  color: var(--warning);
+}
+
+.state-disconnected .connection-dot,
+.state-schema_unavailable .connection-dot {
+  color: var(--error);
+}
+
+.connection-dialog {
+  width: min(560px, 92vw);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+
+.form-label,
+.form-grid label {
+  color: var(--text-muted);
+}
+
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

@@ -63,6 +63,37 @@ export interface SessionTab {
   state: { scroll?: number } | null;
 }
 
+/** C-09, C-10 */
+export interface ConnectionStatus {
+  state: 'not_configured' | 'connected' | 'disconnected' | 'schema_unavailable';
+  user: string | null;
+  host: string | null;
+  port: number | null;
+  schema: string | null;
+  message: string | null;
+}
+
+/** C-01: la contraseña nunca llega a la interfaz (S-21). */
+export interface ConnectionView {
+  configured: boolean;
+  host: string;
+  port: number;
+  user: string;
+  schema: string;
+  extraParams: string;
+  hasPassword: boolean;
+}
+
+export interface ConnectionForm {
+  host: string;
+  port: number;
+  user: string;
+  /** Vacía conserva la guardada (ADR-0012). */
+  password: string;
+  schema: string;
+  extraParams: string;
+}
+
 export const api = {
   tree: () => request<TreeNode[]>('GET', '/api/tree'),
   createNote: (parentId: string | null, type: NoteType, title?: string) =>
@@ -80,6 +111,11 @@ export const api = {
   emptyTrash: () => request<void>('DELETE', '/api/trash'),
   getSession: () => request<{ tabs: SessionTab[] }>('GET', '/api/session'),
   putSession: (tabs: SessionTab[]) => request<{ tabs: SessionTab[] }>('PUT', '/api/session', { tabs }),
+  getConnection: () => request<ConnectionView>('GET', '/api/connection'),
+  saveConnection: (form: ConnectionForm) => request<ConnectionStatus>('PUT', '/api/connection', form),
+  testConnection: (form: Omit<ConnectionForm, 'schema'>) => request<{ schemas: string[] }>('POST', '/api/connection/test', form),
+  reconnect: () => request<ConnectionStatus>('POST', '/api/connection/reconnect'),
+  connectionStatus: () => request<ConnectionStatus>('GET', '/api/connection/status'),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   putSettings: (changes: Settings) => request<Settings>('PUT', '/api/settings', changes),
 };

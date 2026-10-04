@@ -19,6 +19,7 @@ vi.mock('./api', async (importOriginal) => {
       putSettings: vi.fn(),
       getSession: vi.fn(),
       putSession: vi.fn(),
+      connectionStatus: vi.fn(),
     },
   };
 });
@@ -47,6 +48,7 @@ beforeEach(() => {
   mocked.putSettings.mockResolvedValue({});
   mocked.createNote.mockResolvedValue(created);
   mocked.getSession.mockResolvedValue({ tabs: [] });
+  mocked.connectionStatus.mockResolvedValue({ state: 'not_configured', user: null, host: null, port: null, schema: null, message: null });
   mocked.putSession.mockResolvedValue({ tabs: [] });
   useTabs.setState({ tabs: [], activeId: null, restored: false });
   useTree.setState({ nodes: [] });
@@ -59,6 +61,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'LiteDD' })).toBeTruthy();
     expect(screen.getByText('No hay ninguna nota abierta.')).toBeTruthy();
     expect(screen.getByRole('complementary', { name: 'Panel de notas' })).toBeTruthy();
+    // C-02: sin conexión configurada, aviso que no bloquea.
+    expect(await screen.findByRole('button', { name: /Sin conexión configurada/ })).toBeTruthy();
   });
 
   it('N-05 N-06 «Nueva nota Markdown» crea en la raíz y abre en edición con el título seleccionado', async () => {

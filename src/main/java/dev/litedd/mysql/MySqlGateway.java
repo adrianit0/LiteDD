@@ -160,7 +160,9 @@ public final class MySqlGateway implements AutoCloseable {
                 setStatus(s, Status.CONNECTED, null);
                 return result;
             } catch (SQLException e) {
-                if (isCommunication(e) && attempt == 0) {
+                // Solo si la conexión se rompió durante el uso; si el pool no consigue ninguna,
+                // reintentar solo añadiría otra espera.
+                if (isCommunication(e) && attempt == 0 && c != null) {
                     log.info("Fallo de comunicación con MySQL; se reintenta con una conexión nueva");
                     if (c != null) {
                         p.evictConnection(c);

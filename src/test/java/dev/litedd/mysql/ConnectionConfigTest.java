@@ -71,6 +71,27 @@ class ConnectionConfigTest {
     }
 
     @Test
+    void c11_changing_the_connection_cancels_running_queries() {
+        MySqlGateway gateway = new MySqlGateway();
+        try {
+            java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+            java.sql.Statement statement = (java.sql.Statement) java.lang.reflect.Proxy.newProxyInstance(
+                    getClass().getClassLoader(), new Class<?>[]{java.sql.Statement.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("cancel")) {
+                            cancelled.set(true);
+                        }
+                        return null;
+                    });
+            gateway.running().register("en-curso", statement);
+            gateway.configure(new ConnectionSettings("127.0.0.1", 1, "lector", "x", "s", ""));
+            assertThat(cancelled).isTrue();
+            assertThat(gateway.status().state()).isEqualTo("disconnected");
+        } finally {
+            gateway.close();
+        }
+    }
+
+    @Test
     void s20_connection_file_round_trip() {
         ConnectionFile file = new ConnectionFile(dir.resolve("litedd/connection.json"));
         assertThat(file.load()).isEmpty();

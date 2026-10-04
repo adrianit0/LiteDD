@@ -8,18 +8,24 @@ import { Sidebar } from './components/Sidebar';
 import { NotePane } from './components/NotePane';
 import { TabBar } from './components/TabBar';
 import { DialogHost } from './components/DialogHost';
+import { ConnectionStatusBar } from './components/ConnectionStatusBar';
+import { ConnectionDialog } from './components/ConnectionDialog';
+import { useConnection } from './stores/connectionStore';
 
 /** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
 export function App() {
   const sidebarVisible = useUi((s) => s.sidebarVisible);
   const notices = useUi((s) => s.notices);
   const activeTab = useActiveTab();
+  const connectionDialog = useConnection((s) => s.dialogOpen);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([useTree.getState().load(), useUi.getState().load(), useTabs.getState().restore()]).catch((e: Error) =>
       setLoadError(e.message),
     );
+    // C-02: el estado de la conexión no bloquea las notas.
+    void useConnection.getState().load();
 
     const onKeyDown = (e: KeyboardEvent) => {
       const shortcut = matchShortcut(e);
@@ -68,6 +74,7 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <span className="brand">LiteDD</span>
+        <ConnectionStatusBar />
       </header>
       <div className="workspace">
         {sidebarVisible && <Sidebar />}
@@ -101,6 +108,7 @@ export function App() {
         </main>
       </div>
       <DialogHost />
+      {connectionDialog && <ConnectionDialog />}
       <div className="notices" aria-live="polite">
         {notices.map((n) => (
           <div key={n.id} className={`notice notice-${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>

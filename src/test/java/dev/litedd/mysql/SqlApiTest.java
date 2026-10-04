@@ -169,6 +169,12 @@ class SqlApiTest {
     }
 
     @Test
+    void s05_q43_default_limits() {
+        assertThat(SqlApi.DEFAULT_TIMEOUT_SECONDS).isEqualTo(30);
+        assertThat(SqlApi.DEFAULT_ROW_CAP).isEqualTo(10_000);
+    }
+
+    @Test
     void q41_cancel_unknown_execution_is_harmless() throws Exception {
         Res r = call("POST", "/api/sql/cancel", "{\"executionId\":\"no-existe\"}");
         assertThat(r.status).isEqualTo(200);

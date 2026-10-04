@@ -94,7 +94,7 @@ class MySqlIntegrationTest {
     // --- Criterios de aceptación del Sprint 3 ---
 
     @Test
-    void sprint3_demo_query_with_variables_returns_a_page() throws Exception {
+    void sprint3_q32_demo_query_with_variables_returns_a_page_through_jdbc() throws Exception {
         Note n = sqlNote("""
                 SELECT b.id, b.title, a.name AS author
                 FROM book b JOIN author a ON a.id = b.author_id
@@ -206,7 +206,7 @@ class MySqlIntegrationTest {
     }
 
     @Test
-    void t27_timeout_and_cancel_return_the_connection_to_the_pool() throws Exception {
+    void s05_t27_timeout_and_cancel_return_the_connection_to_the_pool() throws Exception {
         Res timeout = execute(sqlNote("SELECT SLEEP(5)"), Map.of(), 1, 20, null);
         assertThat(timeout.status).isEqualTo(422);
         assertThat(timeout.json.get("code").asText()).isEqualTo("timeout");

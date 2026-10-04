@@ -20,7 +20,7 @@ class PaginationTest {
     }
 
     @Test
-    void t19_q51_sort_by_column_position_before_limit() {
+    void t19_q51_q56_sort_by_column_position_on_the_server() {
         assertThat(Pagination.pageSql("SELECT id, title FROM book", new PageRequest(1, 20, 2, true), CAP))
                 .isEqualTo("SELECT id, title FROM book\nORDER BY 2 DESC LIMIT 21 OFFSET 0");
         assertThat(Pagination.pageSql("SELECT id FROM book", new PageRequest(3, 50, 1, false), CAP))
@@ -59,6 +59,15 @@ class PaginationTest {
     void q51_suffix_goes_on_a_new_line_after_a_trailing_comment() {
         assertThat(Pagination.pageSql("SELECT 1 -- fin", new PageRequest(1, 20, null, false), CAP))
                 .isEqualTo("SELECT 1 -- fin\nLIMIT 21 OFFSET 0");
+    }
+
+    @Test
+    void s05_paged_queries_always_carry_a_limit() {
+        for (String sql : new String[]{"SELECT 1", "SELECT 1 ORDER BY 1", "SELECT 1 LIMIT 3"}) {
+            for (Integer size : new Integer[]{10, null}) {
+                assertThat(Pagination.pageSql(sql, new PageRequest(1, size, null, false), CAP)).containsPattern("\\nLIMIT \\d+ OFFSET \\d+$");
+            }
+        }
     }
 
     @Test
