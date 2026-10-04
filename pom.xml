@@ -40,6 +40,7 @@
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
+    <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
 
     <!-- -Dskip.frontend omite npm ci, build y pruebas de la interfaz -->
     <skip.frontend>false</skip.frontend>
@@ -47,6 +48,8 @@
     <!-- Las pruebas contra MySQL real solo con -Pit (ADR-0013) -->
     <test.excludedGroups>mysql</test.excludedGroups>
     <frontend.dir>${project.basedir}/frontend</frontend.dir>
+    <!-- -Pdist: el icono solo se pasa a jpackage en Linux (ADR-0004) -->
+    <jpackage.icon></jpackage.icon>
   </properties>
 
   <dependencyManagement>
@@ -228,6 +231,97 @@
       <id>it</id>
       <properties>
         <test.excludedGroups>none</test.excludedGroups>
+      </properties>
+    </profile>
+    <!--
+      ./mvnw -Pdist package: JAR único en target/dist/input/litedd.jar e imagen de aplicación con su
+      propio runtime en target/dist/litedd (jpackage, tipo app-image). scripts/install.sh la instala.
+    -->
+    <profile>
+      <id>dist</id>
+      <build>
+        <plugins>
+          <!-- jpackage no sobrescribe una imagen anterior -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-clean-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>clean-dist</id>
+                <phase>prepare-package</phase>
+                <goals><goal>clean</goal></goals>
+                <configuration>
+                  <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                  <filesets>
+                    <fileset><directory>${project.build.directory}/dist</directory></fileset>
+                  </filesets>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>${maven-shade-plugin.version}</version>
+            <executions>
+              <execution>
+                <phase>package</phase>
+                <goals><goal>shade</goal></goals>
+                <configuration>
+                  <outputFile>${project.build.directory}/dist/input/litedd.jar</outputFile>
+                  <createDependencyReducedPom>false</createDependencyReducedPom>
+                  <filters>
+                    <filter>
+                      <artifact>*:*</artifact>
+                      <excludes>
+                        <exclude>module-info.class</exclude>
+                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                        <exclude>META-INF/*.SF</exclude>
+                        <exclude>META-INF/*.DSA</exclude>
+                        <exclude>META-INF/*.RSA</exclude>
+                        <exclude>META-INF/MANIFEST.MF</exclude>
+                      </excludes>
+                    </filter>
+                  </filters>
+                  <transformers>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                      <mainClass>dev.litedd.Main</mainClass>
+                      <manifestEntries>
+                        <Multi-Release>true</Multi-Release>
+                      </manifestEntries>
+                    </transformer>
+                  </transformers>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>${exec-maven-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>jpackage</id>
+                <phase>package</phase>
+                <goals><goal>exec</goal></goals>
+                <configuration>
+                  <executable>${java.home}/bin/jpackage</executable>
+                  <commandlineArgs>--type app-image --name litedd --app-version ${project.version} --input "${project.build.directory}/dist/input" --main-jar litedd.jar --main-class dev.litedd.Main --dest "${project.build.directory}/dist" --java-options "-Xmx384m -XX:+UseSerialGC" ${jpackage.icon}</commandlineArgs>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>dist-linux-icon</id>
+      <activation>
+        <os><family>unix</family></os>
+      </activation>
+      <properties>
+        <jpackage.icon>--icon "${project.basedir}/packaging/litedd.png"</jpackage.icon>
       </properties>
     </profile>
     <!-- -DskipTests también omite las pruebas de la interfaz -->

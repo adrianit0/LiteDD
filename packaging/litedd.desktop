@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LiteDD
+Comment=Notas Markdown y SQL
+Exec=@BIN@
+Icon=@ICON@
+Terminal=false
+Categories=Development;Database;
+StartupNotify=false
