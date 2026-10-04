@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { App } from './App';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
@@ -24,6 +24,9 @@ vi.mock('./api', async (importOriginal) => {
     },
   };
 });
+
+// La presencia tiene sus propias pruebas (presence.test.ts).
+vi.mock('./presence', () => ({ startPresence: () => () => {} }));
 
 const mocked = vi.mocked(api);
 
@@ -197,5 +200,31 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Vaciar la papelera' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Volver al árbol' }));
     expect(screen.getByRole('button', { name: '+ Nueva nota Markdown' })).toBeTruthy();
+  });
+
+  it('U-10 U-11 el botón ⚙ abre «Ajustes» y sin contacto aparece la banda', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustes' }));
+    expect(screen.getByRole('dialog', { name: 'Ajustes' })).toBeTruthy();
+    act(() => useUi.getState().setContactLost(true));
+    expect(screen.getByRole('alert').textContent).toContain('Sin contacto con LiteDD');
+    act(() => useUi.getState().setContactLost(false));
+    expect(screen.queryByText(/Sin contacto con LiteDD/)).toBeNull();
+  });
+
+  it('U-11 sin contacto, el guardado fallido no lanza avisos y el texto sigue en la pestaña', async () => {
+    mocked.saveNote.mockRejectedValueOnce(new ApiError(0, 'network', 'No hay contacto con el servidor', null));
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a' } });
+    });
+    const id = useTabs.getState().activeId!;
+    useTabs.getState().edit(id, { content: 'texto sin guardar' });
+    await act(async () => {
+      await useTabs.getState().saveNow(id);
+    });
+    const tab = useTabs.getState().tabs[0];
+    expect(tab.status).toBe('error');
+    expect(tab.content).toBe('texto sin guardar');
+    expect(useUi.getState().notices.filter((n) => n.kind === 'error')).toHaveLength(0);
   });
 });

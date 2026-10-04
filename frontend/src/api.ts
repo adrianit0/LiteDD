@@ -16,8 +16,20 @@ export class ApiError extends Error {
   }
 }
 
+/** U-11: aviso cuando una petición no llega al servidor. */
+let networkFailureListener: (() => void) | null = null;
+
+export function onNetworkFailure(listener: (() => void) | null) {
+  networkFailureListener = listener;
+}
+
+function networkError(): ApiError {
+  networkFailureListener?.();
+  return new ApiError(0, 'network', 'No hay contacto con el servidor', null);
+}
+
 /** S-12: el token llega en el HTML inicial. */
-function sessionToken(): string {
+export function sessionToken(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="litedd-token"]')?.content ?? '';
 }
 
@@ -48,7 +60,7 @@ async function requestRaw<T>(method: string, path: string, body: Blob, contentTy
   try {
     res = await fetch(path, { method, headers: { 'X-LiteDD-Token': sessionToken(), 'Content-Type': contentType }, body });
   } catch {
-    throw new ApiError(0, 'network', 'No hay contacto con el servidor', null);
+    throw networkError();
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
@@ -83,7 +95,7 @@ export async function request<T>(method: string, path: string, body?: unknown, o
       keepalive: options.keepalive,
     });
   } catch {
-    throw new ApiError(0, 'network', 'No hay contacto con el servidor', null);
+    throw networkError();
   }
   const text = await res.text();
   let data: unknown = null;
@@ -102,6 +114,48 @@ export async function request<T>(method: string, path: string, body?: unknown, o
 }
 
 export type Settings = Record<string, unknown>;
+
+/** U-10: ajustes de config.json (ADR-0017). defaultPageSize null = «Todas». */
+export interface AppConfig {
+  defaultPageSize: number | null;
+  rowCap: number;
+  queryTimeoutSeconds: number;
+  port: number;
+  autoShutdownMinutes: number | null;
+}
+
+export const DEFAULT_CONFIG: AppConfig = {
+  defaultPageSize: 20,
+  rowCap: 10_000,
+  queryTimeoutSeconds: 30,
+  port: 47600,
+  autoShutdownMinutes: null,
+};
+
+export type ImportMode = 'replace' | 'branch';
+
+export interface ImportResult {
+  notes: number;
+  attachments: number;
+  rootId: string | null;
+}
+
+/** X-01: el ZIP se pide con el token y se descarga con el nombre que da el servidor. */
+async function exportData(): Promise<{ blob: Blob; fileName: string }> {
+  let res: Response;
+  try {
+    res = await fetch('/api/data/export', { method: 'POST', headers: { 'X-LiteDD-Token': sessionToken() } });
+  } catch {
+    throw networkError();
+  }
+  if (!res.ok) {
+    const err = ((await res.json().catch(() => null)) ?? {}) as { code?: string; message?: string; details?: unknown };
+    throw new ApiError(res.status, err.code ?? 'error', err.message ?? `Error ${res.status}`, err.details ?? null);
+  }
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'litedd-export.zip';
+  return { blob: await res.blob(), fileName };
+}
 
 /** P-06: estado SQL de una pestaña que se guarda en la sesión. */
 export interface SqlTabState {
@@ -203,4 +257,19 @@ export const api = {
   connectionStatus: () => request<ConnectionStatus>('GET', '/api/connection/status'),
   getSettings: () => request<Settings>('GET', '/api/settings'),
   putSettings: (changes: Settings) => request<Settings>('PUT', '/api/settings', changes),
+  exportData,
+  importData: (file: Blob, mode: ImportMode) => requestRaw<ImportResult>('POST', `/api/data/import?mode=${mode}`, file, 'application/zip'),
+  backupNow: () => request<{ file: string }>('POST', '/api/data/backup'),
+  openDataFolder: () => request<{ opened: boolean; path: string }>('POST', '/api/data/open-folder'),
+  /** U-11: comprobación sin token del servidor. */
+  health: async () => {
+    try {
+      return (await fetch('/api/health', { cache: 'no-store' })).ok;
+    } catch {
+      return false;
+    }
+  },
+  /** Ciclo de vida: la ventana se cierra. */
+  bye: () =>
+    fetch('/api/presence/bye', { method: 'POST', keepalive: true, headers: { 'X-LiteDD-Token': sessionToken() } }).catch(() => undefined),
 };

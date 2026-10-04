@@ -2,6 +2,7 @@
 target/
 frontend/node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Datos, configuración y registros de LiteDD (S-34)
 *.db

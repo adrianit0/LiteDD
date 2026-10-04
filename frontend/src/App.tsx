@@ -13,6 +13,8 @@ import { ConnectionDialog } from './components/ConnectionDialog';
 import { useConnection } from './stores/connectionStore';
 import { useSqlRuns } from './stores/sqlRunStore';
 import { QuickSearch } from './components/QuickSearch';
+import { SettingsDialog } from './components/SettingsDialog';
+import { startPresence } from './presence';
 
 /** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
 export function App() {
@@ -21,6 +23,8 @@ export function App() {
   const activeTab = useActiveTab();
   const connectionDialog = useConnection((s) => s.dialogOpen);
   const quickSearch = useUi((s) => s.quickSearchOpen);
+  const settingsOpen = useUi((s) => s.settingsOpen);
+  const contactLost = useUi((s) => s.contactLost);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,6 +33,7 @@ export function App() {
     );
     // C-02: el estado de la conexión no bloquea las notas.
     void useConnection.getState().load();
+    const stopPresence = startPresence();
 
     const onKeyDown = (e: KeyboardEvent) => {
       const shortcut = matchShortcut(e);
@@ -84,6 +89,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('pagehide', onPageHide);
+      stopPresence();
     };
   }, []);
 
@@ -91,8 +97,19 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <span className="brand">LiteDD</span>
-        <ConnectionStatusBar />
+        <div className="topbar-end">
+          <ConnectionStatusBar />
+          <button type="button" className="icon-button" aria-label="Ajustes" title="Ajustes" onClick={() => useUi.getState().setSettingsOpen(true)}>
+            ⚙
+          </button>
+        </div>
       </header>
+      {contactLost && (
+        // U-11
+        <div className="contact-banner" role="alert">
+          Sin contacto con LiteDD. Reintentando… Los cambios se guardarán al recuperar el contacto.
+        </div>
+      )}
       <div className="workspace">
         {sidebarVisible && <Sidebar />}
         <main className="main">
@@ -127,6 +144,7 @@ export function App() {
           )}
         </main>
       </div>
+      {settingsOpen && <SettingsDialog />}
       <DialogHost />
       {connectionDialog && <ConnectionDialog />}
       {quickSearch && <QuickSearch />}

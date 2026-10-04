@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { api, ApiError, type ExecuteRequest } from '../api';
 import type { Analysis, ExecuteResponse } from '../sql/types';
 import { initialValues } from '../sql/values';
-import { DEFAULT_SQL_STATE, isDirty, useTabs } from './tabsStore';
+import { defaultSqlState, isDirty, useTabs } from './tabsStore';
 
 /** Error de una ejecución, con el cuerpo de A-02 (Q-90 a Q-98). */
 export interface RunError {
@@ -74,7 +74,7 @@ export const useSqlRuns = create<SqlRunState>((set, get) => {
       patch(tabId, { error: { code: 'unsaved', message: 'La nota tiene cambios sin guardar. Resuelve el guardado antes de ejecutar.', details: null } });
       return null;
     }
-    const sql = tab.sql ?? DEFAULT_SQL_STATE;
+    const sql = tab.sql ?? defaultSqlState();
     return {
       noteId: tab.noteId,
       version: tab.note.version,
@@ -97,7 +97,7 @@ export const useSqlRuns = create<SqlRunState>((set, get) => {
         patch(tabId, { analysis });
         // Q-24: una pestaña sin valores propios parte de los últimos ejecutados.
         if (tabOf(tabId)?.sql === null) {
-          useTabs.getState().setSql(tabId, { ...DEFAULT_SQL_STATE, values: initialValues(analysis.lastValues) });
+          useTabs.getState().setSql(tabId, { ...defaultSqlState(), values: initialValues(analysis.lastValues) });
         }
       } catch (e) {
         patch(tabId, { error: toRunError(e) });

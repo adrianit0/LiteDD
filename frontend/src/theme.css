@@ -1470,3 +1470,67 @@ mark {
   border: 1px dashed var(--border);
   border-radius: 6px;
 }
+
+/* Ajustes y datos (U-10, X-10) */
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.icon-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-dialog {
+  width: min(600px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.settings-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+/* U-11 */
+.contact-banner {
+  flex: none;
+  padding: 6px 12px;
+  background: var(--warning);
+  color: var(--accent-text);
+  font-size: 13px;
+}

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api';
+import { api, DEFAULT_CONFIG, type AppConfig } from '../api';
 
 /** Estado de interfaz guardado en la tabla setting (ADR-0005): panel (U-01) y plegado (N-01). */
 export const SIDEBAR_MIN = 180;
@@ -29,6 +29,14 @@ interface UiState {
   /** N-80: el menú contextual «Etiquetas…» lleva el foco al editor de etiquetas de esa nota. */
   focusTagsFor: string | null;
   setFocusTags: (noteId: string | null) => void;
+  /** U-10 */
+  config: AppConfig;
+  setConfig: (config: AppConfig) => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  /** U-11: sin contacto con el servidor. */
+  contactLost: boolean;
+  setContactLost: (lost: boolean) => void;
   load: () => Promise<void>;
   setSidebarWidth: (width: number) => void;
   toggleSidebar: () => void;
@@ -68,6 +76,14 @@ export const useUi = create<UiState>((set, get) => ({
   setQuickSearch: (open) => set({ quickSearchOpen: open }),
   focusTagsFor: null,
   setFocusTags: (noteId) => set({ focusTagsFor: noteId }),
+  config: DEFAULT_CONFIG,
+  setConfig: (config) => set({ config }),
+  settingsOpen: false,
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  contactLost: false,
+  setContactLost: (lost) => {
+    if (get().contactLost !== lost) set({ contactLost: lost });
+  },
 
   async load() {
     const s = await api.getSettings();
@@ -75,6 +91,7 @@ export const useUi = create<UiState>((set, get) => ({
       sidebarWidth: typeof s['ui.sidebarWidth'] === 'number' ? clamp(s['ui.sidebarWidth']) : SIDEBAR_DEFAULT,
       sidebarVisible: s['ui.sidebarVisible'] !== false,
       collapsed: new Set(Array.isArray(s['ui.collapsed']) ? (s['ui.collapsed'] as string[]) : []),
+      config: s.config && typeof s.config === 'object' ? { ...DEFAULT_CONFIG, ...(s.config as Partial<AppConfig>) } : DEFAULT_CONFIG,
     });
   },
 

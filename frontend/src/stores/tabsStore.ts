@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { api, ApiError, type SessionTab, type SqlTabState } from '../api';
-import { DEFAULT_PAGE_SIZE } from '../sql/types';
 import type { Mode, Note } from '../types';
 import { useTree } from './treeStore';
 import { useUi } from './uiStore';
@@ -33,7 +32,10 @@ export interface Tab {
   sql: SqlTabState | null;
 }
 
-export const DEFAULT_SQL_STATE: SqlTabState = { values: {}, pageSize: DEFAULT_PAGE_SIZE, sort: null, page: 1 };
+/** U-10: el tamaño de página inicial sale de los ajustes. */
+export function defaultSqlState(): SqlTabState {
+  return { values: {}, pageSize: useUi.getState().config.defaultPageSize, sort: null, page: 1 };
+}
 
 interface OpenOptions {
   /** P-03: abrir siempre en una pestaña nueva. */
@@ -72,6 +74,8 @@ interface TabsState {
   setScroll: (id: string, scroll: number) => void;
   setSql: (id: string, changes: Partial<SqlTabState>) => void;
   flushOnUnload: () => void;
+  /** U-11: al recuperar el contacto se guarda lo que quedó pendiente. */
+  savePending: () => Promise<void>;
 }
 
 export function isDirty(tab: Tab): boolean {
@@ -160,7 +164,10 @@ export const useTabs = create<TabsState>((set, get) => {
         patch(id, { status: 'conflict', conflict: e.details as Note });
       } else {
         patch(id, { status: 'error' });
-        useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo guardar', 'error');
+        // U-11: sin contacto lo indica la banda; el texto sigue en memoria.
+        if (!(e instanceof ApiError && e.status === 0)) {
+          useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo guardar', 'error');
+        }
       }
     }
   };
@@ -374,11 +381,17 @@ export const useTabs = create<TabsState>((set, get) => {
 
     setSql(id, changes) {
       const t = tab(id);
-      if (t) patch(id, { sql: { ...(t.sql ?? DEFAULT_SQL_STATE), ...changes } });
+      if (t) patch(id, { sql: { ...(t.sql ?? defaultSqlState()), ...changes } });
     },
 
     setScroll(id, scroll) {
       if (tab(id) && tab(id)!.scroll !== scroll) patch(id, { scroll });
+    },
+
+    async savePending() {
+      for (const t of get().tabs) {
+        if (t.note && isDirty(t) && t.status !== 'conflict') await get().saveNow(t.id);
+      }
     },
 
     flushOnUnload() {

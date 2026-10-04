@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DEFAULT_SQL_STATE, useTabs, type Tab } from '../../stores/tabsStore';
+import { defaultSqlState, useTabs, type Tab } from '../../stores/tabsStore';
 import { useSqlRun, useSqlRuns } from '../../stores/sqlRunStore';
 import { useUi } from '../../stores/uiStore';
 import { elapsedText, nextSort, rangeText, timingText, toMarkdownTable } from '../../sql/results';
@@ -8,9 +8,6 @@ import { VariablesForm } from './VariablesForm';
 import { ResultsTable, type SelectedCell } from './ResultsTable';
 import { FinalSqlPanel } from './FinalSqlPanel';
 import { SqlErrors } from './SqlErrors';
-
-/** Q-55: tope de filas por defecto, ajustable en el Sprint 6. */
-const ROW_CAP = 10_000;
 
 async function copy(text: string, what: string) {
   try {
@@ -31,7 +28,9 @@ export function SqlView({ tab }: { tab: Tab }) {
   const run = useSqlRun(tab.id);
   const runs = useSqlRuns.getState();
   const tabs = useTabs.getState();
-  const sql = tab.sql ?? DEFAULT_SQL_STATE;
+  const sql = tab.sql ?? defaultSqlState();
+  // Q-55, U-10: el tope de filas es un ajuste.
+  const rowCap = useUi((s) => s.config.rowCap);
   const [cell, setCell] = useState<SelectedCell | null>(null);
   const [, setTick] = useState(0);
   const version = tab.note?.version;
@@ -163,7 +162,7 @@ export function SqlView({ tab }: { tab: Tab }) {
         <>
           {result.capReached && (
             <p className="sql-warning" role="status">
-              Se muestran las primeras {number(ROW_CAP)} filas: se ha alcanzado el tope.
+              Se muestran las primeras {number(rowCap)} filas: se ha alcanzado el tope.
             </p>
           )}
           <ResultsTable
