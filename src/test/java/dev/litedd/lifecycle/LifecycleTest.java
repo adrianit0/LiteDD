@@ -89,6 +89,29 @@ class LifecycleTest {
     }
 
     @Test
+    void lifecycle_closed_window_detected_after_the_grace_period_shuts_down_at_once() throws Exception {
+        // El cierre del canal se descubre con el latido, después de que haya vencido el plazo.
+        presence.connected();
+        presence.bye();
+        Thread.sleep(500);
+        assertThat(shutdowns.get()).isZero();
+        presence.disconnected();
+        Thread.sleep(200);
+        assertThat(shutdowns.get()).isEqualTo(1);
+    }
+
+    @Test
+    void lifecycle_closed_window_detected_within_the_grace_period_waits_for_it() throws Exception {
+        presence.connected();
+        presence.bye();
+        presence.disconnected();
+        Thread.sleep(100);
+        assertThat(shutdowns.get()).isZero();
+        Thread.sleep(500);
+        assertThat(shutdowns.get()).isEqualTo(1);
+    }
+
+    @Test
     void lifecycle_reconnecting_within_the_grace_period_keeps_running() throws Exception {
         presence.connected();
         presence.bye();

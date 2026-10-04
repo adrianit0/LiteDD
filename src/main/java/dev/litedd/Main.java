@@ -112,23 +112,19 @@ public final class Main {
         ConnectionFile connectionFile = new ConnectionFile(DataPaths.connectionFile());
         MySqlGateway gateway = new MySqlGateway();
         String token = sessionToken();
-        AtomicBoolean stopping = new AtomicBoolean();
+        AtomicBoolean stopped = new AtomicBoolean();
         Holder<HttpServer> server = new Holder<>();
         Holder<Presence> presence = new Holder<>();
 
+        // Sincronizado: si el apagado empieza en un hilo daemon y la JVM sale entretanto, el gancho de
+        // apagado espera a que termine en lugar de volver enseguida.
         Runnable shutdown = () -> {
-            if (!stopping.compareAndSet(false, true)) {
-                return;
-            }
-            log.info("Apagando LiteDD");
-            if (server.value != null) {
-                server.value.stop();
-            }
-            gateway.close();
-            store.close();
-            instance.delete();
-            if (presence.value != null) {
-                presence.value.close();
+            synchronized (stopped) {
+                if (stopped.get()) {
+                    return;
+                }
+                stopAll(server.value, gateway, store, instance, presence.value);
+                stopped.set(true);
             }
         };
         Runnable exit = () -> {
@@ -167,6 +163,20 @@ public final class Main {
             // Ciclo de vida, paso 3.
             Desktop.openWindow(url);
         }
+    }
+
+    private static void stopAll(HttpServer server, MySqlGateway gateway, Store store, InstanceFile instance, Presence presence) {
+        log.info("Apagando LiteDD");
+        if (server != null) {
+            server.stop();
+        }
+        gateway.close();
+        store.close();
+        instance.delete();
+        if (presence != null) {
+            presence.close();
+        }
+        log.info("LiteDD apagado");
     }
 
     /** ¿Responde LiteDD en ese puerto? */

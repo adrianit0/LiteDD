@@ -15,7 +15,8 @@ import java.util.concurrent.TimeUnit;
  */
 public final class LifecycleApi implements ApiRoutes {
 
-    private static final long HEARTBEAT_SECONDS = 20;
+    /** Una conexión cerrada se descubre al escribir; con 5 s se detecta antes de que venza la despedida. */
+    private static final long HEARTBEAT_SECONDS = 5;
 
     private final Presence presence;
     private final Runnable shutdown;

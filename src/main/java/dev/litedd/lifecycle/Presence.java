@@ -31,6 +31,8 @@ public final class Presence implements AutoCloseable {
     });
     private int connections;
     private boolean byeReceived;
+    /** System.nanoTime() en que vence el plazo de la última despedida. */
+    private long byeDeadline;
     private ScheduledFuture<?> pending;
 
     /** @param autoShutdown plazo sin ventanas tras perder la presencia sin despedida; null desactivado */
@@ -42,13 +44,21 @@ public final class Presence implements AutoCloseable {
 
     public synchronized void connected() {
         connections++;
+        log.info("Ventana conectada ({} abiertas)", connections);
         byeReceived = false;
         cancelPending();
     }
 
     public synchronized void disconnected() {
         connections = Math.max(0, connections - 1);
-        if (connections == 0 && !byeReceived) {
+        log.info("Ventana desconectada ({} abiertas)", connections);
+        if (connections > 0) {
+            return;
+        }
+        if (byeReceived) {
+            // La ventana que se despidió se detecta cerrada después: se respeta el plazo de la despedida.
+            schedule(Duration.ofNanos(Math.max(0, byeDeadline - System.nanoTime())));
+        } else {
             Duration auto = autoShutdown.get();
             if (auto != null) {
                 schedule(auto);
@@ -59,6 +69,8 @@ public final class Presence implements AutoCloseable {
     /** POST /api/presence/bye: una ventana se cierra. */
     public synchronized void bye() {
         byeReceived = true;
+        log.info("Una ventana se despide");
+        byeDeadline = System.nanoTime() + byeGrace.toNanos();
         schedule(byeGrace);
     }
 
@@ -78,6 +90,7 @@ public final class Presence implements AutoCloseable {
     private void check() {
         synchronized (this) {
             if (connections > 0) {
+                // Se vuelve a comprobar cuando se desconecte la última ventana.
                 return;
             }
         }
