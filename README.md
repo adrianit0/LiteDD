@@ -23,6 +23,16 @@ scripts/install.sh
 
 `-Pdist` genera un JAR único y una imagen de aplicación con su propio runtime de Java en `target/dist/litedd`. `install.sh` la copia a `~/.local/opt/litedd/` y crea el comando `~/.local/bin/litedd` y el lanzador `~/.local/share/applications/litedd.desktop` con icono. No necesita `sudo`.
 
+### Sin Maven en Ubuntu
+
+Si en el equipo con Ubuntu no se puede usar Maven, compila en otro equipo (también en Windows) con `./mvnw -Pdist package`. Después copia a Ubuntu el JAR `target/dist/input/litedd.jar` y las carpetas `scripts/` y `packaging/`, y ejecuta:
+
+```bash
+scripts/install.sh litedd.jar
+```
+
+Hace falta Java 21 (`sudo apt install openjdk-21-jdk`), aunque no sea el Java por defecto. Con el JDK completo, el script genera allí la imagen con `jpackage`. Si solo hay un JRE, instala el JAR y lo ejecuta con ese Java. En los dos casos quedan el comando `litedd` y el lanzador con icono.
+
 Para desinstalar: `scripts/uninstall.sh`. Las notas y los ajustes se conservan.
 
 ## Uso

@@ -90,10 +90,10 @@ Recorridos en Windows con la imagen de `-Pdist` y datos aislados (`XDG_*` apunta
 ### Pendiente
 
 - En Ubuntu:
-  - `./mvnw -Pdist package` con icono y `scripts/install.sh`.
+  - `scripts/install.sh litedd.jar` con el JAR generado en Windows, porque allí no se puede usar Maven (ADR-0018).
   - Doble clic en el lanzador.
   - Cerrar la ventana de Chrome y comprobar el apagado en 15 s.
-  - `./mvnw -Pit verify` (sprints 3, 4 y la prueba de resistencia).
+  - Pruebas `-Pit` (sprints 3, 4 y la prueba de resistencia): necesitan Maven, así que hay que habilitarlo en Ubuntu o lanzarlas desde Windows contra un MySQL accesible.
 
 ### Desviaciones y decisiones
 
@@ -104,12 +104,13 @@ Recorridos en Windows con la imagen de `-Pdist` y datos aislados (`XDG_*` apunta
   - Al recuperar el contacto se relee el token.
   - `-Pdist` con `maven-shade-plugin` y `jpackage` (complementos de compilación, sin dependencias de ejecución nuevas).
 - Fallo corregido: el apagado empezaba en un hilo daemon y, al parar Jetty, la JVM salía antes de cerrar SQLite y borrar `instance.json`.
+- ADR-0018: `scripts/install.sh` acepta el JAR único y genera la imagen con el jpackage local o, sin él, ejecuta el JAR con el Java 21 instalado. Se probó en Windows la rama sin jpackage (instalar, arrancar, reutilizar la instancia y `--stop`).
 - `scripts/dev.sh` arranca el servidor con `--no-window`, porque en desarrollo la interfaz la sirve Vite.
 - En Windows, `-Pdist` falla si una instancia de la imagen está en marcha, porque los ficheros quedan bloqueados.
 
 ### Cómo probarlo a mano
 
-1. En Ubuntu: `./mvnw -Pdist package` y `scripts/install.sh`; abrir «LiteDD» desde el menú de aplicaciones.
+1. En Windows: `./mvnw -Pdist package`. Copiar a Ubuntu `target/dist/input/litedd.jar`, `scripts/` y `packaging/`, y ejecutar `scripts/install.sh litedd.jar`; abrir «LiteDD» desde el menú de aplicaciones.
 2. Ejecutar `litedd` otra vez: no arranca un segundo proceso, solo abre la ventana.
 3. ⚙ → cambiar el tamaño de página a 50 y guardar; una nota SQL abierta después pagina de 50 en 50.
 4. ⚙ → Datos → «Exportar»: se descarga `litedd-export-AAAAMMDD-HHmm.zip`. Elegir «Añadir como rama» y ese ZIP: aparece «Importado …» con una copia de todo.

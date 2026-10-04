@@ -127,6 +127,7 @@ Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window
 - `./mvnw verify` compila backend e interfaz y ejecuta todas las pruebas. La interfaz se construye con `npm ci && npm run build` y se copia a los recursos del JAR.
 - `./mvnw -Pdist package` genera un JAR único y una imagen de aplicación con `jpackage --type app-image`, que incluye su propio runtime de Java.
 - `scripts/install.sh` copia la imagen a `~/.local/opt/litedd/`, crea `~/.local/bin/litedd` y el lanzador `~/.local/share/applications/litedd.desktop` con icono.
+- `scripts/install.sh litedd.jar` instala desde el JAR único sin Maven: genera la imagen con el `jpackage` del JDK 21 local o, si no lo hay, ejecuta el JAR con el Java 21 instalado (ADR-0018).
 - `scripts/dev.sh` arranca backend y Vite con recarga en caliente.
 
 ### Rutas en disco
