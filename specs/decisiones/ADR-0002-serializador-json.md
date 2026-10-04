@@ -1,6 +1,6 @@
 # ADR-0002: Jackson como serializador JSON
 
-- Estado: propuesta (pendiente de visto bueno)
+- Estado: aceptada (2026-10-04)
 - Fecha: 2026-10-04
 - Requisitos: A-01, A-02
 

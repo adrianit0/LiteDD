@@ -1,6 +1,6 @@
 # ADR-0003: Token de sesión y Origin en desarrollo
 
-- Estado: propuesta (pendiente de visto bueno)
+- Estado: aceptada (2026-10-04)
 - Fecha: 2026-10-04
 - Requisitos: S-11, S-12, S-13
 

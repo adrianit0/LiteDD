@@ -63,8 +63,8 @@ Fecha: 2026-10-04.
 
 ### Desviaciones y decisiones
 
-- ADR-0002 (propuesta): Jackson como serializador JSON de Javalin.
-- ADR-0003 (propuesta): token compartido en desarrollo con `LITEDD_DEV_TOKEN`, reescritura de Origin en el proxy de Vite y peticiones sin Origin aceptadas.
+- ADR-0002 (aceptada): Jackson como serializador JSON de Javalin.
+- ADR-0003 (aceptada): token compartido en desarrollo con `LITEDD_DEV_TOKEN`, reescritura de Origin en el proxy de Vite y peticiones sin Origin aceptadas.
 - ADR-0004: desarrollo en Windows, ejecución en Ubuntu.
 - `requisitos/casos-limite.md` recoge los casos T-xx, que no encajaban en la lista de ficheros de requisitos.
 - La línea de autoría del documento original no se ha copiado a `ESPECIFICACION.md` (S-32).
