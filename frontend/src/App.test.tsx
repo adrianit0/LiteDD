@@ -28,6 +28,7 @@ const created: Note = {
 };
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   mocked.tree.mockResolvedValue([]);
   mocked.getSettings.mockResolvedValue({});
@@ -65,6 +66,23 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: 'N', altKey: true, shiftKey: true });
     });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'sql');
+  });
+
+  it('N-01 N-03 el árbol muestra las notas y un clic abre la nota', async () => {
+    mocked.tree.mockResolvedValue([{ ...created, id: 'a', title: 'Libros', type: 'sql' }]);
+    mocked.getNote.mockResolvedValue({ ...created, id: 'a', title: 'Libros', type: 'sql', content: 'SELECT 1' });
+    // jsdom no calcula tamaños: el árbol virtualizado necesita un contenedor con altura.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const row = await screen.findByRole('treeitem', { name: /Libros/ });
+    expect(row.querySelector('[aria-label="SQL"]')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    expect(mocked.getNote).toHaveBeenCalledWith('a');
+    expect(await screen.findByText('SELECT 1')).toBeTruthy();
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {

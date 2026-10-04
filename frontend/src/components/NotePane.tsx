@@ -3,9 +3,8 @@ import { useNote, type SaveStatus } from '../stores/noteStore';
 import { useTree } from '../stores/treeStore';
 import { ancestorsOf } from '../tree';
 import { formatDateTime } from '../format';
-import { NoteEditor } from '../editor/NoteEditor';
+import { NoteEditor, type EditorControls } from '../editor/NoteEditor';
 import { FormatToolbar } from '../editor/FormatToolbar';
-import type { FormatAction } from '../editor/formatting';
 import { MarkdownView } from './MarkdownView';
 import { Dialog } from './Dialog';
 import { openNote } from '../actions';
@@ -25,7 +24,7 @@ export function NotePane() {
   const nodes = useTree((s) => s.nodes);
   const [confirmReload, setConfirmReload] = useState(false);
   const titleInput = useRef<HTMLInputElement>(null);
-  const formatter = useRef<(action: FormatAction) => void>(() => {});
+  const editor = useRef<EditorControls | null>(null);
 
   // N-06: el título de una nota nueva aparece seleccionado.
   useEffect(() => {
@@ -62,7 +61,7 @@ export function NotePane() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    (document.querySelector('.editor .cm-content') as HTMLElement | null)?.focus();
+                    editor.current?.focus();
                   }
                 }}
               />
@@ -87,7 +86,7 @@ export function NotePane() {
         </div>
       </header>
 
-      {mode === 'edit' && note.type === 'md' && <FormatToolbar onFormat={(a) => formatter.current(a)} />}
+      {mode === 'edit' && note.type === 'md' && <FormatToolbar onFormat={(a) => editor.current?.format(a)} />}
 
       <div className={`note-body mode-${mode}`}>
         {mode === 'edit' ? (
@@ -97,8 +96,8 @@ export function NotePane() {
             value={content}
             onChange={(value) => store.edit({ content: value })}
             onBlur={() => void store.saveNow()}
-            onReady={(f) => {
-              formatter.current = f;
+            onReady={(controls) => {
+              editor.current = controls;
             }}
           />
         ) : note.type === 'md' ? (

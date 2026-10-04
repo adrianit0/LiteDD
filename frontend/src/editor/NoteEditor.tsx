@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EditorState, type Extension } from '@codemirror/state';
-import { EditorView, keymap, placeholder } from '@codemirror/view';
+import { EditorView, keymap, placeholder, type KeyBinding } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -13,8 +13,13 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
-  /** Recibe una función para aplicar formatos desde la barra. */
-  onReady?: (format: (action: FormatAction) => void) => void;
+  /** Recibe las funciones para aplicar formatos desde la barra y para dar el foco al editor. */
+  onReady?: (controls: EditorControls) => void;
+}
+
+export interface EditorControls {
+  format: (action: FormatAction) => void;
+  focus: () => void;
 }
 
 const theme = EditorView.theme(
@@ -44,6 +49,15 @@ const highlight = HighlightStyle.define([
   { tag: [tags.processingInstruction, tags.contentSeparator, tags.meta], color: 'var(--text-muted)' },
 ]);
 
+/** N-22: Ctrl+B y Ctrl+I; Intro continúa la lista y el tabulador sangra. */
+export function markdownBindings(format: (action: FormatAction) => void): KeyBinding[] {
+  const run = (action: FormatAction) => () => {
+    format(action);
+    return true;
+  };
+  return [{ key: 'Mod-b', run: run('bold') }, { key: 'Mod-i', run: run('italic') }, ...markdownKeymap, indentWithTab];
+}
+
 /** Editor de texto plano (N-11) con barra de formato y atajos para Markdown (N-20 a N-22). */
 export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -57,10 +71,6 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
       if (!v) return;
       v.dispatch(applyFormat(v.state, action));
       v.focus();
-    };
-    const formatKey = (action: FormatAction) => () => {
-      format(action);
-      return true;
     };
 
     const extensions: Extension[] = [
@@ -77,27 +87,26 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady }: Props) {
       EditorView.contentAttributes.of({ 'aria-label': 'Contenido de la nota', spellcheck: 'false' }),
     ];
     if (type === 'md') {
-      // N-22: Ctrl+B, Ctrl+I; Intro continúa la lista y el tabulador sangra.
-      extensions.push(
-        markdown(),
-        keymap.of([
-          { key: 'Mod-b', run: formatKey('bold') },
-          { key: 'Mod-i', run: formatKey('italic') },
-          ...markdownKeymap,
-          indentWithTab,
-        ]),
-      );
+      extensions.push(markdown(), keymap.of(markdownBindings(format)));
     } else {
       extensions.push(keymap.of([indentWithTab]));
     }
     extensions.push(keymap.of([...defaultKeymap, ...historyKeymap]));
 
+    // S-14: la CSP no admite elementos <style>. Dentro de un shadow root CodeMirror usa hojas de
+    // estilo construidas (adoptedStyleSheets), que la CSP sí permite.
+    const shadow = host.current!.shadowRoot ?? host.current!.attachShadow({ mode: 'open' });
+    const container = document.createElement('div');
+    container.style.height = '100%';
+    shadow.replaceChildren(container);
+
     const v = new EditorView({
-      parent: host.current!,
+      parent: container,
+      root: shadow,
       state: EditorState.create({ doc: value, extensions }),
     });
     view.current = v;
-    onReady?.(format);
+    onReady?.({ format, focus: () => v.focus() });
     return () => {
       v.destroy();
       view.current = null;
