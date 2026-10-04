@@ -8,6 +8,10 @@ import dev.litedd.mysql.QueryRunner.Column;
 import dev.litedd.mysql.QueryRunner.Result;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
+import dev.litedd.notes.VariableValues;
+import dev.litedd.sqlengine.SqlEngine.Analysis;
+import dev.litedd.sqlengine.SqlError;
+import dev.litedd.sqlengine.Variable;
 import dev.litedd.sqlengine.Pagination;
 import dev.litedd.sqlengine.Pagination.Page;
 import dev.litedd.sqlengine.Pagination.PageRequest;
@@ -31,7 +35,13 @@ import java.util.UUID;
 /** Rutas /api/sql: analizar, renderizar, ejecutar, contar y cancelar (Q-40 a Q-57, A-04, A-05). */
 public final class SqlApi implements ApiRoutes {
 
-    record AnalyzeRequest(String content) {
+    record AnalyzeRequest(String content, String noteId) {
+    }
+
+    /** ADR-0014: lastValues solo si se pide con noteId. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record AnalyzeResponse(List<Variable> variables, String kind, String forbiddenClause, List<SqlError> errors,
+                           Map<String, String> lastValues) {
     }
 
     record Sort(Integer column, String direction) {
@@ -68,17 +78,20 @@ public final class SqlApi implements ApiRoutes {
     private static final Logger log = LoggerFactory.getLogger(SqlApi.class);
 
     private final NoteService notes;
+    private final VariableValues variableValues;
     private final SqlEngine engine;
     private final MySqlGateway gateway;
     private final int timeoutSeconds;
     private final int rowCap;
 
-    public SqlApi(NoteService notes, SqlEngine engine, MySqlGateway gateway) {
-        this(notes, engine, gateway, DEFAULT_TIMEOUT_SECONDS, DEFAULT_ROW_CAP);
+    public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway) {
+        this(notes, variableValues, engine, gateway, DEFAULT_TIMEOUT_SECONDS, DEFAULT_ROW_CAP);
     }
 
-    public SqlApi(NoteService notes, SqlEngine engine, MySqlGateway gateway, int timeoutSeconds, int rowCap) {
+    public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
+                  int timeoutSeconds, int rowCap) {
         this.notes = notes;
+        this.variableValues = variableValues;
         this.engine = engine;
         this.gateway = gateway;
         this.timeoutSeconds = timeoutSeconds;
@@ -89,7 +102,18 @@ public final class SqlApi implements ApiRoutes {
     public void register(RoutesConfig routes) {
         routes.post("/api/sql/analyze", ctx -> {
             AnalyzeRequest req = ctx.bodyAsClass(AnalyzeRequest.class);
-            ctx.json(engine.analyze(req.content() == null ? "" : req.content()));
+            Analysis a = engine.analyze(req.content() == null ? "" : req.content());
+            Map<String, String> last = null;
+            if (req.noteId() != null) {
+                Map<String, String> saved = variableValues.load(req.noteId());
+                last = new java.util.LinkedHashMap<>();
+                for (Variable v : a.variables()) {
+                    if (saved.containsKey(v.name())) {
+                        last.put(v.name(), saved.get(v.name()));
+                    }
+                }
+            }
+            ctx.json(new AnalyzeResponse(a.variables(), a.kind(), a.forbiddenClause(), a.errors(), last));
         });
         routes.post("/api/sql/render", ctx -> {
             ExecuteRequest req = ctx.bodyAsClass(ExecuteRequest.class);
@@ -97,7 +121,15 @@ public final class SqlApi implements ApiRoutes {
             ctx.json(new ExecuteResponse(kindOf(plan), null, null, null, null, null, null, null, finalSql(plan),
                     plan.executable() ? null : NOT_EXECUTABLE, plan.classification().forbiddenClause()));
         });
-        routes.post("/api/sql/execute", ctx -> ctx.json(execute(ctx.bodyAsClass(ExecuteRequest.class))));
+        routes.post("/api/sql/execute", ctx -> {
+            ExecuteRequest req = ctx.bodyAsClass(ExecuteRequest.class);
+            PageRequest page = pageRequest(req);
+            Plan plan = plan(req);
+            ExecuteResponse response = execute(req, page, plan);
+            // Q-24: se recuerdan los valores de una ejecución correcta.
+            variableValues.save(req.noteId(), plan.variables().stream().map(Variable::name).toList(), req.values());
+            ctx.json(response);
+        });
         routes.post("/api/sql/count", ctx -> ctx.json(Map.of("total", count(ctx.bodyAsClass(ExecuteRequest.class)))));
         routes.post("/api/sql/cancel", ctx -> {
             CancelRequest req = ctx.bodyAsClass(CancelRequest.class);
@@ -130,9 +162,7 @@ public final class SqlApi implements ApiRoutes {
         }
     }
 
-    private ExecuteResponse execute(ExecuteRequest req) {
-        PageRequest page = pageRequest(req);
-        Plan plan = plan(req);
+    private ExecuteResponse execute(ExecuteRequest req, PageRequest page, Plan plan) {
         FinalSql finalSql = finalSql(plan);
         if (!plan.executable()) {
             // S-06: una sentencia no ejecutable nunca llega al driver.

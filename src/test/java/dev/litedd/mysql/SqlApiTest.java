@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.HttpServer;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
+import dev.litedd.notes.VariableValues;
 import dev.litedd.sqlengine.SqlEngine;
 import dev.litedd.store.Store;
 import org.junit.jupiter.api.AfterEach;
@@ -54,7 +55,7 @@ class SqlApiTest {
         file = new ConnectionFile(dir.resolve("config/connection.json"));
         gateway = new MySqlGateway();
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new SqlEngine(), gateway),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway),
                 new ConnectionApi(file, gateway))).start();
     }
 
@@ -88,6 +89,30 @@ class SqlApiTest {
         Res bad = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", "SELECT a < 3")));
         assertThat(bad.json.get("errors").get(0).get("code").asText()).isEqualTo("xml");
         assertThat(bad.json.get("errors").get(0).get("line").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void q24_successful_execute_remembers_values_and_analyze_returns_them() throws Exception {
+        Note n = sqlNote("UPDATE book SET title = #{t} WHERE id = #{id,int} <if test=\"flag != null\">AND 1</if>");
+        assertThat(call("POST", "/api/sql/execute", exec(n, "{\"t\":\"mar\",\"id\":\"\",\"otra\":\"x\"}")).status).isEqualTo(200);
+        Res r = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content(), "noteId", n.id())));
+        JsonNode last = r.json.get("lastValues");
+        assertThat(last.get("t").asText()).isEqualTo("mar");
+        assertThat(last.get("id").isNull()).isTrue();
+        assertThat(last.get("flag").isNull()).isTrue();
+        assertThat(last.has("otra")).isFalse();
+        // Sin noteId no hay lastValues.
+        Res plain = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content())));
+        assertThat(plain.json.has("lastValues")).isFalse();
+    }
+
+    @Test
+    void q24_failed_execute_does_not_remember_values() throws Exception {
+        Note n = sqlNote("SELECT * FROM book WHERE year > #{y,int}");
+        call("POST", "/api/sql/execute", exec(n, "{\"y\":\"abc\"}"));
+        call("POST", "/api/sql/execute", exec(n, "{\"y\":\"1990\"}"));
+        Res r = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content(), "noteId", n.id())));
+        assertThat(r.json.get("lastValues").size()).isZero();
     }
 
     @Test

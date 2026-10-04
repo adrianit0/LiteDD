@@ -7,6 +7,7 @@ import dev.litedd.mysql.MySqlGateway;
 import dev.litedd.mysql.SqlApi;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.NotesApi;
+import dev.litedd.notes.VariableValues;
 import dev.litedd.session.SessionApi;
 import dev.litedd.settings.SettingsApi;
 import dev.litedd.sqlengine.SqlEngine;
@@ -56,7 +57,7 @@ public final class Main {
                 new NotesApi(notes),
                 new SettingsApi(store),
                 new SessionApi(store),
-                new SqlApi(notes, new SqlEngine(), gateway),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway),
                 new ConnectionApi(connectionFile, gateway))).start();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();

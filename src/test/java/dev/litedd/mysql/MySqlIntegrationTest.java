@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.HttpServer;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
+import dev.litedd.notes.VariableValues;
 import dev.litedd.sqlengine.SqlEngine;
 import dev.litedd.store.Store;
 import org.junit.jupiter.api.AfterAll;
@@ -74,7 +75,7 @@ class MySqlIntegrationTest {
         gateway = new MySqlGateway();
         gateway.configure(settings);
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new SqlEngine(), gateway, TIMEOUT_SECONDS, SqlApi.DEFAULT_ROW_CAP),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, TIMEOUT_SECONDS, SqlApi.DEFAULT_ROW_CAP),
                 new ConnectionApi(new ConnectionFile(dir.resolve("connection.json")), gateway))).start();
     }
 

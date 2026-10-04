@@ -1,8 +1,10 @@
 package dev.litedd.store;
 
 import dev.litedd.notes.NoteMapper;
+import dev.litedd.notes.VariableValueMapper;
 import dev.litedd.session.SessionMapper;
 import dev.litedd.settings.SettingMapper;
+import org.apache.ibatis.logging.nologging.NoLoggingImpl;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
@@ -148,10 +150,13 @@ public final class Store implements AutoCloseable {
 
         Configuration cfg = new Configuration(new Environment("litedd", tx, unused));
         cfg.setMapUnderscoreToCamelCase(true);
+        // S-22: MyBatis registraría en depuración los parámetros de cada consulta, valores incluidos.
+        cfg.setLogImpl(NoLoggingImpl.class);
         cfg.setArgNameBasedConstructorAutoMapping(true);
         cfg.addMapper(NoteMapper.class);
         cfg.addMapper(SettingMapper.class);
         cfg.addMapper(SessionMapper.class);
+        cfg.addMapper(VariableValueMapper.class);
         return new SqlSessionFactoryBuilder().build(cfg);
     }
 }
