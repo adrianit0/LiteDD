@@ -1,5 +1,6 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 import type { Analysis, ExecuteResponse, Sort } from './sql/types';
+import type { SearchHit } from './search';
 
 /** Error de la API con el cuerpo de A-02. status 0 = sin contacto con el servidor. */
 export class ApiError extends Error {
@@ -22,6 +23,52 @@ function sessionToken(): string {
 
 interface RequestOptions {
   keepalive?: boolean;
+}
+
+interface SaveOptions extends RequestOptions {
+  /** N-44: al salir del modo edición se guarda una versión. */
+  snapshot?: boolean;
+}
+
+export interface NoteVersion {
+  id: number;
+  title: string;
+  content: string;
+  savedAt: string;
+}
+
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+/** Para cuerpos que no son JSON: subir una imagen (N-92). */
+async function requestRaw<T>(method: string, path: string, body: Blob, contentType: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, { method, headers: { 'X-LiteDD-Token': sessionToken(), 'Content-Type': contentType }, body });
+  } catch {
+    throw new ApiError(0, 'network', 'No hay contacto con el servidor', null);
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = (data ?? {}) as { code?: string; message?: string; details?: unknown };
+    throw new ApiError(res.status, err.code ?? 'error', err.message ?? `Error ${res.status}`, err.details ?? null);
+  }
+  return data as T;
+}
+
+/** ADR-0016: el adjunto se descarga con el token y se muestra como URL data:. */
+async function attachmentDataUrl(id: string): Promise<string> {
+  const res = await fetch(`/api/attachments/${encodeURIComponent(id)}`, { headers: { 'X-LiteDD-Token': sessionToken() } });
+  if (!res.ok) throw new ApiError(res.status, 'attachment', 'No se pudo cargar la imagen', null);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new ApiError(0, 'attachment', 'No se pudo leer la imagen', null));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
@@ -118,8 +165,23 @@ export const api = {
   createNote: (parentId: string | null, type: NoteType, title?: string) =>
     request<Note>('POST', '/api/notes', { parentId, type, title }),
   getNote: (id: string) => request<Note>('GET', `/api/notes/${encodeURIComponent(id)}`),
-  saveNote: (id: string, title: string, content: string, baseVersion: number, options?: RequestOptions) =>
-    request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}`, { title, content, baseVersion }, options),
+  saveNote: (id: string, title: string, content: string, baseVersion: number, options?: SaveOptions) =>
+    request<Note>(
+      'PUT',
+      `/api/notes/${encodeURIComponent(id)}`,
+      options?.snapshot ? { title, content, baseVersion, snapshot: true } : { title, content, baseVersion },
+      options?.keepalive ? { keepalive: true } : {},
+    ),
+  versions: (id: string) => request<NoteVersion[]>('GET', `/api/notes/${encodeURIComponent(id)}/versions`),
+  restoreVersion: (id: string, versionId: number, baseVersion: number) =>
+    request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/versions/${versionId}/restore`, { baseVersion }),
+  setTags: (id: string, tags: string[]) => request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/tags`, { tags }),
+  setFavorite: (id: string, favorite: boolean) => request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/favorite`, { favorite }),
+  tags: () => request<TagCount[]>('GET', '/api/tags'),
+  search: (params: string) => request<SearchHit[]>('GET', `/api/search?${params}`),
+  uploadAttachment: (noteId: string, file: Blob, name: string) =>
+    requestRaw<{ id: string }>('POST', `/api/attachments?noteId=${encodeURIComponent(noteId)}&name=${encodeURIComponent(name)}`, file, file.type),
+  attachmentDataUrl,
   moveNote: (id: string, parentId: string | null, position: number) =>
     request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/move`, { parentId, position }),
   deleteNote: (id: string, promoteChildren: boolean) =>

@@ -8,7 +8,8 @@ export type Shortcut =
   | 'closeTab'
   | 'previousTab'
   | 'nextTab'
-  | 'execute';
+  | 'execute'
+  | 'quickSearch';
 
 export interface KeyLike {
   key: string;
@@ -24,6 +25,8 @@ export function matchShortcut(e: KeyLike): Shortcut | null {
   if (e.ctrlKey && !e.altKey && !e.shiftKey) {
     if (key === 'e') return 'toggleMode';
     if (key === 's') return 'save';
+    // N-73: Ctrl+K abre la búsqueda rápida.
+    if (key === 'k') return 'quickSearch';
     // Q-23: Ctrl+Intro ejecuta la consulta.
     if (e.key === 'Enter') return 'execute';
   }

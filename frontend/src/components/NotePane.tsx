@@ -11,6 +11,12 @@ import { MarkdownView } from './MarkdownView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote } from '../actions';
 import { TypeIcon } from './TypeIcon';
+import { FavoriteButton, TagEditor } from './NoteMeta';
+import { HistoryDialog } from './HistoryDialog';
+import { api } from '../api';
+import { imageProblem } from '../markdown/links';
+import { useAttachments } from '../markdown/attachments';
+import { useUi } from '../stores/uiStore';
 
 export const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: 'Guardado',
@@ -28,6 +34,7 @@ export function NotePane({ tab }: { tab: Tab }) {
   const store = useTabs.getState();
   const nodes = useTree((s) => s.nodes);
   const [confirmReload, setConfirmReload] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const titleInput = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorControls | null>(null);
@@ -64,6 +71,25 @@ export function NotePane({ tab }: { tab: Tab }) {
   }
   const path = ancestorsOf(nodes, note.id).map((n) => n.title);
 
+  /** N-92: guarda la imagen como adjunto y la deja ya en la caché para la vista. */
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const problem = imageProblem(file);
+    if (problem) {
+      useUi.getState().notify(problem, 'error');
+      return null;
+    }
+    try {
+      const { id } = await api.uploadAttachment(note.id, file, file.name);
+      const reader = new FileReader();
+      reader.onload = () => useAttachments.getState().remember(id, String(reader.result));
+      reader.readAsDataURL(file);
+      return id;
+    } catch (e) {
+      useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo guardar la imagen', 'error');
+      return null;
+    }
+  };
+
   const onRefresh = () => {
     if (isDirty(tab)) setConfirmReload(true);
     else void store.reload(tab.id);
@@ -94,7 +120,9 @@ export function NotePane({ tab }: { tab: Tab }) {
             ) : (
               <h1 className="note-title">{title}</h1>
             )}
+            <FavoriteButton note={note} />
           </div>
+          <TagEditor note={note} />
         </div>
         <div className="note-actions">
           <span className={`save-status status-${status}`} role="status" aria-live="polite">
@@ -108,6 +136,9 @@ export function NotePane({ tab }: { tab: Tab }) {
           </button>
           <button type="button" onClick={onRefresh} title="Recargar la nota desde el disco">
             Actualizar
+          </button>
+          <button type="button" onClick={() => setHistoryOpen(true)} title="Versiones guardadas de la nota">
+            Historial
           </button>
           <button type="button" onClick={() => void deleteNote(note.id)} title="Mover la nota a la papelera">
             Eliminar
@@ -135,6 +166,8 @@ export function NotePane({ tab }: { tab: Tab }) {
             onReady={(controls) => {
               editor.current = controls;
             }}
+            linkTargets={() => useTree.getState().nodes}
+            onImage={uploadImage}
           />
         ) : note.type === 'md' ? (
           <MarkdownView content={content} onOpenNote={(id, newTab) => void openNote(id, newTab)} />
@@ -158,6 +191,8 @@ export function NotePane({ tab }: { tab: Tab }) {
           </p>
         </Dialog>
       )}
+
+      {historyOpen && <HistoryDialog tab={tab} onClose={() => setHistoryOpen(false)} />}
 
       {confirmReload && (
         <Dialog

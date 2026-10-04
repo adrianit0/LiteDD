@@ -1,5 +1,9 @@
-import { useMemo, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { renderMarkdown } from '../markdown/render';
+import { attachmentIds } from '../markdown/links';
+import { useAttachments } from '../markdown/attachments';
+import { renderMermaidBlocks } from '../markdown/mermaid';
+import { useTree } from '../stores/treeStore';
 
 interface Props {
   content: string;
@@ -7,9 +11,26 @@ interface Props {
   onOpenNote: (id: string, newTab: boolean) => void;
 }
 
-/** N-11, N-30 a N-33: vista renderizada de una nota Markdown. */
+/** N-11, N-30 a N-33, N-91 a N-93: vista renderizada de una nota Markdown. */
 export function MarkdownView({ content, onOpenNote }: Props) {
-  const html = useMemo(() => renderMarkdown(content), [content]);
+  const nodes = useTree((s) => s.nodes);
+  const urls = useAttachments((s) => s.urls);
+  const container = useRef<HTMLDivElement>(null);
+  const ids = useMemo(() => attachmentIds(content), [content]);
+
+  useEffect(() => {
+    if (ids.length > 0) useAttachments.getState().load(ids);
+  }, [ids]);
+
+  const html = useMemo(() => {
+    const active = new Set(nodes.map((n) => n.id));
+    return renderMarkdown(content, { noteExists: (id) => active.has(id), attachmentUrl: (id) => urls[id] });
+  }, [content, nodes, urls]);
+
+  // N-30: los diagramas se dibujan después, con Mermaid cargado solo si hace falta.
+  useEffect(() => {
+    if (container.current) void renderMermaidBlocks(container.current);
+  }, [html]);
 
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -42,5 +63,5 @@ export function MarkdownView({ content, onOpenNote }: Props) {
   if (content.trim() === '') {
     return <p className="muted view-empty">Nota vacía. Pulsa «Editar» o Ctrl+E para escribir.</p>;
   }
-  return <div className="markdown" onClick={onClick} onAuxClick={onAuxClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="markdown" ref={container} onClick={onClick} onAuxClick={onAuxClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }

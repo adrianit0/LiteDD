@@ -1220,3 +1220,253 @@ button:disabled {
   border-color: var(--warning);
   color: var(--warning);
 }
+
+/* Búsqueda (N-70 a N-73) */
+.search-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-row {
+  display: flex;
+  gap: 6px;
+}
+
+.search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.search-filters label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.search-check {
+  justify-content: flex-start !important;
+}
+
+.search-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.search-empty {
+  padding: 12px;
+}
+
+.search-results {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.search-hit:hover,
+.search-hit:focus-visible {
+  background: var(--surface-raised);
+}
+
+.search-hit-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.search-hit-path {
+  font-size: 12px;
+}
+
+.search-hit-fragment {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+mark {
+  background: var(--selection);
+  color: var(--text);
+  border-radius: 2px;
+}
+
+.quick-search {
+  width: min(560px, 92vw);
+  align-self: flex-start;
+  margin-top: 12vh;
+}
+
+/* Etiquetas y favoritas (N-80, N-81) */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.tag-chip.selected {
+  border-color: var(--accent);
+  background: var(--selection);
+}
+
+.tag-chip button {
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tag-editor input {
+  width: 110px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+.favorite-button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  padding: 0 4px;
+}
+
+.favorite-button.on,
+.favorite-mark {
+  color: var(--warning);
+}
+
+.favorite-mark {
+  flex: none;
+  font-size: 12px;
+}
+
+/* Historial (N-45) */
+.history-dialog {
+  width: min(860px, 94vw);
+}
+
+.history-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 2fr;
+  gap: 12px;
+  max-height: 60vh;
+}
+
+.history-list {
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.history-list button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+
+.history-list button.selected {
+  background: var(--selection);
+}
+
+.history-preview {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-content {
+  overflow: auto;
+}
+
+.history-content h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.history-content pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}
+
+/* Enlaces e imágenes (N-91, N-92) y diagramas (N-30) */
+.markdown a.broken {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.markdown img.attachment {
+  max-width: 100%;
+}
+
+.markdown img.attachment:not([src]),
+.markdown img.attachment[src=''] {
+  min-width: 120px;
+  min-height: 60px;
+  border: 1px dashed var(--border);
+}
+
+.mermaid-block {
+  margin: 12px 0;
+  overflow: auto;
+}
+
+.mermaid-source {
+  margin: 0;
+  padding: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}

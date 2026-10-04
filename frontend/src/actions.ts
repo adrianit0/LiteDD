@@ -105,6 +105,36 @@ export async function deleteNote(id: string): Promise<void> {
   }
 }
 
+/** N-81 */
+export async function toggleFavorite(id: string): Promise<void> {
+  const node = useTree.getState().nodes.find((n) => n.id === id);
+  if (!node) return;
+  try {
+    const note = await api.setFavorite(id, !node.favorite);
+    useTabs.getState().applyMeta(note);
+    await useTree.getState().load();
+  } catch (e) {
+    fail(e, 'No se pudo cambiar la favorita');
+  }
+}
+
+/** N-80 */
+export async function saveTags(id: string, tags: string[]): Promise<void> {
+  try {
+    const note = await api.setTags(id, tags);
+    useTabs.getState().applyMeta(note);
+    await useTree.getState().load();
+  } catch (e) {
+    fail(e, 'No se pudieron guardar las etiquetas');
+  }
+}
+
+/** N-80: «Etiquetas…» abre la nota y lleva el foco a sus etiquetas. */
+export async function editTags(id: string): Promise<void> {
+  await openNote(id);
+  useUi.getState().setFocusTags(id);
+}
+
 /** N-53 */
 export async function restoreNote(id: string): Promise<boolean> {
   try {

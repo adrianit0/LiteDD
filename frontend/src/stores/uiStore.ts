@@ -23,6 +23,12 @@ interface UiState {
   sidebarVisible: boolean;
   collapsed: ReadonlySet<string>;
   notices: Notice[];
+  /** N-73 */
+  quickSearchOpen: boolean;
+  setQuickSearch: (open: boolean) => void;
+  /** N-80: el menú contextual «Etiquetas…» lleva el foco al editor de etiquetas de esa nota. */
+  focusTagsFor: string | null;
+  setFocusTags: (noteId: string | null) => void;
   load: () => Promise<void>;
   setSidebarWidth: (width: number) => void;
   toggleSidebar: () => void;
@@ -58,6 +64,10 @@ export const useUi = create<UiState>((set, get) => ({
   sidebarVisible: true,
   collapsed: new Set(),
   notices: [],
+  quickSearchOpen: false,
+  setQuickSearch: (open) => set({ quickSearchOpen: open }),
+  focusTagsFor: null,
+  setFocusTags: (noteId) => set({ focusTagsFor: noteId }),
 
   async load() {
     const s = await api.getSettings();

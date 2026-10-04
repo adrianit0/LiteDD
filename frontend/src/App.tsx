@@ -12,6 +12,7 @@ import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { ConnectionDialog } from './components/ConnectionDialog';
 import { useConnection } from './stores/connectionStore';
 import { useSqlRuns } from './stores/sqlRunStore';
+import { QuickSearch } from './components/QuickSearch';
 
 /** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
   const notices = useUi((s) => s.notices);
   const activeTab = useActiveTab();
   const connectionDialog = useConnection((s) => s.dialogOpen);
+  const quickSearch = useUi((s) => s.quickSearchOpen);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +72,9 @@ export function App() {
         case 'toggleSidebar':
           useUi.getState().toggleSidebar();
           break;
+        case 'quickSearch':
+          useUi.getState().setQuickSearch(true);
+          break;
       }
     };
     // N-40: al cerrar la ventana se guarda lo pendiente.
@@ -112,6 +117,9 @@ export function App() {
                     <button type="button" onClick={() => void createAndOpen(null, 'sql')}>
                       Nueva nota SQL
                     </button>
+                    <button type="button" onClick={() => useUi.getState().setQuickSearch(true)} aria-keyshortcuts="Control+K">
+                      Búsqueda rápida (Ctrl+K)
+                    </button>
                   </div>
                 </div>
               )}
@@ -121,6 +129,7 @@ export function App() {
       </div>
       <DialogHost />
       {connectionDialog && <ConnectionDialog />}
+      {quickSearch && <QuickSearch />}
       <div className="notices" aria-live="polite">
         {notices.map((n) => (
           <div key={n.id} className={`notice notice-${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>

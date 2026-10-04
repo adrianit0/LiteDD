@@ -61,6 +61,10 @@ interface TabsState {
   dropNote: (noteId: string) => void;
   edit: (id: string, changes: { title?: string; content?: string }) => void;
   saveNow: (id: string) => Promise<void>;
+  /** N-45: sustituye la nota de una pestaña por la versión restaurada. */
+  applyRestored: (id: string, note: Note) => void;
+  /** N-80, N-81: etiquetas y favorita sin cambiar la versión, en todas las pestañas de la nota. */
+  applyMeta: (note: Note) => void;
   saveNote: (noteId: string) => Promise<void>;
   toggleMode: (id: string) => Promise<void>;
   reload: (id: string) => Promise<void>;
@@ -318,7 +322,31 @@ export const useTabs = create<TabsState>((set, get) => {
       // N-12, N-40: al cambiar de modo se guarda.
       await get().saveNow(id);
       const t = tab(id);
-      if (t) patch(id, { mode: t.mode === 'edit' ? 'view' : 'edit', focusTitle: false });
+      if (!t) return;
+      if (t.mode === 'edit' && t.note && !isDirty(t) && t.status !== 'conflict') {
+        // N-44: al salir del modo edición se guarda una versión si algo cambió.
+        try {
+          await api.saveNote(t.noteId, t.note.title, t.note.content, t.note.version, { snapshot: true });
+        } catch {
+          // El historial no debe impedir cambiar de modo.
+        }
+      }
+      const current = tab(id);
+      if (current) patch(id, { mode: current.mode === 'edit' ? 'view' : 'edit', focusTitle: false });
+    },
+
+    applyRestored(id, note) {
+      clearTimeout(timers.get(id));
+      patch(id, { note, title: note.title, content: note.content, status: 'saved', conflict: null });
+      applyRename(note, id);
+    },
+
+    applyMeta(note) {
+      set({
+        tabs: get().tabs.map((t) =>
+          t.noteId === note.id && t.note ? { ...t, note: { ...t.note, tags: note.tags, favorite: note.favorite } } : t,
+        ),
+      });
     },
 
     async reload(id) {

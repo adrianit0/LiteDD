@@ -25,7 +25,7 @@ import {
   type DropZone,
   type KeyboardMove,
 } from '../treeOps';
-import { createAndOpen, deleteNote, moveNote, openNote, renameNote } from '../actions';
+import { createAndOpen, deleteNote, editTags, moveNote, openNote, renameNote, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
@@ -100,6 +100,11 @@ export function Tree() {
     { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
     { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
     { label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) },
+    {
+      label: nodes.find((n) => n.id === id)?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
+      onSelect: () => void toggleFavorite(id),
+    },
+    { label: 'Etiquetas…', onSelect: () => void editTags(id) },
     { label: 'Mover a…', onSelect: () => setMovingId(id) },
     { label: 'Eliminar', shortcut: 'Supr', onSelect: () => void deleteNote(id) },
   ];
@@ -341,6 +346,11 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
       </button>
       <TypeIcon type={node.type} />
       {renaming ? <RenameInput initial={node.title} onDone={onRenamed} /> : <span className="tree-title">{node.title}</span>}
+      {node.favorite && !renaming && (
+        <span className="favorite-mark" role="img" aria-label="Favorita">
+          ★
+        </span>
+      )}
     </div>
   );
 }

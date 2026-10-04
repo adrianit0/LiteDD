@@ -9,6 +9,8 @@ import { tags } from '@lezer/highlight';
 import { applyFormat, type FormatAction } from './formatting';
 import { mybatisHighlight } from './mybatis';
 import { insertSnippet, type SnippetKind } from '../sql/snippets';
+import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
+import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
 
 interface Props {
@@ -21,6 +23,10 @@ interface Props {
   onScroll?: (top: number) => void;
   /** Recibe las funciones para aplicar formatos desde la barra y para dar el foco al editor. */
   onReady?: (controls: EditorControls) => void;
+  /** N-90: notas para el autocompletado de «[[». */
+  linkTargets?: () => TreeNode[];
+  /** N-92: sube una imagen pegada o arrastrada y devuelve su identificador. */
+  onImage?: (file: File) => Promise<string | null>;
 }
 
 export interface EditorControls {
@@ -47,6 +53,10 @@ const theme = EditorView.theme(
     '.cm-mb-param': { color: 'var(--warning)' },
     '.cm-mb-textual': { color: 'var(--error)', fontWeight: '600' },
     '.cm-mb-comment': { color: 'var(--text-muted)', fontStyle: 'italic' },
+    // N-90: autocompletado de enlaces.
+    '.cm-tooltip': { backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text)' },
+    '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--selection)', color: 'var(--text)' },
+    '.cm-completionDetail': { color: 'var(--text-muted)', marginLeft: '8px', fontStyle: 'normal' },
   },
   { dark: true },
 );
@@ -81,16 +91,20 @@ export function markdownBindings(format: (action: FormatAction) => void): KeyBin
  * Editor de texto plano (N-11): Markdown con barra de formato y atajos (N-20 a N-22), o SQL de MySQL con
  * resaltado de MyBatis (Q-80).
  */
-export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScroll = 0, onScroll }: Props) {
+export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScroll = 0, onScroll, linkTargets, onImage }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const callbacks = useRef({ onChange, onBlur, onScroll });
-  callbacks.current = { onChange, onBlur, onScroll };
+  const callbacks = useRef({ onChange, onBlur, onScroll, linkTargets, onImage });
+  callbacks.current = { onChange, onBlur, onScroll, linkTargets, onImage };
 
   useEffect(() => {
     const format = (action: FormatAction) => {
       const v = view.current;
       if (!v) return;
+      if (action === 'noteLink') {
+        startNoteLink(v);
+        return;
+      }
       v.dispatch(applyFormat(v.state, action));
       v.focus();
     };
@@ -118,7 +132,12 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
       EditorView.contentAttributes.of({ 'aria-label': 'Contenido de la nota', spellcheck: 'false' }),
     ];
     if (type === 'md') {
-      extensions.push(markdown(), keymap.of(markdownBindings(format)));
+      extensions.push(
+        markdown(),
+        noteLinkCompletion(() => callbacks.current.linkTargets?.() ?? []),
+        imageDrop((file) => callbacks.current.onImage?.(file) ?? Promise.resolve(null)),
+        keymap.of(markdownBindings(format)),
+      );
     } else {
       extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of([indentWithTab]));
     }
