@@ -9,6 +9,35 @@ type Mermaid = typeof import('mermaid').default;
 
 let loader: Promise<Mermaid> | null = null;
 let counter = 0;
+/** Mermaid no admite renderizados simultáneos: se hacen de uno en uno. */
+let queue: Promise<unknown> = Promise.resolve();
+/** SVG ya generado por texto del diagrama, para no repetir el trabajo al volver a pintar la nota. */
+const cache = new Map<string, string>();
+
+function enqueue<T>(work: () => Promise<T>): Promise<T> {
+  const run = queue.then(work);
+  queue = run.catch(() => {});
+  return run;
+}
+
+async function svgFor(source: string): Promise<string> {
+  const cached = cache.get(source);
+  if (cached) return cached;
+  return enqueue(async () => {
+    const again = cache.get(source);
+    if (again) return again;
+    const m = await mermaid();
+    const id = `litedd-mermaid-${++counter}`;
+    try {
+      const { svg } = await m.render(id, source);
+      cache.set(source, svg);
+      return svg;
+    } finally {
+      // Mermaid deja a veces su contenedor temporal en el documento.
+      document.getElementById(`d${id}`)?.remove();
+    }
+  });
+}
 
 function mermaid(): Promise<Mermaid> {
   if (!loader) {
@@ -26,23 +55,30 @@ function mermaid(): Promise<Mermaid> {
   return loader;
 }
 
-/** Separa el SVG en estilos y nodos, sin aplicar todavía ningún estilo en línea. */
+const INLINE_STYLE = 'data-litedd-style';
+
+/**
+ * Separa el SVG en estilos y nodos. Los estilos salen del texto antes de analizarlo: Chrome aplica
+ * la CSP también a los documentos de DOMParser y denunciaría cada atributo style.
+ */
 export function prepareSvg(svg: string): { css: string; root: SVGElement; inline: [Element, string][] } | null {
-  const clean = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['style'] });
+  let css = '';
+  const text = svg
+    .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_m, body: string) => {
+      css += `${body}\n`;
+      return '';
+    })
+    .replace(/\sstyle="([^"]*)"/gi, (_m, value: string) => ` ${INLINE_STYLE}="${value}"`);
+  const clean = DOMPurify.sanitize(text, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_ATTR: [INLINE_STYLE] });
   const doc = new DOMParser().parseFromString(clean, 'image/svg+xml');
   const root = doc.documentElement;
   if (!root || root.nodeName.toLowerCase() !== 'svg') return null;
-  let css = '';
-  root.querySelectorAll('style').forEach((s) => {
-    css += `${s.textContent ?? ''}\n`;
-    s.remove();
-  });
   const inline: [Element, string][] = [];
-  [root, ...root.querySelectorAll('[style]')].forEach((el) => {
-    const style = el.getAttribute('style');
-    if (style) {
+  [root, ...root.querySelectorAll(`[${INLINE_STYLE}]`)].forEach((el) => {
+    const style = el.getAttribute(INLINE_STYLE);
+    if (style !== null) {
       inline.push([el, style]);
-      el.removeAttribute('style');
+      el.removeAttribute(INLINE_STYLE);
     }
   });
   return { css, root: root as unknown as SVGElement, inline };
@@ -51,13 +87,13 @@ export function prepareSvg(svg: string): { css: string; root: SVGElement; inline
 /** Dibuja cada bloque .mermaid-block dentro de container. */
 export async function renderMermaidBlocks(container: HTMLElement): Promise<void> {
   const blocks = [...container.querySelectorAll<HTMLElement>('.mermaid-block')].filter((b) => !b.dataset.rendered);
-  if (blocks.length === 0) return;
-  const m = await mermaid();
   for (const block of blocks) {
     block.dataset.rendered = 'true';
     const source = block.querySelector('.mermaid-source')?.textContent ?? '';
     try {
-      const { svg } = await m.render(`litedd-mermaid-${++counter}`, source);
+      const svg = await svgFor(source);
+      // La vista pudo volver a pintarse mientras tanto.
+      if (!block.isConnected) continue;
       const prepared = prepareSvg(svg);
       if (!prepared) throw new Error('SVG no válido');
       const host = document.createElement('div');
@@ -81,9 +117,6 @@ export async function renderMermaidBlocks(container: HTMLElement): Promise<void>
       error.className = 'error-text';
       error.textContent = `No se pudo dibujar el diagrama: ${e instanceof Error ? e.message : String(e)}`;
       block.appendChild(error);
-    } finally {
-      // Mermaid deja a veces su contenedor temporal en el documento.
-      document.getElementById(`dlitedd-mermaid-${counter}`)?.remove();
     }
   }
 }
