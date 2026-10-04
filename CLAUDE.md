@@ -11,7 +11,11 @@ Instrucciones operativas para trabajar en LiteDD. La fuente de verdad es `specs/
 | Una prueba de backend | `./mvnw -Dskip.frontend test -Dtest=HttpServerTest` |
 | Pruebas de interfaz | `cd frontend && npm test` |
 | Arrancar en desarrollo | `scripts/dev.sh` (Git Bash en Windows) → interfaz en http://127.0.0.1:5173/ |
-| Arrancar con la interfaz empaquetada | `./mvnw verify` y después `./mvnw -Dskip.frontend compile exec:java -Dexec.mainClass=dev.litedd.Main` → http://127.0.0.1:47600/ |
+| Arrancar con la interfaz empaquetada | `./mvnw verify` y después `./mvnw -Dskip.frontend compile exec:java -Dexec.mainClass=dev.litedd.Main -Dexec.args=--no-window` → http://127.0.0.1:47600/ |
+| Imagen de aplicación | `./mvnw -Pdist package` → `target/dist/litedd` (en Windows, parar antes cualquier instancia que la use) |
+| Instalar / desinstalar (Ubuntu) | `scripts/install.sh` / `scripts/uninstall.sh` |
+| Apagar la instancia en marcha | `litedd --stop` |
+| Datos aislados para pruebas manuales | `XDG_DATA_HOME`, `XDG_CONFIG_HOME` y `XDG_STATE_HOME` apuntando a una carpeta temporal |
 | Pruebas contra MySQL real (Sprint 3+) | `./mvnw -Pit verify` con `LITEDD_IT_HOST`, `LITEDD_IT_PORT`, `LITEDD_IT_USER`, `LITEDD_IT_PASSWORD` |
 
 Plataforma: se desarrolla en Windows 10 y se ejecuta en Ubuntu 22.04 (ADR-0004). El build y las pruebas deben pasar en los dos.
