@@ -80,13 +80,18 @@ export function Tree() {
 
   const focusIndex = Math.max(0, rows.findIndex((r) => r.node.id === (focusId ?? openId)));
 
-  // Lleva el foco del teclado a la fila activa cuando cambia.
+  // Lleva el foco del teclado a la fila activa cuando cambia. Solo si el foco ya está en el árbol (o en
+  // ningún sitio): un cambio de filas, como el título nuevo tras un guardado, no se lo quita al editor.
   useEffect(() => {
     if (!focusId) return;
     const index = rows.findIndex((r) => r.node.id === focusId);
     if (index < 0) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !scroller.current?.contains(active)) return;
     virtualizer.scrollToIndex(index);
     requestAnimationFrame(() => {
+      const current = document.activeElement;
+      if (current && current !== document.body && !scroller.current?.contains(current)) return;
       scroller.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(focusId)}"]`)?.focus();
     });
   }, [focusId, rows, virtualizer]);

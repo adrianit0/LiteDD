@@ -21,6 +21,7 @@ vi.mock('./api', async (importOriginal) => {
       putSession: vi.fn(),
       connectionStatus: vi.fn(),
       analyze: vi.fn(),
+      tags: vi.fn(),
     },
   };
 });
@@ -108,6 +109,27 @@ describe('App', () => {
     // U-06: una nota SQL en consulta muestra su vista ejecutable; Q-40: sin ejecutar.
     expect(await screen.findByRole('button', { name: 'Ejecutar' })).toBeTruthy();
     expect(mocked.analyze).toHaveBeenCalledWith('SELECT 1', 'a');
+  });
+
+  it('N-40 el guardado que cambia el título en el árbol no quita el foco al campo que se está editando', async () => {
+    mocked.tree.mockResolvedValue([{ ...created, id: 'a', title: 'Libros' }]);
+    mocked.getNote.mockResolvedValue({ ...created, id: 'a', title: 'Libros', content: 'texto' });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const row = await screen.findByRole('treeitem', { name: /Libros/ });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    mocked.tags.mockResolvedValue([]);
+    const field = await screen.findByLabelText<HTMLInputElement>('Añadir etiqueta');
+    field.focus();
+    await act(async () => {
+      useTree.getState().applyNote({ id: 'a', title: 'Libros nuevos' });
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    expect(document.activeElement).toBe(field);
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {
