@@ -9,6 +9,7 @@ const node = (id: string, parentId: string | null, position: number, type: 'md' 
   position,
   type,
   title: id,
+  description: '',
   favorite: false,
   tags: [],
 });

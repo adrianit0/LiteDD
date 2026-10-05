@@ -9,7 +9,7 @@ interface TreeState {
   /** N-05 (raíz, al final) y N-04 (hija, al final). */
   create: (parentId: string | null, type: NoteType) => Promise<Note>;
   /** Refleja en el árbol los cambios de una nota guardada (título). */
-  applyNote: (note: Pick<Note, 'id' | 'title'>) => void;
+  applyNote: (note: Pick<Note, 'id' | 'title'> & { description?: string }) => void;
 }
 
 export const useTree = create<TreeState>((set, get) => ({
@@ -28,6 +28,10 @@ export const useTree = create<TreeState>((set, get) => ({
   },
 
   applyNote(note) {
-    set({ nodes: get().nodes.map((n) => (n.id === note.id ? { ...n, title: note.title } : n)) });
+    set({
+      nodes: get().nodes.map((n) =>
+        n.id === note.id ? { ...n, title: note.title, description: note.description ?? n.description } : n,
+      ),
+    });
   },
 }));

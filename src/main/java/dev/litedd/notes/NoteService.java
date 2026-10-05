@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 public final class NoteService {
 
     public static final String DEFAULT_TITLE = "Sin título";
+    /** N-07 */
+    public static final int DESCRIPTION_MAX = 200;
     private static final Set<String> TYPES = Set.of("md", "sql");
 
     /** N-44 */
@@ -65,7 +67,7 @@ public final class NoteService {
 
     public List<TreeNode> tree() {
         return store.read(s -> s.getMapper(NoteMapper.class).selectTree().stream()
-                .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.favorite(),
+                .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.favorite(),
                         r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR))))
                 .toList());
     }
@@ -87,7 +89,7 @@ public final class NoteService {
             }
             String now = now();
             NoteRow row = new NoteRow(UUID.randomUUID().toString(), parentId, m.countChildren(parentId), type,
-                    finalTitle, "", false, 1, now, now);
+                    finalTitle, "", "", false, 1, now, now);
             m.insert(row);
             return load(s, row.id());
         });
@@ -95,7 +97,7 @@ public final class NoteService {
 
     /** N-40, N-42: guarda título y contenido si la versión de partida sigue vigente. */
     public Note save(String id, String title, String content, long baseVersion) {
-        return save(id, title, content, baseVersion, false);
+        return save(id, title, null, content, baseVersion, false);
     }
 
     /**
@@ -103,17 +105,28 @@ public final class NoteService {
      * mucho una cada 5 minutos.
      */
     public Note save(String id, String title, String content, long baseVersion, boolean snapshot) {
+        return save(id, title, null, content, baseVersion, snapshot);
+    }
+
+    /** N-07: description null conserva la descripción actual. */
+    public Note save(String id, String title, String description, String content, long baseVersion, boolean snapshot) {
         if (title == null || title.isBlank()) {
             throw new ApiError(400, "invalid_title", "El título no puede estar vacío");
         }
         String finalContent = content == null ? "" : content;
+        String newDescription = description == null ? null : description.strip();
+        if (newDescription != null && newDescription.length() > DESCRIPTION_MAX) {
+            throw new ApiError(400, "invalid_description",
+                    "La descripción no puede tener más de " + DESCRIPTION_MAX + " caracteres");
+        }
         return store.write(s -> {
             Note current = load(s, id);
+            String finalDescription = newDescription == null ? current.description() : newDescription;
             // Sin cambios no se toca la nota: así un snapshot al salir de edición no altera la versión.
             boolean unchanged = current.version() == baseVersion && current.title().equals(title.strip())
-                    && current.content().equals(finalContent);
+                    && current.description().equals(finalDescription) && current.content().equals(finalContent);
             if (!unchanged) {
-                update(s, id, title.strip(), finalContent, baseVersion);
+                update(s, id, title.strip(), finalDescription, finalContent, baseVersion);
             }
             Note saved = unchanged ? current : load(s, id);
             recordVersion(s, saved, snapshot);
@@ -136,14 +149,16 @@ public final class NoteService {
             if (v == null) {
                 throw new ApiError(404, "not_found", "La versión no existe");
             }
-            recordVersion(s, load(s, id), true);
-            update(s, id, v.title(), v.content(), baseVersion);
+            Note current = load(s, id);
+            recordVersion(s, current, true);
+            // El historial guarda título y contenido; la descripción no cambia (ADR-0020).
+            update(s, id, v.title(), current.description(), v.content(), baseVersion);
             return load(s, id);
         });
     }
 
-    private void update(SqlSession s, String id, String title, String content, long baseVersion) {
-        int updated = s.getMapper(NoteMapper.class).updateContent(id, title, content, baseVersion, now());
+    private void update(SqlSession s, String id, String title, String description, String content, long baseVersion) {
+        int updated = s.getMapper(NoteMapper.class).updateContent(id, title, description, content, baseVersion, now());
         if (updated == 0) {
             Note current = load(s, id);
             throw new ApiError(409, "conflict", "La nota ha cambiado desde que se abrió. Recárgala o sobrescríbela.", current);
@@ -357,7 +372,7 @@ public final class NoteService {
         if (r == null) {
             throw notFound();
         }
-        return new Note(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.content(), r.favorite(),
+        return new Note(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.content(), r.favorite(),
                 r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id));
     }
 

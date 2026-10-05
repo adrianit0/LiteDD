@@ -7,6 +7,7 @@ import dev.litedd.notes.AttachmentsApi;
 import dev.litedd.notes.ContentMapper;
 import dev.litedd.notes.NoteMapper;
 import dev.litedd.notes.NoteMapper.NoteRow;
+import dev.litedd.notes.NoteService;
 import dev.litedd.store.Store;
 
 import java.io.IOException;
@@ -94,7 +95,7 @@ public final class Importer {
                 safeList(manifest.attachments()).forEach(a -> attachmentIds.put(a.id(), UUID.randomUUID().toString()));
                 rootId = UUID.randomUUID().toString();
                 String title = "Importado " + LocalDateTime.now(clock).format(ROOT_STAMP);
-                notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", false, 1, now, now));
+                notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", "", false, 1, now, now));
             }
 
             // Por niveles: una nota se inserta después de su madre (clave foránea).
@@ -114,7 +115,7 @@ public final class Importer {
                     if (mode == Mode.BRANCH) {
                         text = relink(text, noteIds, attachmentIds);
                     }
-                    notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), text, n.favorite(), 1,
+                    notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
                             orNow(n.createdAt(), now), orNow(n.updatedAt(), now)));
                     for (String tag : tags(n.tags())) {
                         content.insertTag(tag);
@@ -265,6 +266,15 @@ public final class Importer {
             }
         }
         return new ArrayList<>(clean.values());
+    }
+
+    /** N-07: los archivos anteriores no traen descripción. */
+    private static String description(Manifest.Note n) {
+        if (n.description() == null) {
+            return "";
+        }
+        String d = n.description().strip();
+        return d.length() > NoteService.DESCRIPTION_MAX ? d.substring(0, NoteService.DESCRIPTION_MAX) : d;
     }
 
     private static String orNow(String iso, String now) {

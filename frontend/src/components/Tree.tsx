@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/core';
 import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
-import { useActiveTab } from '../stores/tabsStore';
+import { useActiveTab, useTabs } from '../stores/tabsStore';
 import { visibleRows, type VisibleRow } from '../tree';
 import {
   createHoverExpander,
@@ -31,6 +31,8 @@ import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
 
 const ROW_HEIGHT = 28;
+/** N-07: fila con la descripción debajo del título. */
+const ROW_HEIGHT_DESCRIBED = 42;
 const INDENT = 16;
 const ARROW_MOVES: Record<string, KeyboardMove> = {
   ArrowUp: 'up',
@@ -74,11 +76,16 @@ export function Tree() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scroller.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: (index) => (rows[index]?.node.description ? ROW_HEIGHT_DESCRIBED : ROW_HEIGHT),
     overscan: 12,
   });
 
   const focusIndex = Math.max(0, rows.findIndex((r) => r.node.id === (focusId ?? openId)));
+
+  // N-07: la altura de una fila depende de si tiene descripción; se recalcula al cambiar las filas.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [rows, virtualizer]);
 
   // Lleva el foco del teclado a la fila activa cuando cambia. Solo si el foco ya está en el árbol (o en
   // ningún sitio): un cambio de filas, como el título nuevo tras un guardado, no se lo quita al editor.
@@ -246,6 +253,12 @@ export function Tree() {
                   setFocusId(id);
                   void openNote(id, newTab);
                 }}
+                onPin={() => {
+                  // P-14: doble clic en el árbol abre la nota en una pestaña fija.
+                  const tabs = useTabs.getState();
+                  const open = tabs.tabs.find((t) => t.noteId === id);
+                  if (open) tabs.pin(open.id);
+                }}
                 onContextMenu={(x, y) => {
                   setFocusId(id);
                   setMenu({ id, x, y });
@@ -283,12 +296,13 @@ interface RowProps {
   dropZone: DropZone | 'invalid' | null;
   renaming: boolean;
   onOpen: (newTab: boolean) => void;
+  onPin: () => void;
   onContextMenu: (x: number, y: number) => void;
   onKeyDown: (e: KeyboardEvent) => void;
   onRenamed: (value: string | null) => void;
 }
 
-function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, onContextMenu, onKeyDown, onRenamed }: RowProps) {
+function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, onPin, onContextMenu, onKeyDown, onRenamed }: RowProps) {
   const { node } = row;
   const drag = useDraggable({ id: node.id, disabled: renaming });
   const dropRef = useDroppable({ id: node.id });
@@ -301,6 +315,7 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
   if (active) classes.push('active');
   if (drag.isDragging) classes.push('dragging');
   if (dropZone) classes.push(`drop-${dropZone}`);
+  if (node.description) classes.push('described');
 
   return (
     <div
@@ -320,6 +335,7 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
       // Con top y no con transform: dnd-kit mide las zonas de soltado sin transformaciones.
       style={{ top: start, paddingLeft: 6 + row.depth * INDENT }}
       onClick={() => onOpen(false)}
+      onDoubleClick={onPin}
       // N-03, P-03: clic central abre siempre una pestaña nueva.
       onMouseDown={(e) => {
         if (e.button === 1) e.preventDefault();
@@ -350,7 +366,19 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
         {row.expanded ? '▾' : '▸'}
       </button>
       <TypeIcon type={node.type} />
-      {renaming ? <RenameInput initial={node.title} onDone={onRenamed} /> : <span className="tree-title">{node.title}</span>}
+      {renaming ? (
+        <RenameInput initial={node.title} onDone={onRenamed} />
+      ) : (
+        <span className="tree-text">
+          <span className="tree-title">{node.title}</span>
+          {/* N-07: una línea, cortada con «…» donde acabe el panel; el texto completo en el título emergente. */}
+          {node.description && (
+            <span className="tree-description" title={node.description}>
+              {node.description}
+            </span>
+          )}
+        </span>
+      )}
       {node.favorite && !renaming && (
         <span className="favorite-mark" role="img" aria-label="Favorita">
           ★

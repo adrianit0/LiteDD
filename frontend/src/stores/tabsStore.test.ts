@@ -28,6 +28,7 @@ const note = (over: Partial<Note> = {}): Note => ({
   position: 0,
   type: 'md',
   title: 'Guía',
+  description: '',
   content: 'hola',
   favorite: false,
   tags: [],
@@ -384,5 +385,70 @@ describe('guardado manual (N-46)', () => {
     await s().savePending();
     expect(mocked.saveNote).toHaveBeenCalledTimes(1);
     expect(mocked.saveNote).toHaveBeenCalledWith('n2', 'Nota n2', 'pedido', 1);
+  });
+});
+
+describe('descripción (N-07)', () => {
+  it('N-07 editar la descripción deja cambios pendientes y se guarda solo si cambió', async () => {
+    serverSaves();
+    s().edit(active().id, { description: 'Resumen' });
+    expect(isDirty(active())).toBe(true);
+    await s().saveNow(active().id);
+    expect(mocked.saveNote).toHaveBeenLastCalledWith('n1', 'Guía', 'hola', 1, { description: 'Resumen' });
+  });
+});
+
+describe('pestañas provisionales (P-14)', () => {
+  beforeEach(async () => {
+    useTabs.setState({ tabs: [], activeId: null });
+    await s().open('n1', { preview: true });
+  });
+
+  it('P-14 abrir otra nota sustituye a la pestaña provisional en su sitio', async () => {
+    await s().open('fija', { newTab: true });
+    await s().open('n2', { preview: true });
+    expect(s().tabs.map((t) => [t.noteId, t.preview])).toEqual([
+      ['n2', true],
+      ['fija', false],
+    ]);
+    expect(active().noteId).toBe('n2');
+  });
+
+  it('P-14 modificar, «Editar», «Actualizar» o fijarla hacen que permanezca', async () => {
+    serverSaves();
+    s().edit(active().id, { content: 'cambio' });
+    expect(active().preview).toBe(false);
+
+    await s().open('n2', { preview: true });
+    await s().toggleMode(active().id);
+    expect(active().preview).toBe(false);
+
+    await s().open('n3', { preview: true });
+    await s().reload(active().id);
+    expect(active().preview).toBe(false);
+
+    await s().open('n4', { preview: true });
+    s().pin(active().id);
+    expect(active().preview).toBe(false);
+
+    await s().open('n5', { preview: true });
+    expect(s().tabs.map((t) => t.noteId)).toEqual(['n1', 'n2', 'n3', 'n4', 'n5']);
+  });
+
+  it('P-02 P-14 una nota ya abierta se activa y la provisional sigue', async () => {
+    await s().open('n2', { newTab: true });
+    await s().open('n1', { preview: true });
+    expect(s().tabs).toHaveLength(2);
+    expect(active()).toMatchObject({ noteId: 'n1', preview: true });
+  });
+
+  it('P-09 P-14 la sesión guarda y restaura si la pestaña es provisional', async () => {
+    expect(sessionSnapshot(s().tabs, s().activeId)[0].state).toMatchObject({ preview: true });
+    mocked.getSession.mockResolvedValue({
+      tabs: [{ id: 't1', noteId: 'n1', mode: 'view', active: true, state: { scroll: 0, sql: null, preview: true } }],
+    });
+    useTabs.setState({ tabs: [], activeId: null, restored: false });
+    await s().restore();
+    expect(active().preview).toBe(true);
   });
 });

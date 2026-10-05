@@ -19,3 +19,4 @@ Cada nota abierta ocupa una pestaña independiente, y la misma nota puede estar 
 | P-11 | Menú contextual de pestaña: cerrar, cerrar las demás, cerrar las de la derecha y duplicar. |
 | P-12 | Sin pestañas abiertas se muestra una pantalla vacía con accesos a nueva nota y búsqueda. |
 | P-13 | Renombrar una nota actualiza el título en todas sus pestañas y en el árbol. |
+| P-14 | Un clic sobre una nota que no está abierta (árbol, búsqueda o enlace) la abre en una pestaña provisional, con el título en cursiva. Abrir otra nota así sustituye a la provisional en su sitio. La pestaña pasa a ser fija al modificar la nota, al pulsar «Editar» o «Actualizar», al ejecutar la consulta, con doble clic sobre la pestaña o con doble clic sobre la nota en el árbol. El clic central (P-03) y las notas nuevas abren pestañas fijas (ADR-0020). |

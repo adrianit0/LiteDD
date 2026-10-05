@@ -3,7 +3,7 @@ import { attachmentIds, imageProblem, linkCandidates, noteLink } from './markdow
 import { renderMarkdown } from './markdown/render';
 import type { TreeNode } from './types';
 
-const node = (id: string, title: string): TreeNode => ({ id, parentId: null, position: 0, type: 'md', title, favorite: false, tags: [] });
+const node = (id: string, title: string): TreeNode => ({ id, parentId: null, position: 0, type: 'md', title, description: '', favorite: false, tags: [] });
 
 function dom(html: string): HTMLElement {
   const div = document.createElement('div');

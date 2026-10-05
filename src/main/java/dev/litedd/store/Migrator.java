@@ -24,7 +24,8 @@ import java.util.stream.Stream;
 public final class Migrator {
 
     /** Orden de aplicación; user_version es el número de migraciones aplicadas. */
-    public static final List<String> MIGRATIONS = List.of("db/migration/V001__initial.sql");
+    public static final List<String> MIGRATIONS = List.of("db/migration/V001__initial.sql",
+            "db/migration/V002__note_description.sql");
 
     static final String BACKUP_SUFFIX = "-premigracion.db";
     private static final int BACKUPS_KEPT = 2;

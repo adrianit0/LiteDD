@@ -34,6 +34,7 @@ const note: Note = {
   position: 0,
   type: 'sql',
   title: 'Libros',
+  description: '',
   content: 'SELECT …',
   favorite: false,
   tags: [],
@@ -162,6 +163,14 @@ describe('formulario de variables', () => {
     expect(mocked.execute).toHaveBeenCalledWith(
       expect.objectContaining({ noteId: 'q1', version: 3, values: { title: 'mar' }, page: 1, pageSize: 20, sort: null }),
     );
+  });
+
+  it('P-14 ejecutar fija la pestaña provisional', async () => {
+    mocked.execute.mockResolvedValue(result());
+    useTabs.setState({ tabs: useTabs.getState().tabs.map((t) => ({ ...t, preview: true })) });
+    await mount(analysis({ variables: [] }));
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    expect(useTabs.getState().tabs[0].preview).toBe(false);
   });
 
   it('Q-23 «Limpiar» vacía todos los campos', async () => {

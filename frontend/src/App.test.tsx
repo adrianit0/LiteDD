@@ -37,6 +37,7 @@ const created: Note = {
   position: 0,
   type: 'md',
   title: 'Sin título',
+  description: '',
   content: '',
   favorite: false,
   tags: [],
@@ -166,6 +167,69 @@ describe('App', () => {
       await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros' } });
     });
     expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
+  });
+
+  it('N-07 P-14 el árbol muestra la descripción; un clic abre en cursiva y el doble clic la fija', async () => {
+    mocked.tree.mockResolvedValue([
+      { ...created, id: 'a', title: 'Libros', description: 'Préstamos y devoluciones' },
+      { ...created, id: 'b', title: 'Autores', position: 1 },
+    ]);
+    mocked.getNote.mockImplementation(async (id) =>
+      id === 'a' ? { ...created, id: 'a', title: 'Libros', description: 'Préstamos y devoluciones' } : { ...created, id, title: 'Autores' },
+    );
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const row = await screen.findByRole('treeitem', { name: /Libros/ });
+    expect(row.querySelector('.tree-description')?.textContent).toBe('Préstamos y devoluciones');
+    expect(row.classList.contains('described')).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    expect(screen.getByRole('tab', { name: /Libros/ }).classList.contains('preview')).toBe(true);
+    // N-07: en consulta la descripción se ve bajo el título.
+    expect(screen.getByText('Préstamos y devoluciones', { selector: '.note-description' })).toBeTruthy();
+
+    // Otra nota sustituye a la provisional.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('treeitem', { name: /Autores/ }));
+    });
+    expect(screen.queryByRole('tab', { name: /Libros/ })).toBeNull();
+    const tab = screen.getByRole('tab', { name: /Autores/ });
+    expect(tab.classList.contains('preview')).toBe(true);
+    fireEvent.doubleClick(tab);
+    expect(screen.getByRole('tab', { name: /Autores/ }).classList.contains('preview')).toBe(false);
+
+    // Doble clic en el árbol fija la pestaña de esa nota.
+    const libros = screen.getByRole('treeitem', { name: /Libros/ });
+    await act(async () => {
+      fireEvent.click(libros);
+    });
+    fireEvent.doubleClick(libros);
+    expect(screen.getByRole('tab', { name: /Libros/ }).classList.contains('preview')).toBe(false);
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+  });
+
+  it('N-07 en edición la descripción va entre el título y las etiquetas y se puede cambiar', async () => {
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros', description: 'Antes' } });
+    });
+    await act(async () => {
+      await useTabs.getState().toggleMode(useTabs.getState().activeId!);
+    });
+    const input = screen.getByLabelText<HTMLInputElement>('Descripción');
+    expect(input.value).toBe('Antes');
+    expect(input.maxLength).toBe(200);
+    const title = screen.getByLabelText('Título');
+    const tags = screen.getByLabelText('Añadir etiqueta');
+    expect(title.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(input.compareDocumentPosition(tags) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'Después' } });
+    expect(useTabs.getState().tabs[0].description).toBe('Después');
+    expect(useTabs.getState().tabs[0].status).toBe('pending');
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {

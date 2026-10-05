@@ -10,10 +10,13 @@ function fail(e: unknown, fallback: string) {
   useUi.getState().notify(e instanceof Error ? e.message : fallback, 'error');
 }
 
-/** N-03, P-02, P-03: clic abre o activa; clic central abre siempre una pestaña nueva. */
+/**
+ * N-03, P-02, P-03, P-14: clic abre o activa, en una pestaña provisional; clic central abre siempre una
+ * pestaña nueva y fija.
+ */
 export async function openNote(id: string, newTab = false): Promise<void> {
   try {
-    await useTabs.getState().open(id, { newTab });
+    await useTabs.getState().open(id, { newTab, preview: !newTab });
   } catch (e) {
     fail(e, 'No se pudo abrir la nota');
   }

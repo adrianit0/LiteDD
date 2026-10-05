@@ -159,6 +159,36 @@ class ContentFeaturesTest {
     }
 
     @Test
+    void n07_n70_search_also_finds_the_description() {
+        Note n = md("Clientes", "SELECT 1");
+        notes.save(n.id(), "Clientes", "Altas del último trimestre", "SELECT 1", notes.get(n.id()).version(), false);
+        md("Otra", "nada que ver");
+        assertThat(titles(SearchQuery.text("trimestre"))).containsExactly("Clientes");
+        assertThat(titles(SearchQuery.text("ULTIMO"))).containsExactly("Clientes");
+    }
+
+    @Test
+    void n07_description_is_saved_shown_in_the_tree_and_kept_when_omitted() {
+        Note n = md("Clientes", "uno");
+        Note saved = notes.save(n.id(), "Clientes", "  Consultas de altas  ", "uno", n.version(), false);
+        assertThat(saved.description()).isEqualTo("Consultas de altas");
+        assertThat(saved.version()).isEqualTo(n.version() + 1);
+        assertThat(notes.tree()).extracting(TreeNode::description).containsExactly("Consultas de altas");
+
+        // Un guardado sin descripción (renombrar desde el árbol) la conserva.
+        Note renamed = notes.save(n.id(), "Clientes 2", "uno", saved.version());
+        assertThat(renamed.description()).isEqualTo("Consultas de altas");
+
+        // Restaurar una versión no cambia la descripción (ADR-0020).
+        NoteVersion first = notes.versions(n.id()).getLast();
+        assertThat(notes.restoreVersion(n.id(), first.id(), renamed.version()).description()).isEqualTo("Consultas de altas");
+
+        assertThatThrownBy(() -> notes.save(n.id(), "Clientes", "x".repeat(201), "uno", notes.get(n.id()).version(), false))
+                .isInstanceOf(ApiError.class).hasMessageContaining("200");
+        assertThat(notes.save(n.id(), "Clientes", "", "uno", notes.get(n.id()).version(), false).description()).isEmpty();
+    }
+
+    @Test
     void n71_hit_has_a_highlighted_fragment() {
         md("Préstamos", "Primera línea. Consultas sobre la tabla loan y sus fechas.");
         NoteService.SearchHit hit = notes.search(SearchQuery.text("tabla")).getFirst();

@@ -14,6 +14,7 @@ Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol
 | N-04 | Menú contextual: nueva nota Markdown hija, nueva nota SQL hija, renombrar, favorita, etiquetas, mover a…, eliminar. |
 | N-05 | Los botones «Nueva nota Markdown» y «Nueva nota SQL» del panel crean la nota en la raíz, al final. |
 | N-06 | Una nota nueva se llama «Sin título» y se abre en modo edición con el título seleccionado. |
+| N-07 | Cada nota tiene una descripción opcional de hasta 200 caracteres. En edición se escribe entre el título y las etiquetas; en consulta se ve bajo el título. En el árbol aparece bajo el nombre, en gris y más pequeña, en una línea que se corta con «…» donde acaba el panel (ADR-0020). |
 
 ## Modos
 
@@ -79,7 +80,7 @@ Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol
 
 | ID | Requisito |
 |---|---|
-| N-70 | El cuadro de búsqueda del panel busca en título y contenido, por prefijo, sin distinguir mayúsculas ni acentos. Responde mientras se escribe. |
+| N-70 | El cuadro de búsqueda del panel busca en título, descripción y contenido, por prefijo, sin distinguir mayúsculas ni acentos. Responde mientras se escribe. |
 | N-71 | Con búsqueda o filtro activo, el panel muestra una lista plana con título, ruta y fragmento resaltado. Al limpiar, vuelve el árbol. |
 | N-72 | Filtros combinables: tipo, etiquetas, solo favoritas y fecha de modificación (hoy, 7 días, 30 días). |
 | N-73 | Ctrl+K abre una búsqueda rápida por título; Intro abre la nota. |

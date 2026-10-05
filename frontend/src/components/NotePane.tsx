@@ -27,6 +27,8 @@ export const STATUS_TEXT: Record<SaveStatus, string> = {
 };
 
 const SCROLL_DELAY = 200;
+/** N-07: igual que en el servidor. */
+export const DESCRIPTION_MAX = 200;
 
 /** Contenido de una pestaña: cabecera (U-05) y nota en consulta o edición (N-10 a N-13). */
 export function NotePane({ tab }: { tab: Tab }) {
@@ -127,6 +129,26 @@ export function NotePane({ tab }: { tab: Tab }) {
             )}
             <FavoriteButton note={note} />
           </div>
+          {/* N-07: descripción opcional entre el título y las etiquetas. */}
+          {mode === 'edit' ? (
+            <input
+              className="note-description-input"
+              aria-label="Descripción"
+              placeholder="Descripción (opcional)"
+              maxLength={DESCRIPTION_MAX}
+              value={tab.description}
+              onChange={(e) => store.edit(tab.id, { description: e.target.value })}
+              onBlur={saveOnBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  editor.current?.focus();
+                }
+              }}
+            />
+          ) : (
+            tab.description && <p className="note-description muted">{tab.description}</p>
+          )}
           <TagEditor note={note} />
         </div>
         <div className="note-actions">

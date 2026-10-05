@@ -15,6 +15,7 @@ CREATE TABLE note (
   type        TEXT NOT NULL CHECK (type IN ('md','sql')),
   title       TEXT NOT NULL,
   content     TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',      -- N-07, migración V002
   favorite    INTEGER NOT NULL DEFAULT 0,
   version     INTEGER NOT NULL DEFAULT 1,    -- concurrencia optimista
   created_at  TEXT NOT NULL,                 -- ISO-8601 UTC

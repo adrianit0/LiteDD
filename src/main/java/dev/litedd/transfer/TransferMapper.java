@@ -8,7 +8,7 @@ import java.util.List;
 /** Lecturas para exportar y borrados para «Reemplazar todo» (X-02 a X-05). */
 public interface TransferMapper {
 
-    record ExportNote(String id, String parentId, int position, String type, String title, String content,
+    record ExportNote(String id, String parentId, int position, String type, String title, String description, String content,
                       boolean favorite, String createdAt, String updatedAt) {
     }
 
@@ -19,7 +19,7 @@ public interface TransferMapper {
     }
 
     @Select("""
-            SELECT id, parent_id, position, type, title, content, favorite, created_at, updated_at
+            SELECT id, parent_id, position, type, title, description, content, favorite, created_at, updated_at
             FROM note WHERE deleted_at IS NULL ORDER BY parent_id, position""")
     List<ExportNote> selectActiveNotes();
 

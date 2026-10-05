@@ -22,6 +22,8 @@ export interface Tab {
   /** null mientras se carga. */
   note: Note | null;
   title: string;
+  /** N-07 */
+  description: string;
   content: string;
   status: SaveStatus;
   /** N-42: versión guardada por otro cuando hay conflicto. */
@@ -30,6 +32,8 @@ export interface Tab {
   focusTitle: boolean;
   /** P-06: valores, tamaño de página, orden y página de una nota SQL; null hasta que se analiza. */
   sql: SqlTabState | null;
+  /** P-14: pestaña provisional (en cursiva) que se sustituye al abrir otra nota. */
+  preview: boolean;
 }
 
 /** U-10: el tamaño de página inicial sale de los ajustes. */
@@ -44,6 +48,8 @@ interface OpenOptions {
   focusTitle?: boolean;
   /** Nota ya cargada, para no pedirla otra vez. */
   note?: Note;
+  /** P-14: abrir como pestaña provisional. */
+  preview?: boolean;
 }
 
 interface TabsState {
@@ -61,7 +67,9 @@ interface TabsState {
   reorder: (fromId: string, toId: string) => void;
   /** N-54: cierra las pestañas de una nota eliminada, sin guardar. */
   dropNote: (noteId: string) => void;
-  edit: (id: string, changes: { title?: string; content?: string }) => void;
+  edit: (id: string, changes: { title?: string; description?: string; content?: string }) => void;
+  /** P-14: la pestaña provisional pasa a ser fija. */
+  pin: (id: string) => void;
   saveNow: (id: string) => Promise<void>;
   /** N-45: sustituye la nota de una pestaña por la versión restaurada. */
   applyRestored: (id: string, note: Note) => void;
@@ -79,7 +87,15 @@ interface TabsState {
 }
 
 export function isDirty(tab: Tab): boolean {
-  return tab.note !== null && (tab.title !== tab.note.title || tab.content !== tab.note.content);
+  return (
+    tab.note !== null &&
+    (tab.title !== tab.note.title || tab.description !== tab.note.description || tab.content !== tab.note.content)
+  );
+}
+
+/** N-07: la descripción solo viaja si cambió; si falta, el servidor conserva la actual. */
+function descriptionChange(tab: Tab): { description: string } | undefined {
+  return tab.note && tab.description !== tab.note.description ? { description: tab.description } : undefined;
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -89,7 +105,7 @@ function newTabId(): string {
   return crypto.randomUUID();
 }
 
-function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = false): Tab {
+function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = false, preview = false): Tab {
   return {
     id: newTabId(),
     noteId,
@@ -97,11 +113,13 @@ function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = fa
     scroll: 0,
     note,
     title: note?.title ?? '',
+    description: note?.description ?? '',
     content: note?.content ?? '',
     status: 'saved',
     conflict: null,
     focusTitle,
     sql: null,
+    preview,
   };
 }
 
@@ -123,7 +141,7 @@ export const useTabs = create<TabsState>((set, get) => {
   const load = async (id: string, noteId: string) => {
     try {
       const note = await api.getNote(noteId);
-      if (tab(id)) patch(id, { note, title: note.title, content: note.content });
+      if (tab(id)) patch(id, { note, title: note.title, description: note.description, content: note.content });
     } catch (e) {
       remove(id);
       useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo abrir la nota', 'error');
@@ -152,7 +170,8 @@ export const useTabs = create<TabsState>((set, get) => {
     patch(id, { status: 'saving' });
     try {
       const title = t.title.trim() === '' ? t.note.title : t.title;
-      const saved = await api.saveNote(t.noteId, title, t.content, t.note.version);
+      const change = descriptionChange(t);
+      const saved = await api.saveNote(t.noteId, title, t.content, t.note.version, ...(change ? [change] : []));
       const current = tab(id);
       if (!current) return;
       patch(id, { note: saved });
@@ -243,6 +262,7 @@ export const useTabs = create<TabsState>((set, get) => {
           id: s.id,
           scroll: s.state?.scroll ?? 0,
           sql: s.state?.sql ?? null,
+          preview: s.state?.preview === true,
         }));
         // Lo que se haya abierto mientras se restauraba se conserva detrás.
         const opened = get().tabs;
@@ -266,8 +286,15 @@ export const useTabs = create<TabsState>((set, get) => {
         }
       }
       // N-10: las notas existentes se abren en consulta.
-      const t = blankTab(noteId, options.mode ?? 'view', options.note ?? null, options.focusTitle);
-      set({ tabs: [...get().tabs, t], activeId: t.id });
+      const t = blankTab(noteId, options.mode ?? 'view', options.note ?? null, options.focusTitle, options.preview === true);
+      // P-14: una pestaña provisional sustituye a la provisional anterior, en su sitio.
+      const previous = options.preview ? get().tabs.find((x) => x.preview) : undefined;
+      if (previous) {
+        clearTimeout(timers.get(previous.id));
+        set({ tabs: get().tabs.map((x) => (x.id === previous.id ? t : x)), activeId: t.id });
+      } else {
+        set({ tabs: [...get().tabs, t], activeId: t.id });
+      }
       if (!options.note) await load(t.id, noteId);
     },
 
@@ -306,7 +333,13 @@ export const useTabs = create<TabsState>((set, get) => {
       await get().saveNow(id);
       const source = tab(id);
       if (!source) return;
-      const copy: Tab = { ...source, id: newTabId(), status: isDirty(source) ? 'pending' : source.status, focusTitle: false };
+      const copy: Tab = {
+        ...source,
+        id: newTabId(),
+        status: isDirty(source) ? 'pending' : source.status,
+        focusTitle: false,
+        preview: false,
+      };
       const tabs = get().tabs;
       const index = tabs.findIndex((t) => t.id === id);
       set({ tabs: [...tabs.slice(0, index + 1), copy, ...tabs.slice(index + 1)], activeId: copy.id });
@@ -329,7 +362,8 @@ export const useTabs = create<TabsState>((set, get) => {
     edit(id, changes) {
       const t = tab(id);
       if (!t || !t.note || t.status === 'conflict') return;
-      patch(id, { ...changes, status: 'pending', focusTitle: false });
+      // P-14: modificar la nota fija la pestaña.
+      patch(id, { ...changes, status: 'pending', focusTitle: false, preview: false });
       if (autosaveEnabled()) schedule(id);
     },
 
@@ -351,7 +385,13 @@ export const useTabs = create<TabsState>((set, get) => {
       for (const t of get().tabs.filter((x) => x.noteId === noteId)) await get().saveNow(t.id);
     },
 
+    pin(id) {
+      if (tab(id)?.preview) patch(id, { preview: false });
+    },
+
     async toggleMode(id) {
+      // P-14: «Editar» fija la pestaña.
+      get().pin(id);
       // N-12, N-40: al cambiar de modo se guarda.
       await get().saveNow(id);
       const t = tab(id);
@@ -370,7 +410,7 @@ export const useTabs = create<TabsState>((set, get) => {
 
     applyRestored(id, note) {
       clearTimeout(timers.get(id));
-      patch(id, { note, title: note.title, content: note.content, status: 'saved', conflict: null });
+      patch(id, { note, title: note.title, description: note.description, content: note.content, status: 'saved', conflict: null });
       applyRename(note, id);
     },
 
@@ -386,8 +426,10 @@ export const useTabs = create<TabsState>((set, get) => {
       const t = tab(id);
       if (!t) return;
       clearTimeout(timers.get(id));
+      // P-14: «Actualizar» fija la pestaña.
+      get().pin(id);
       const note = await api.getNote(t.noteId);
-      patch(id, { note, title: note.title, content: note.content, status: 'saved', conflict: null });
+      patch(id, { note, title: note.title, description: note.description, content: note.content, status: 'saved', conflict: null });
       useTree.getState().applyNote(note);
     },
 
@@ -396,7 +438,14 @@ export const useTabs = create<TabsState>((set, get) => {
       const theirs = t?.conflict;
       if (!t || !theirs) return;
       if (choice === 'reload') {
-        patch(id, { note: theirs, title: theirs.title, content: theirs.content, status: 'saved', conflict: null });
+        patch(id, {
+          note: theirs,
+          title: theirs.title,
+          description: theirs.description,
+          content: theirs.content,
+          status: 'saved',
+          conflict: null,
+        });
         applyRename(theirs, id);
         return;
       }
@@ -428,7 +477,7 @@ export const useTabs = create<TabsState>((set, get) => {
       for (const t of get().tabs) {
         if (!t.note || !isDirty(t) || t.status === 'conflict') continue;
         const title = t.title.trim() === '' ? t.note.title : t.title;
-        void api.saveNote(t.noteId, title, t.content, t.note.version, { keepalive: true }).catch(() => {});
+        void api.saveNote(t.noteId, title, t.content, t.note.version, { keepalive: true, ...descriptionChange(t) }).catch(() => {});
       }
     },
   };
@@ -446,7 +495,7 @@ export function sessionSnapshot(tabs: Tab[], activeId: string | null): SessionTa
     noteId: t.noteId,
     mode: t.mode,
     active: t.id === activeId,
-    state: { scroll: t.scroll, sql: t.sql },
+    state: { scroll: t.scroll, sql: t.sql, preview: t.preview },
   }));
 }
 

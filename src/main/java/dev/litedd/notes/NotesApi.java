@@ -13,7 +13,7 @@ public final class NotesApi implements ApiRoutes {
     record CreateRequest(String parentId, String type, String title) {
     }
 
-    record SaveRequest(String title, String content, Long baseVersion, Boolean snapshot) {
+    record SaveRequest(String title, String description, String content, Long baseVersion, Boolean snapshot) {
     }
 
     record RestoreRequest(Long baseVersion) {
@@ -50,7 +50,7 @@ public final class NotesApi implements ApiRoutes {
             if (req.baseVersion() == null) {
                 throw new ApiError(400, "missing_base_version", "Falta la versión de partida (baseVersion)");
             }
-            ctx.json(notes.save(ctx.pathParam("id"), req.title(), req.content(), req.baseVersion(),
+            ctx.json(notes.save(ctx.pathParam("id"), req.title(), req.description(), req.content(), req.baseVersion(),
                     Boolean.TRUE.equals(req.snapshot())));
         });
 

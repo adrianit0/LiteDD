@@ -40,6 +40,8 @@ interface RequestOptions {
 interface SaveOptions extends RequestOptions {
   /** N-44: al salir del modo edición se guarda una versión. */
   snapshot?: boolean;
+  /** N-07: si falta, el servidor conserva la descripción actual. */
+  description?: string;
 }
 
 export interface NoteVersion {
@@ -173,7 +175,8 @@ export interface SessionTab {
   noteId: string;
   mode: Mode;
   active: boolean;
-  state: { scroll?: number; sql?: SqlTabState | null } | null;
+  /** P-14: preview = pestaña provisional, en cursiva. */
+  state: { scroll?: number; sql?: SqlTabState | null; preview?: boolean } | null;
 }
 
 export interface ExecuteRequest {
@@ -226,7 +229,13 @@ export const api = {
     request<Note>(
       'PUT',
       `/api/notes/${encodeURIComponent(id)}`,
-      options?.snapshot ? { title, content, baseVersion, snapshot: true } : { title, content, baseVersion },
+      {
+        title,
+        content,
+        baseVersion,
+        ...(options?.description !== undefined ? { description: options.description } : {}),
+        ...(options?.snapshot ? { snapshot: true } : {}),
+      },
       options?.keepalive ? { keepalive: true } : {},
     ),
   versions: (id: string) => request<NoteVersion[]>('GET', `/api/notes/${encodeURIComponent(id)}/versions`),

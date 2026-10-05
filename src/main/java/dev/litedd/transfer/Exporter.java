@@ -69,7 +69,7 @@ public final class Exporter {
 
         List<Manifest.Note> manifestNotes = new ArrayList<>();
         for (ExportNote n : data.notes()) {
-            manifestNotes.add(new Manifest.Note(n.id(), n.parentId(), n.position(), n.type(), n.title(),
+            manifestNotes.add(new Manifest.Note(n.id(), n.parentId(), n.position(), n.type(), n.title(), n.description(),
                     tags.getOrDefault(n.id(), List.of()), n.favorite(), n.createdAt(), n.updatedAt(), files.get(n.id())));
         }
         List<Manifest.Attachment> manifestAttachments = new ArrayList<>();

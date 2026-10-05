@@ -46,6 +46,7 @@ const node = (id: string, title: string, parentId: string | null = null): TreeNo
   position: 0,
   type: 'md',
   title,
+  description: '',
   favorite: false,
   tags: [],
 });

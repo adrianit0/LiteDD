@@ -32,6 +32,7 @@ const node = (id: string, parentId: string | null, position: number): TreeNode =
   position,
   type: 'md',
   title: id,
+  description: '',
   favorite: false,
   tags: [],
 });

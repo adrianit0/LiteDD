@@ -47,6 +47,25 @@ class MigratorTest {
     }
 
     @Test
+    void n07_v002_adds_an_empty_description_and_keeps_existing_notes_searchable() throws Exception {
+        try (Connection c = connect()) {
+            new Migrator(Migrator.MIGRATIONS.subList(0, 1), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('n1', NULL, 0, 'md', 'Préstamos', 'tabla loan', '2026-10-04T08:00:00Z', '2026-10-04T08:00:00Z')""");
+            }
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+            assertThat(scalar(c, "SELECT description FROM note WHERE id = 'n1'")).isEmpty();
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"prestamos\"'")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("UPDATE note SET description = 'resumen trimestral' WHERE id = 'n1'");
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"trimestral\"'")).isEqualTo("1");
+        }
+    }
+
+    @Test
     void d02_keeps_only_two_premigration_backups() throws Exception {
         Files.createDirectories(dir);
         for (String name : List.of("litedd-20260101-000000-premigracion.db", "litedd-20260102-000000-premigracion.db",

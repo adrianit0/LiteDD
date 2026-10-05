@@ -101,7 +101,7 @@ class TransferTest {
                 .map(TreeNode::id)
                 .map(notes::get)
                 .map(n -> String.join("|", n.id(), String.valueOf(n.parentId()), String.valueOf(n.position()), n.type(),
-                        n.title(), n.content(), String.join(",", n.tags()), String.valueOf(n.favorite())))
+                        n.title(), n.description(), n.content(), String.join(",", n.tags()), String.valueOf(n.favorite())))
                 .sorted()
                 .toList();
     }
@@ -183,6 +183,8 @@ class TransferTest {
         note(null, "md", "B", "[enlace](litedd://note/" + a1.id() + ")");
         notes.setTags(a.id(), List.of("demo", "libros"));
         notes.setFavorite(a1.id(), true);
+        // N-07: la descripción viaja en el manifiesto.
+        notes.save(a.id(), "A", "Resumen de A", "contenido A", notes.get(a.id()).version(), false);
         List<String> before = snapshot();
         byte[] zip = exporter.export();
 

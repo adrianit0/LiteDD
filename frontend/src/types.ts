@@ -7,6 +7,8 @@ export interface TreeNode {
   position: number;
   type: NoteType;
   title: string;
+  /** N-07: descripción opcional; vacía si no hay. */
+  description: string;
   favorite: boolean;
   tags: string[];
 }

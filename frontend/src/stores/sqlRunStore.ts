@@ -67,6 +67,8 @@ export const useSqlRuns = create<SqlRunState>((set, get) => {
 
   /** A-04: se ejecuta el contenido guardado; si hay cambios, se guardan antes. */
   const request = async (tabId: string, page: number, executionId: string): Promise<ExecuteRequest | null> => {
+    // P-14: ejecutar fija la pestaña.
+    useTabs.getState().pin(tabId);
     await useTabs.getState().saveNow(tabId);
     const tab = tabOf(tabId);
     if (!tab?.note) return null;

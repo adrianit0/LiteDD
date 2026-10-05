@@ -92,7 +92,7 @@ function TabItem({ tab, active, onContextMenu }: { tab: Tab; active: boolean; on
     <div
       ref={setNodeRef}
       data-tab-id={tab.id}
-      className={`tab${active ? ' active' : ''}${isDragging ? ' dragging' : ''}`}
+      className={`tab${active ? ' active' : ''}${tab.preview ? ' preview' : ''}${isDragging ? ' dragging' : ''}`}
       style={{
         transform: transform ? `translate3d(${Math.round(transform.x)}px, 0, 0)` : undefined,
         transition,
@@ -104,6 +104,8 @@ function TabItem({ tab, active, onContextMenu }: { tab: Tab; active: boolean; on
       tabIndex={active ? 0 : -1}
       title={label}
       onClick={() => store.activate(tab.id)}
+      // P-14: doble clic fija la pestaña provisional.
+      onDoubleClick={() => store.pin(tab.id)}
       // P-04: clic central cierra la pestaña.
       onMouseDown={(e) => {
         if (e.button === 1) e.preventDefault();
