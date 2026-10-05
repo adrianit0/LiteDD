@@ -159,6 +159,7 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 | Q-80 | Resaltado de SQL (dialecto MySQL), de etiquetas MyBatis y de tokens `#{}` y `${}`. |
 | Q-81 | Barra con inserciones: `#{}`, `<if>`, `<where>`, `<choose>`, `<foreach>`, `<trim>` y `<![CDATA[ ]]>`. |
 | Q-82 | Bajo el editor se listan en vivo las variables detectadas con su tipo y los errores de análisis. |
+| Q-83 | Intro mantiene la sangría de la línea actual: la línea nueva empieza con los mismos tabuladores o espacios que hay antes del cursor. |
 
 ## Errores
 

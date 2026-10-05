@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { EditorState, type Extension } from '@codemirror/state';
-import { EditorView, keymap, placeholder, type KeyBinding } from '@codemirror/view';
+import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import { EditorView, keymap, placeholder, type Command, type KeyBinding } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
@@ -88,6 +88,32 @@ export function markdownBindings(format: (action: FormatAction) => void): KeyBin
 }
 
 /**
+ * Q-83: Intro copia la sangría (tabuladores o espacios, tal cual) que hay antes del cursor en la línea
+ * actual. La sangría por gramática del SQL la pondría a cero.
+ */
+export const newlineKeepIndent: Command = (view) => {
+  const { state } = view;
+  if (state.readOnly) return false;
+  view.dispatch(
+    state.update(
+      state.changeByRange((range) => {
+        const line = state.doc.lineAt(range.from);
+        const indent = /^[ \t]*/.exec(line.text.slice(0, range.from - line.from))![0];
+        const insert = '\n' + indent;
+        return { changes: { from: range.from, to: range.to, insert }, range: EditorSelection.cursor(range.from + insert.length) };
+      }),
+      { scrollIntoView: true, userEvent: 'input' },
+    ),
+  );
+  return true;
+};
+
+/** Q-83: Intro mantiene la sangría y el tabulador sangra. */
+export function sqlBindings(): KeyBinding[] {
+  return [{ key: 'Enter', run: newlineKeepIndent }, indentWithTab];
+}
+
+/**
  * Editor de texto plano (N-11): Markdown con barra de formato y atajos (N-20 a N-22), o SQL de MySQL con
  * resaltado de MyBatis (Q-80).
  */
@@ -139,7 +165,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
         keymap.of(markdownBindings(format)),
       );
     } else {
-      extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of([indentWithTab]));
+      extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of(sqlBindings()));
     }
     extensions.push(keymap.of([...defaultKeymap, ...historyKeymap]));
 
