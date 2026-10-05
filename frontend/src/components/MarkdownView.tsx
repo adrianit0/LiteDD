@@ -4,6 +4,18 @@ import { attachmentIds } from '../markdown/links';
 import { useAttachments } from '../markdown/attachments';
 import { renderMermaidBlocks } from '../markdown/mermaid';
 import { useTree } from '../stores/treeStore';
+import { useUi } from '../stores/uiStore';
+
+/** N-34: copia el código de un bloque, sin los números de línea. */
+async function copyCode(button: Element) {
+  const code = button.closest('.code-block')?.querySelector('pre.hljs code')?.textContent ?? '';
+  try {
+    await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+    useUi.getState().notify('Código copiado');
+  } catch {
+    useUi.getState().notify('No se pudo copiar al portapapeles', 'error');
+  }
+}
 
 interface Props {
   content: string;
@@ -37,6 +49,11 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     // N-31: las casillas de tareas no se pueden marcar en consulta.
     if (target instanceof HTMLInputElement && target.type === 'checkbox') {
       e.preventDefault();
+      return;
+    }
+    const copy = target.closest('.code-copy');
+    if (copy) {
+      void copyCode(copy);
       return;
     }
     const a = target.closest('a');

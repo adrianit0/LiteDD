@@ -41,6 +41,7 @@ Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol
 | N-31 | Las casillas de tareas son de solo lectura en consulta. |
 | N-32 | Los enlaces externos se abren en el navegador por defecto. Los enlaces a notas abren la nota; con clic central, en pestaña nueva. |
 | N-33 | Una tabla copiada desde un resultado SQL y pegada en una nota se ve como tabla. |
+| N-34 | En consulta, cada bloque de código tiene una cabecera con el lenguaje a la izquierda y un botón «Copiar» a la derecha, que copia el código sin los números de línea. Los números de línea se ven en el borde izquierdo y no se seleccionan con el texto. |
 
 ## Guardado e historial
 

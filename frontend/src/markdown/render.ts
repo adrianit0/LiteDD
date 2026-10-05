@@ -20,28 +20,40 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: false,
-  highlight(code: string, lang: string): string {
-    const language = lang && hljs.getLanguage(lang) ? lang : null;
-    const body = language
-      ? hljs.highlight(code, { language, ignoreIllegals: true }).value
-      : escapeHtml(code);
-    return `<pre class="hljs"><code>${body}</code></pre>`;
-  },
 });
+
+/**
+ * N-30, N-34: bloque de código resaltado con cabecera (lenguaje y «Copiar») y números de línea en una
+ * columna aparte, para que al seleccionar el código no se copien.
+ */
+function codeBlock(code: string, lang: string): string {
+  const language = lang && hljs.getLanguage(lang) ? lang : null;
+  const body = language ? hljs.highlight(code, { language, ignoreIllegals: true }).value : escapeHtml(code);
+  const lines = code.replace(/\n$/, '').split('\n').length;
+  const numbers = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+  return (
+    '<div class="code-block">' +
+    `<div class="code-header"><span class="code-lang">${escapeHtml(lang)}</span>` +
+    '<button type="button" class="code-copy">Copiar</button></div>' +
+    `<div class="code-body"><pre class="code-gutter" aria-hidden="true">${numbers}</pre>` +
+    `<pre class="hljs"><code>${body}</code></pre></div></div>\n`
+  );
+}
 
 // markdown-it solo admite ciertos esquemas; litedd:// es interno y se resuelve abajo.
 const defaultValidateLink = md.validateLink.bind(md);
 md.validateLink = (url: string) => url.startsWith(NOTE_LINK) || url.startsWith(ATTACHMENT_PREFIX) || defaultValidateLink(url);
 
 // N-30: los bloques mermaid quedan como texto para dibujarlos después, con carga diferida.
-const defaultFence = md.renderer.rules.fence!;
-md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+md.renderer.rules.fence = (tokens, idx) => {
   const t = tokens[idx];
-  if (t.info.trim().toLowerCase() === 'mermaid') {
+  const lang = t.info.trim().split(/\s+/)[0] ?? '';
+  if (lang.toLowerCase() === 'mermaid') {
     return `<div class="mermaid-block"><pre class="mermaid-source">${escapeHtml(t.content)}</pre></div>\n`;
   }
-  return defaultFence(tokens, idx, options, env, self);
+  return codeBlock(t.content, lang);
 };
+md.renderer.rules.code_block = (tokens, idx) => codeBlock(tokens[idx].content, '');
 
 const TASK = /^\[([ xX])\] /;
 

@@ -460,6 +460,66 @@ input {
   overflow: auto;
 }
 
+/* N-34: cabecera con «Copiar» y números de línea */
+.markdown .code-block {
+  margin: 1em 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.code-copy {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.code-body {
+  display: flex;
+}
+
+/* Las dos columnas comparten letra y altura de línea para que los números casen con las líneas. */
+.markdown .code-body pre {
+  margin: 0;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdown .code-body pre code {
+  font: inherit;
+}
+
+.markdown .code-gutter {
+  flex: none;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+.markdown .code-block pre.hljs {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  overflow-x: auto;
+}
+
 .markdown pre code {
   padding: 0;
   background: transparent;

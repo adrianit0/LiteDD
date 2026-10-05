@@ -228,6 +228,26 @@ describe('enlaces entre notas', () => {
   });
 });
 
+describe('bloques de código', () => {
+  it('N-34 «Copiar» copia el código del bloque, sin números de línea', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    useUi.setState({ notices: [] });
+    render(<MarkdownView content={'Texto\n\n```sql\nSELECT 1\nFROM dual\n```\n\n```\notro\n```'} onOpenNote={() => {}} />);
+    const buttons = screen.getAllByRole('button', { name: 'Copiar' });
+    expect(buttons).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(buttons[0]);
+    });
+    expect(writeText).toHaveBeenCalledWith('SELECT 1\nFROM dual');
+    expect(useUi.getState().notices.at(-1)?.text).toBe('Código copiado');
+    await act(async () => {
+      fireEvent.click(buttons[1]);
+    });
+    expect(writeText).toHaveBeenLastCalledWith('otro');
+  });
+});
+
 describe('imágenes', () => {
   it('N-92 pegar una imagen la sube e inserta la referencia', async () => {
     const upload = vi.fn().mockResolvedValue('3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90');

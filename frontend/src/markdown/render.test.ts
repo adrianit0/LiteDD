@@ -26,6 +26,32 @@ describe('renderMarkdown', () => {
     expect(el.querySelector('pre b')).toBeNull();
   });
 
+  it('N-34 cabecera con el lenguaje y «Copiar», y números de línea aparte', () => {
+    const el = dom('```sql\nSELECT id\nFROM book\nWHERE id = 1\n```');
+    const block = el.querySelector('.code-block')!;
+    expect(block.querySelector('.code-header .code-lang')!.textContent).toBe('sql');
+    const copy = block.querySelector<HTMLButtonElement>('.code-header button.code-copy')!;
+    expect(copy.textContent).toBe('Copiar');
+    expect(copy.type).toBe('button');
+    const gutter = block.querySelector('.code-body pre.code-gutter')!;
+    expect(gutter.textContent).toBe('1\n2\n3');
+    expect(gutter.getAttribute('aria-hidden')).toBe('true');
+    expect(block.querySelector('.code-body pre.hljs code')!.textContent).toBe('SELECT id\nFROM book\nWHERE id = 1\n');
+  });
+
+  it('N-34 sin lenguaje la cabecera no muestra nombre; el lenguaje se escapa', () => {
+    expect(dom('```\nuno\n```').querySelector('.code-lang')!.textContent).toBe('');
+    expect(dom('    sangrado\n').querySelector('.code-block .code-gutter')!.textContent).toBe('1');
+    const el = dom('```<img>\nx\n```');
+    expect(el.querySelector('img')).toBeNull();
+  });
+
+  it('N-30 los bloques mermaid no llevan cabecera', () => {
+    const el = dom('```mermaid\ngraph TD; A-->B\n```');
+    expect(el.querySelector('.mermaid-block')).toBeTruthy();
+    expect(el.querySelector('.code-block')).toBeNull();
+  });
+
   it('N-30 N-31 listas de tareas con casillas de solo lectura', () => {
     const el = dom('- [ ] pendiente\n- [x] hecha\n- normal');
     const boxes = el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
