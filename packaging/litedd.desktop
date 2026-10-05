@@ -8,3 +8,4 @@ Icon=@ICON@
 Terminal=false
 Categories=Development;Database;
 StartupNotify=false
+StartupWMClass=litedd

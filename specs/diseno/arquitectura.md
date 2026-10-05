@@ -107,7 +107,7 @@ Las versiones no fijadas en la tabla se fijan en el Sprint 0 con la última esta
 
 1. Al lanzar, se comprueba si ya hay una instancia en el puerto configurado (por defecto 47600) con `GET /api/health`. Si la hay, solo se abre la ventana.
 2. Si no la hay: se abre SQLite, se aplican migraciones, se hace la copia diaria si toca y se arranca el servidor.
-3. Se abre la ventana con `google-chrome --app=http://127.0.0.1:47600/`. Si Chrome no está, se usa `xdg-open`.
+3. Se abre la ventana con `google-chrome --app=http://127.0.0.1:47600/`, con un perfil propio y la clase de ventana `litedd`, para que tenga su propio icono en la barra de aplicaciones (ADR-0019). Si Chrome no está, se usa `xdg-open`.
 4. La interfaz mantiene abierto un canal SSE (`/api/events`) como señal de presencia.
 5. Al cerrar la ventana, la interfaz envía un aviso de despedida. Si a los 15 segundos no queda ninguna ventana conectada, el proceso se apaga de forma ordenada.
 6. Si la presencia se pierde sin despedida (pestaña suspendida, fallo del navegador), el proceso sigue vivo. Un ajuste opcional permite apagarlo tras N minutos; por defecto está desactivado.

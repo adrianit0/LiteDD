@@ -177,6 +177,16 @@ class LifecycleTest {
     }
 
     @Test
+    void lifecycle_chrome_window_has_its_own_profile_and_class() throws Exception {
+        java.util.List<String> command = Desktop.chromeCommand("http://127.0.0.1:47600/", dir.resolve("chrome"));
+        assertThat(command).startsWith("google-chrome", "--app=http://127.0.0.1:47600/")
+                .contains("--class=litedd", "--user-data-dir=" + dir.resolve("chrome"), "--ozone-platform=x11");
+        // El lanzador se asocia a la ventana por su clase.
+        String desktopFile = Files.readString(Path.of("packaging/litedd.desktop"));
+        assertThat(desktopFile).contains("StartupWMClass=" + Desktop.WINDOW_CLASS);
+    }
+
+    @Test
     void lifecycle_command_line_options() {
         assertThat(CommandLine.parse(new String[0])).isEqualTo(new Options(false, null, false));
         assertThat(CommandLine.parse(new String[]{"--no-window", "--port", "47700"})).isEqualTo(new Options(true, 47700, false));
@@ -201,7 +211,7 @@ class LifecycleTest {
                 {"config":{"defaultPageSize":null,"rowCap":5000,"queryTimeoutSeconds":60,"port":47700,"autoShutdownMinutes":30},
                  "ui.sidebarWidth":300}""");
         assertThat(ok.statusCode()).isEqualTo(200);
-        assertThat(settings.get()).isEqualTo(new AppConfig(null, 5000, 60, 47700, 30));
+        assertThat(settings.get()).isEqualTo(new AppConfig(null, 5000, 60, 47700, 30, true));
         assertThat(new AppSettings(dir.resolve("config/config.json")).get()).isEqualTo(settings.get());
         assertThat(get("/api/settings").get("ui.sidebarWidth").asInt()).isEqualTo(300);
 
@@ -213,6 +223,22 @@ class LifecycleTest {
             assertThat(put("/api/settings", "{\"config\":" + bad + "}").statusCode()).as(bad).isEqualTo(400);
         }
         assertThat(settings.get().rowCap()).isEqualTo(5000);
+    }
+
+    @Test
+    void n46_autosave_defaults_to_true_and_can_be_turned_off() throws Exception {
+        assertThat(get("/api/settings").get("config").get("autosave").asBoolean()).isTrue();
+        // Un config.json sin el campo, de una versión anterior, sigue con guardado automático.
+        Files.createDirectories(dir.resolve("config"));
+        Files.writeString(dir.resolve("config/config.json"),
+                "{\"defaultPageSize\":20,\"rowCap\":10000,\"queryTimeoutSeconds\":30,\"port\":47600}");
+        assertThat(new AppSettings(dir.resolve("config/config.json")).get().autosave()).isTrue();
+
+        assertThat(put("/api/settings", """
+                {"config":{"defaultPageSize":20,"rowCap":10000,"queryTimeoutSeconds":30,"port":47600,"autoShutdownMinutes":null,
+                 "autosave":false}}""").statusCode()).isEqualTo(200);
+        assertThat(new AppSettings(dir.resolve("config/config.json")).get().autosave()).isFalse();
+        assertThat(get("/api/settings").get("config").get("autosave").asBoolean()).isFalse();
     }
 
     // --- X-01, X-05, X-10 ---
