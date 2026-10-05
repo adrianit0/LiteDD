@@ -63,7 +63,7 @@ describe('U-10 ajustes', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
     });
-    const expected = { defaultPageSize: 50, rowCap: 5000, queryTimeoutSeconds: 30, port: 47600, autoShutdownMinutes: 30 };
+    const expected = { defaultPageSize: 50, rowCap: 5000, queryTimeoutSeconds: 30, port: 47600, autoShutdownMinutes: 30, autosave: true };
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expected });
     expect(useUi.getState().config).toEqual(expected);
     expect(useUi.getState().settingsOpen).toBe(false);
@@ -79,6 +79,18 @@ describe('U-10 ajustes', () => {
     });
     expect(useUi.getState().config.defaultPageSize).toBeNull();
     expect(useUi.getState().notices.at(-1)?.text).toContain('al reiniciar');
+  });
+
+  it('N-46 la casilla «Guardado automático» permite pasar al guardado manual', async () => {
+    render(<SettingsDialog />);
+    const box = screen.getByLabelText<HTMLInputElement>('Guardado automático');
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    expect(mocked.putSettings).toHaveBeenCalledWith({ config: expect.objectContaining({ autosave: false }) });
+    expect(useUi.getState().config.autosave).toBe(false);
   });
 
   it('U-10 da acceso a «Conexión»', () => {

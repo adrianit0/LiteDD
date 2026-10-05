@@ -45,12 +45,13 @@ Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol
 
 | ID | Requisito |
 |---|---|
-| N-40 | Guardado automático 1,5 s después de la última pulsación, al perder el foco, al cambiar de modo y al cerrar la pestaña. Un indicador muestra «Guardando…» o «Guardado». |
+| N-40 | Guardado automático 1,5 s después de la última pulsación, al perder el foco, al cambiar de modo y al cerrar la pestaña. Un indicador muestra «Guardando…» o «Guardado». Guardar no quita el foco al campo que se está editando. |
 | N-41 | Ctrl+S guarda de inmediato. |
 | N-42 | Cada guardado envía la versión de partida. Si la nota cambió entretanto, el servidor responde 409 y la interfaz pregunta: «Recargar» o «Sobrescribir». |
 | N-43 | El botón «Actualizar» de la pestaña recarga la nota desde el disco. |
 | N-44 | Historial: se guarda una versión al salir del modo edición y, como máximo, una cada 5 minutos durante una edición larga. Se conservan las 20 últimas por nota. |
 | N-45 | El diálogo «Historial» lista las versiones con fecha y vista previa, y permite restaurar una. |
+| N-46 | En «Ajustes» se puede desactivar el guardado automático. Con el guardado manual, la pestaña muestra un botón «Guardar» y se guarda con él, con Ctrl+S, al cambiar de modo y antes de acciones que necesitan la nota guardada (ejecutar, restaurar una versión, mover a la papelera). Cerrar una pestaña con cambios pregunta «Guardar», «Salir sin guardar» o «Cancelar». Cerrar la ventana con cambios muestra el aviso del navegador (ADR-0019). |
 
 ## Eliminar y papelera
 

@@ -14,11 +14,18 @@ import java.util.List;
  * @param queryTimeoutSeconds S-05, Q-43: tiempo máximo por consulta
  * @param port                puerto local; se aplica al siguiente arranque
  * @param autoShutdownMinutes apagado tras N minutos sin ventanas y sin despedida; null desactivado
+ * @param autosave            N-40: guardado automático; false, guardado manual (N-46). Si falta, true
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes) {
+public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
+                        Boolean autosave) {
 
-    public static final AppConfig DEFAULT = new AppConfig(20, 10_000, 30, 47600, null);
+    public AppConfig {
+        // Un config.json anterior a N-46 no trae el campo.
+        autosave = autosave == null || autosave;
+    }
+
+    public static final AppConfig DEFAULT = new AppConfig(20, 10_000, 30, 47600, null, true);
 
     private static final List<Integer> PAGE_SIZES = Arrays.asList(10, 20, 50, 100, 200, 500, null);
 

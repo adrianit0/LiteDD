@@ -105,6 +105,11 @@ function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = fa
   };
 }
 
+/** N-40, N-46: con el guardado manual no hay guardado al escribir, al perder el foco ni al cerrar la ventana. */
+export function autosaveEnabled(): boolean {
+  return useUi.getState().config.autosave;
+}
+
 export const useTabs = create<TabsState>((set, get) => {
   const tab = (id: string) => get().tabs.find((t) => t.id === id);
   const patch = (id: string, changes: Partial<Tab>) =>
@@ -154,7 +159,7 @@ export const useTabs = create<TabsState>((set, get) => {
       applyRename(saved, id);
       if (isDirty(tab(id)!)) {
         patch(id, { status: 'pending' });
-        schedule(id);
+        if (autosaveEnabled()) schedule(id);
       } else {
         patch(id, { status: 'saved' });
       }
@@ -184,8 +189,29 @@ export const useTabs = create<TabsState>((set, get) => {
     });
   };
 
-  /** P-08: antes de cerrar se guarda; si no se puede, se pregunta. */
+  /**
+   * P-08: antes de cerrar se guarda; si no se puede, se pregunta. N-46: con el guardado manual se
+   * pregunta antes si guardar, salir sin guardar o cancelar.
+   */
   const closeSafely = async (id: string): Promise<boolean> => {
+    const pending = tab(id);
+    if (pending && !autosaveEnabled() && isDirty(pending) && pending.status !== 'conflict') {
+      const choice = await ask({
+        title: 'Cambios sin guardar',
+        body: `«${pending.title || pending.note?.title}» tiene cambios sin guardar. ¿Quieres guardarlos antes de cerrar?`,
+        options: [
+          { value: 'save', label: 'Guardar', primary: true },
+          { value: 'discard', label: 'Salir sin guardar' },
+          { value: 'cancel', label: 'Cancelar' },
+        ],
+        cancelValue: 'cancel',
+      });
+      if (choice === 'cancel') return false;
+      if (choice === 'discard') {
+        remove(id);
+        return true;
+      }
+    }
     await get().saveNow(id);
     const t = tab(id);
     if (t && isDirty(t)) {
@@ -304,7 +330,7 @@ export const useTabs = create<TabsState>((set, get) => {
       const t = tab(id);
       if (!t || !t.note || t.status === 'conflict') return;
       patch(id, { ...changes, status: 'pending', focusTitle: false });
-      schedule(id);
+      if (autosaveEnabled()) schedule(id);
     },
 
     async saveNow(id) {
@@ -390,11 +416,15 @@ export const useTabs = create<TabsState>((set, get) => {
 
     async savePending() {
       for (const t of get().tabs) {
-        if (t.note && isDirty(t) && t.status !== 'conflict') await get().saveNow(t.id);
+        if (!t.note || !isDirty(t) || t.status === 'conflict') continue;
+        // N-46: con el guardado manual solo se repiten los guardados que se pidieron y fallaron.
+        if (autosaveEnabled() || t.status === 'error') await get().saveNow(t.id);
       }
     },
 
     flushOnUnload() {
+      // N-46: con el guardado manual, al cerrar la ventana avisa el navegador (beforeunload).
+      if (!autosaveEnabled()) return;
       for (const t of get().tabs) {
         if (!t.note || !isDirty(t) || t.status === 'conflict') continue;
         const title = t.title.trim() === '' ? t.note.title : t.title;

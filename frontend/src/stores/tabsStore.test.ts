@@ -1,7 +1,8 @@
-import { api, ApiError } from '../api';
+import { api, ApiError, DEFAULT_CONFIG } from '../api';
 import { AUTOSAVE_DELAY, isDirty, sessionSnapshot, useTabs } from './tabsStore';
 import { useTree } from './treeStore';
 import { useDialogs } from './dialogStore';
+import { useUi } from './uiStore';
 import type { Note } from '../types';
 
 vi.mock('../api', async (importOriginal) => {
@@ -297,5 +298,91 @@ describe('guardado por pestaña', () => {
     s().flushOnUnload();
     expect(mocked.saveNote).toHaveBeenCalledWith('n1', 'Guía', 'último n1', 1, { keepalive: true });
     expect(mocked.saveNote).toHaveBeenCalledWith('n2', 'Nota n2', 'último n2', 1, { keepalive: true });
+  });
+});
+
+describe('guardado manual (N-46)', () => {
+  beforeEach(() => {
+    useUi.setState({ config: { ...DEFAULT_CONFIG, autosave: false } });
+  });
+
+  afterEach(() => {
+    useUi.setState({ config: DEFAULT_CONFIG });
+  });
+
+  it('N-46 sin guardado automático, escribir no guarda; Ctrl+S (saveNow) sí', async () => {
+    serverSaves();
+    s().edit(active().id, { content: 'manual' });
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY * 3);
+    expect(mocked.saveNote).not.toHaveBeenCalled();
+    expect(active().status).toBe('pending');
+    await s().saveNow(active().id);
+    expect(mocked.saveNote).toHaveBeenCalledWith('n1', 'Guía', 'manual', 1);
+    expect(active().status).toBe('saved');
+  });
+
+  it('N-46 cambiar de modo guarda también con el guardado manual', async () => {
+    serverSaves();
+    await s().toggleMode(active().id);
+    s().edit(active().id, { content: 'al cambiar' });
+    await s().toggleMode(active().id);
+    expect(mocked.saveNote).toHaveBeenCalledWith('n1', 'Guía', 'al cambiar', 1);
+  });
+
+  it('N-46 cerrar con cambios pregunta: «Cancelar» la deja abierta', async () => {
+    s().edit(active().id, { content: 'pendiente' });
+    const closing = s().close(active().id);
+    await vi.waitFor(() => expect(useDialogs.getState().current?.title).toBe('Cambios sin guardar'));
+    expect(useDialogs.getState().current?.options.map((o) => o.label)).toEqual(['Guardar', 'Salir sin guardar', 'Cancelar']);
+    useDialogs.getState().answer('cancel');
+    await closing;
+    expect(s().tabs).toHaveLength(1);
+    expect(active().content).toBe('pendiente');
+    expect(mocked.saveNote).not.toHaveBeenCalled();
+  });
+
+  it('N-46 «Salir sin guardar» cierra sin guardar', async () => {
+    s().edit(active().id, { content: 'pendiente' });
+    const closing = s().close(active().id);
+    await vi.waitFor(() => expect(useDialogs.getState().current).not.toBeNull());
+    useDialogs.getState().answer('discard');
+    await closing;
+    expect(s().tabs).toHaveLength(0);
+    expect(mocked.saveNote).not.toHaveBeenCalled();
+  });
+
+  it('N-46 «Guardar» guarda y cierra', async () => {
+    serverSaves();
+    s().edit(active().id, { content: 'pendiente' });
+    const closing = s().close(active().id);
+    await vi.waitFor(() => expect(useDialogs.getState().current).not.toBeNull());
+    useDialogs.getState().answer('save');
+    await closing;
+    expect(mocked.saveNote).toHaveBeenCalledWith('n1', 'Guía', 'pendiente', 1);
+    expect(s().tabs).toHaveLength(0);
+  });
+
+  it('N-46 cerrar sin cambios no pregunta', async () => {
+    await s().close(active().id);
+    expect(useDialogs.getState().current).toBeNull();
+    expect(s().tabs).toHaveLength(0);
+  });
+
+  it('N-46 al cerrar la ventana no se guarda nada; al recuperar el contacto solo se repiten los guardados fallidos', async () => {
+    serverSaves();
+    await s().open('n2');
+    const [first, second] = s().tabs;
+    s().edit(first.id, { content: 'sin pedir' });
+    s().flushOnUnload();
+    expect(mocked.saveNote).not.toHaveBeenCalled();
+
+    mocked.saveNote.mockRejectedValueOnce(new ApiError(0, 'network', 'sin contacto', null));
+    s().edit(second.id, { content: 'pedido' });
+    await s().saveNow(second.id);
+    expect(s().tabs[1].status).toBe('error');
+    mocked.saveNote.mockClear();
+    await s().savePending();
+    expect(mocked.saveNote).toHaveBeenCalledTimes(1);
+    expect(mocked.saveNote).toHaveBeenCalledWith('n2', 'Nota n2', 'pedido', 1);
   });
 });

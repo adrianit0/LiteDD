@@ -32,6 +32,11 @@ const SCROLL_DELAY = 200;
 export function NotePane({ tab }: { tab: Tab }) {
   const { note, title, content, mode, status, conflict, focusTitle } = tab;
   const store = useTabs.getState();
+  const autosave = useUi((s) => s.config.autosave);
+  // N-40: perder el foco guarda; con el guardado manual (N-46), no.
+  const saveOnBlur = () => {
+    if (autosave) void store.saveNow(tab.id);
+  };
   const nodes = useTree((s) => s.nodes);
   const [confirmReload, setConfirmReload] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -109,7 +114,7 @@ export function NotePane({ tab }: { tab: Tab }) {
                 aria-label="Título"
                 value={title}
                 onChange={(e) => store.edit(tab.id, { title: e.target.value })}
-                onBlur={() => void store.saveNow(tab.id)}
+                onBlur={saveOnBlur}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -131,6 +136,19 @@ export function NotePane({ tab }: { tab: Tab }) {
           <span className="muted note-date" title="Última modificación">
             {formatDateTime(note.updatedAt)}
           </span>
+          {!autosave && (
+            // N-46
+            <button
+              type="button"
+              className="primary"
+              disabled={!isDirty(tab) || status === 'saving' || status === 'conflict'}
+              onClick={() => void store.saveNow(tab.id)}
+              aria-keyshortcuts="Control+S"
+              title="Ctrl+S"
+            >
+              Guardar
+            </button>
+          )}
           <button type="button" onClick={() => void store.toggleMode(tab.id)} aria-keyshortcuts="Control+E" title="Ctrl+E">
             {mode === 'edit' ? 'Ver' : 'Editar'}
           </button>
@@ -162,7 +180,7 @@ export function NotePane({ tab }: { tab: Tab }) {
             initialScroll={tab.scroll}
             onScroll={rememberScroll}
             onChange={(value) => store.edit(tab.id, { content: value })}
-            onBlur={() => void store.saveNow(tab.id)}
+            onBlur={saveOnBlur}
             onReady={(controls) => {
               editor.current = controls;
             }}

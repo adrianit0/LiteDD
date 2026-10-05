@@ -14,6 +14,7 @@ interface ConfigForm {
   queryTimeoutSeconds: string;
   port: string;
   autoShutdownMinutes: string;
+  autosave: boolean;
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -23,6 +24,7 @@ function toForm(c: AppConfig): ConfigForm {
     queryTimeoutSeconds: String(c.queryTimeoutSeconds),
     port: String(c.port),
     autoShutdownMinutes: c.autoShutdownMinutes === null ? '' : String(c.autoShutdownMinutes),
+    autosave: c.autosave,
   };
 }
 
@@ -33,6 +35,7 @@ function fromForm(f: ConfigForm): AppConfig {
     queryTimeoutSeconds: Number(f.queryTimeoutSeconds),
     port: Number(f.port),
     autoShutdownMinutes: f.autoShutdownMinutes.trim() === '' ? null : Number(f.autoShutdownMinutes),
+    autosave: f.autosave,
   };
 }
 
@@ -194,7 +197,15 @@ export function SettingsDialog() {
               value={form.autoShutdownMinutes}
               onChange={(e) => update({ autoShutdownMinutes: e.target.value })}
             />
+
+            <label htmlFor="st-autosave">Guardado automático</label>
+            <span>
+              <input id="st-autosave" type="checkbox" checked={form.autosave} onChange={(e) => update({ autosave: e.target.checked })} />
+            </span>
           </div>
+          <p className="muted settings-hint">
+            Sin guardado automático, las notas se guardan con «Guardar», Ctrl+S o al cambiar de modo, y al cerrar con cambios se pregunta.
+          </p>
           <p className="muted settings-hint">El puerto nuevo se aplica al reiniciar LiteDD.</p>
           <div className="dialog-actions">
             <button type="submit" className="primary" disabled={busy}>

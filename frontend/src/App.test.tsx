@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { App } from './App';
-import { api, ApiError } from './api';
+import { api, ApiError, DEFAULT_CONFIG } from './api';
 import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
@@ -130,6 +130,42 @@ describe('App', () => {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
     expect(document.activeElement).toBe(field);
+  });
+
+  it('N-46 con el guardado manual hay botón «Guardar» y cerrar la ventana con cambios pide confirmación', async () => {
+    mocked.saveNote.mockImplementation(async (id, title, content, baseVersion) => ({ ...created, id, title, content, version: baseVersion + 1 }));
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros' } });
+    });
+    // Después de la carga inicial, que aplica los ajustes del servidor.
+    act(() => useUi.setState({ config: { ...DEFAULT_CONFIG, autosave: false } }));
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Guardar' });
+    expect(save.disabled).toBe(true);
+
+    const clean = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    act(() => useTabs.getState().edit(useTabs.getState().activeId!, { content: 'cambio' }));
+    expect(save.disabled).toBe(false);
+    const dirty = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(save);
+    });
+    expect(mocked.saveNote).toHaveBeenCalledWith('a', 'Libros', 'cambio', 1);
+    useUi.setState({ config: DEFAULT_CONFIG });
+  });
+
+  it('N-40 con el guardado automático no hay botón «Guardar»', async () => {
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('a', { note: { ...created, id: 'a', title: 'Libros' } });
+    });
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull();
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {

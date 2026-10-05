@@ -93,7 +93,7 @@ public final class SqlApi implements ApiRoutes {
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
                   int timeoutSeconds, int rowCap) {
         this(notes, variableValues, engine, gateway,
-                () -> new AppConfig(AppConfig.DEFAULT.defaultPageSize(), rowCap, timeoutSeconds, AppConfig.DEFAULT.port(), null));
+                () -> new AppConfig(AppConfig.DEFAULT.defaultPageSize(), rowCap, timeoutSeconds, AppConfig.DEFAULT.port(), null, true));
     }
 
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,

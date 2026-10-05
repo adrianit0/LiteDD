@@ -122,6 +122,8 @@ export interface AppConfig {
   queryTimeoutSeconds: number;
   port: number;
   autoShutdownMinutes: number | null;
+  /** N-40, N-46: false = guardado manual. */
+  autosave: boolean;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -130,6 +132,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   queryTimeoutSeconds: 30,
   port: 47600,
   autoShutdownMinutes: null,
+  autosave: true,
 };
 
 export type ImportMode = 'replace' | 'branch';

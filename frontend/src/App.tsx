@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { matchShortcut } from './keyboard';
 import { createAndOpen } from './actions';
-import { useActiveTab, useTabs } from './stores/tabsStore';
+import { autosaveEnabled, isDirty, useActiveTab, useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import { Sidebar } from './components/Sidebar';
@@ -84,11 +84,19 @@ export function App() {
     };
     // N-40: al cerrar la ventana se guarda lo pendiente.
     const onPageHide = () => useTabs.getState().flushOnUnload();
+    // N-46: con el guardado manual y cambios pendientes, el navegador pide confirmación al cerrar.
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (autosaveEnabled() || !useTabs.getState().tabs.some((t) => t.note && isDirty(t))) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onBeforeUnload);
       stopPresence();
     };
   }, []);
