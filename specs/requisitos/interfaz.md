@@ -29,7 +29,7 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 | U-07 | Los avisos de guardado, copias y errores leves no bloquean. Los diálogos se reservan para confirmar acciones destructivas y resolver conflictos. |
 | U-08 | Toda la aplicación se puede manejar con teclado y el foco es siempre visible. |
 | U-09 | No se usan atajos reservados por el navegador: Ctrl+N, Ctrl+T, Ctrl+W ni Ctrl+Tab. |
-| U-10 | Pantalla «Ajustes»: tamaño de página por defecto, tope de filas, tiempo máximo de consulta, puerto, apagado automático y guardado automático (N-46). Sección «HTTP»: URL base, nota de login, usuario, contraseña, tiempo máximo y tamaño máximo de respuesta (H-10, H-20, H-21, H-31, H-35). Da acceso a «Conexión» y «Datos». |
+| U-10 | Pantalla «Ajustes»: tamaño de página por defecto, tope de filas, tiempo máximo de consulta, puerto, apagado automático y guardado automático (N-46). Sección «HTTP»: URL base, nota de login, usuario, contraseña, valores por defecto de Accept, User-Agent y Cache-Control, tiempo máximo y tamaño máximo de respuesta (H-10, H-15, H-20, H-21, H-31, H-35). Da acceso a «Conexión» y «Datos». |
 | U-11 | Si se pierde el contacto con el servidor, aparece una banda de aviso y se reintenta solo. El texto en edición se conserva en memoria y se guarda al recuperar el contacto. |
 
 ## Atajos de teclado

@@ -9,14 +9,10 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Direcciones de las notas HTTP: solo el propio equipo (H-40) y la URL final a partir de la base, el
@@ -26,7 +22,6 @@ public final class LocalUrls {
 
     /** H-40: nombres admitidos; además deben resolver a una dirección local. */
     private static final Set<String> LOCAL_HOSTS = Set.of("127.0.0.1", "localhost", "[::1]", "::1");
-    private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^{}/]+)}");
 
     private LocalUrls() {
     }
@@ -49,16 +44,6 @@ public final class LocalUrls {
         return uri;
     }
 
-    /** H-12: variables {nombre} del endpoint, en orden y sin repetir. */
-    public static List<String> pathVariables(String endpoint) {
-        Set<String> names = new LinkedHashSet<>();
-        Matcher m = PATH_VARIABLE.matcher(endpoint);
-        while (m.find()) {
-            names.add(m.group(1));
-        }
-        return List.copyOf(names);
-    }
-
     /** H-11: una sola barra entre base y endpoint. */
     static String join(String base, String endpoint) {
         if (endpoint.isEmpty()) {
@@ -72,26 +57,14 @@ public final class LocalUrls {
         return baseSlash || endpointSlash ? base + endpoint : base + "/" + endpoint;
     }
 
-    /** H-10 a H-12, H-14, H-40: URL final, comprobada de nuevo; nunca sale del host y puerto de la base. */
-    public static URI compose(String base, String endpoint, Map<String, String> pathValues, List<Row> params) {
+    /**
+     * H-10 a H-14, H-18, H-40: URL final, comprobada de nuevo; nunca sale del host y puerto de la base. Las
+     * variables #{nombre} del endpoint se codifican como segmento de ruta; params ya llega sustituido.
+     */
+    public static URI compose(String base, String endpoint, Map<String, String> values, List<Row> params) {
         URI baseUri = validateBase(base);
-        StringBuilder path = new StringBuilder();
-        Matcher m = PATH_VARIABLE.matcher(endpoint);
-        List<String> missing = new ArrayList<>();
-        while (m.find()) {
-            String value = pathValues.get(m.group(1));
-            if (value == null || value.isBlank()) {
-                missing.add(m.group(1));
-                m.appendReplacement(path, "");
-                continue;
-            }
-            m.appendReplacement(path, Matcher.quoteReplacement(encodeSegment(value.strip())));
-        }
-        m.appendTail(path);
-        if (!missing.isEmpty()) {
-            throw new ApiError(400, "missing_path_value", "Falta el valor de " + String.join(", ", missing), missing);
-        }
-        StringBuilder url = new StringBuilder(join(baseUri.toString(), path.toString()));
+        String path = Variables.fill(endpoint, values, v -> encodeSegment(v.strip()));
+        StringBuilder url = new StringBuilder(join(baseUri.toString(), path));
         String separator = url.indexOf("?") >= 0 ? "&" : "?";
         for (Row p : params) {
             if (!p.active() || p.key() == null || p.key().isBlank()) {

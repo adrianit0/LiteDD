@@ -14,8 +14,8 @@ import java.util.Set;
  * falten toman su valor por defecto; una nota recién creada tiene el contenido vacío.
  *
  * @param method     H-13
- * @param endpoint   H-10: lo que va tras la URL base, con variables {nombre}
- * @param pathValues H-12: valores de las variables de ruta
+ * @param endpoint   H-10: lo que va tras la URL base, con variables #{nombre}
+ * @param pathValues H-12: valores de las variables #{nombre} de toda la nota (ADR-0022)
  * @param params     H-14
  * @param headers    H-16: cabeceras propias
  * @param generated  H-15: valor cambiado o desactivación de una cabecera generada, por nombre

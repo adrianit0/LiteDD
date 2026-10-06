@@ -4,6 +4,7 @@ import dev.litedd.AppInfo;
 import dev.litedd.http.ApiError;
 import dev.litedd.httpnotes.HttpNoteContent.Generated;
 import dev.litedd.httpnotes.HttpNoteContent.Row;
+import dev.litedd.settings.AppConfig;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +24,11 @@ public final class RequestHeaders {
     public static final String X_CSRF_TOKEN = "X-CSRF-TOKEN";
     public static final String COOKIE = "Cookie";
     public static final String AUTHORIZATION = "Authorization";
+
+    /** H-15: valores de serie de las cabeceras generadas fijas. */
+    public static final String DEFAULT_ACCEPT = "application/json";
+    public static final String DEFAULT_USER_AGENT = AppInfo.NAME + "/" + AppInfo.VERSION;
+    public static final String DEFAULT_CACHE_CONTROL = "no-cache";
 
     /** H-16: el cliente HTTP de Java las pone él y no deja escribirlas. */
     static final Set<String> RESTRICTED = Set.of("host", "content-length", "connection", "expect", "upgrade");
@@ -48,12 +54,13 @@ public final class RequestHeaders {
      * nota sobre ellas y por último las propias, que mandan sobre una generada del mismo nombre.
      */
     static List<Map.Entry<String, String>> build(HttpNoteContent content, String contentType, LoginSession login,
-                                                 String authorization) {
+                                                 String authorization, AppConfig.Http settings) {
         Map<String, Map.Entry<String, String>> headers = new LinkedHashMap<>();
-        put(headers, ACCEPT, "application/json");
+        // H-15, ADR-0022: Accept, User-Agent y Cache-Control con el valor de «Ajustes» si lo hay.
+        put(headers, ACCEPT, orDefault(settings.accept(), DEFAULT_ACCEPT));
         put(headers, CONTENT_TYPE, contentType);
-        put(headers, USER_AGENT, AppInfo.NAME + "/" + AppInfo.VERSION);
-        put(headers, CACHE_CONTROL, "no-cache");
+        put(headers, USER_AGENT, orDefault(settings.userAgent(), DEFAULT_USER_AGENT));
+        put(headers, CACHE_CONTROL, orDefault(settings.cacheControl(), DEFAULT_CACHE_CONTROL));
         if (authorization != null) {
             put(headers, AUTHORIZATION, authorization);
         }
@@ -93,6 +100,10 @@ public final class RequestHeaders {
             }
         }
         return new ArrayList<>(headers.values());
+    }
+
+    private static String orDefault(String value, String fallback) {
+        return value == null ? fallback : value;
     }
 
     private static void put(Map<String, Map.Entry<String, String>> headers, String name, String value) {

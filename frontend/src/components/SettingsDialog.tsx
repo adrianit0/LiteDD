@@ -20,6 +20,9 @@ interface ConfigForm {
   httpUser: string;
   httpTimeoutSeconds: string;
   httpMaxResponseMb: string;
+  httpAccept: string;
+  httpUserAgent: string;
+  httpCacheControl: string;
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -35,6 +38,9 @@ function toForm(c: AppConfig): ConfigForm {
     httpUser: c.http.user,
     httpTimeoutSeconds: String(c.http.timeoutSeconds),
     httpMaxResponseMb: String(c.http.maxResponseMb),
+    httpAccept: c.http.accept ?? '',
+    httpUserAgent: c.http.userAgent ?? '',
+    httpCacheControl: c.http.cacheControl ?? '',
   };
 }
 
@@ -52,6 +58,9 @@ function fromForm(f: ConfigForm): AppConfig {
       user: f.httpUser.trim(),
       timeoutSeconds: Number(f.httpTimeoutSeconds),
       maxResponseMb: Number(f.httpMaxResponseMb),
+      accept: f.httpAccept.trim() === '' ? null : f.httpAccept.trim(),
+      userAgent: f.httpUserAgent.trim() === '' ? null : f.httpUserAgent.trim(),
+      cacheControl: f.httpCacheControl.trim() === '' ? null : f.httpCacheControl.trim(),
     },
   };
 }
@@ -313,6 +322,20 @@ export function SettingsDialog() {
               onChange={(e) => update({ httpMaxResponseMb: e.target.value })}
             />
           </div>
+          <h4 className="settings-subtitle">Headers generados</h4>
+          <div className="form-grid">
+            <label htmlFor="st-http-accept">Accept</label>
+            <input id="st-http-accept" value={form.httpAccept} placeholder="application/json" onChange={(e) => update({ httpAccept: e.target.value })} />
+
+            <label htmlFor="st-http-ua">User-Agent</label>
+            <input id="st-http-ua" value={form.httpUserAgent} placeholder="LiteDD/versión" onChange={(e) => update({ httpUserAgent: e.target.value })} />
+
+            <label htmlFor="st-http-cache">Cache-Control</label>
+            <input id="st-http-cache" value={form.httpCacheControl} placeholder="no-cache" onChange={(e) => update({ httpCacheControl: e.target.value })} />
+          </div>
+          <p className="muted settings-hint">
+            Valen para todas las notas HTTP y para el login; vacío, el valor de serie. Cada nota puede cambiarlos. Content-Type depende del cuerpo.
+          </p>
           <p className="muted settings-hint">
             Solo se admiten 127.0.0.1, localhost o ::1. La contraseña se guarda aparte, solo para tu usuario, y no se exporta.
           </p>

@@ -8,15 +8,16 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas, al estilo de
 |---|---|
 | H-01 | Las notas HTTP se crean con «Nueva nota HTTP» del panel o «Nueva nota HTTP hija» del menú contextual. Tienen nombre, descripción, etiquetas y favorita como las demás. |
 | H-02 | No tienen modo consulta y edición: el formulario siempre se puede editar y se guarda como el resto (N-40, N-46). Modificarlo o enviar la llamada fija una pestaña provisional (P-14). |
-| H-03 | El contenido es un JSON con método, endpoint, valores de las variables de ruta, params, cabeceras, cuerpo y modo de login. Todo se guarda en la nota salvo la contraseña (H-21). |
+| H-03 | El contenido es un JSON con método, endpoint, valores de las variables, params, cabeceras, cuerpo y modo de login. Todo se guarda en la nota salvo la contraseña (H-21). |
 
 ## Dirección
 
 | ID | Requisito |
 |---|---|
-| H-10 | La URL base es una sola y se configura en «Ajustes», por ejemplo `http://127.0.0.1:8080/demo/`. La nota guarda solo el endpoint, por ejemplo `/user/{id}/tasks`. |
+| H-10 | La URL base es una sola y se configura en «Ajustes», por ejemplo `http://127.0.0.1:8080/demo/`. La nota guarda solo el endpoint, por ejemplo `/user/#{id}/tasks`. |
 | H-11 | Al unir base y endpoint queda una sola barra entre ambos: se quita una si las dos la tienen y se añade si no la tiene ninguna. |
-| H-12 | Cada `{nombre}` del endpoint es una variable de ruta. Bajo la barra de la llamada hay un campo por variable; su valor se guarda en la nota y se envía codificado como segmento de ruta. Una variable vacía impide enviar. |
+| H-12 | Variables con la misma sintaxis que en SQL: `#{nombre}`. Pueden ir en el endpoint, en la clave o el valor de params y cabeceras propias, en el valor cambiado de una cabecera generada, en el cuerpo raw y en los campos de form-data. Un formulario «Variables» tiene un campo por nombre; un nombre repetido usa el mismo valor en todos sus sitios. Los valores se guardan en la nota. Cualquier variable vacía impide enviar (ADR-0022). |
+| H-18 | Sustitución: en el endpoint el valor se codifica como segmento de ruta; en params se codifica para la URL; en cabeceras, cuerpo raw y form-data se pone tal cual, como Postman (en JSON, las comillas las escribe la nota: `"name": "#{name}"`). La forma antigua `{nombre}` ya no es una variable y el error lo indica. |
 | H-13 | Métodos: GET, POST, PUT, PATCH, DELETE, HEAD y OPTIONS. |
 | H-14 | Params: filas clave, valor y casilla de activa. Las activas se añaden a la URL codificadas, en su orden. |
 
@@ -24,7 +25,7 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas, al estilo de
 
 | ID | Requisito |
 |---|---|
-| H-15 | Cabeceras generadas, en gris: Accept `application/json`, Content-Type según el cuerpo, User-Agent `LiteDD/versión`, Cache-Control `no-cache` y, con login, X-USERID, X-CSRF-TOKEN y Cookie. Su valor se puede cambiar y se pueden desactivar. «Esconder headers generados» las oculta de la lista. |
+| H-15 | Cabeceras generadas, en gris: Accept, Content-Type según el cuerpo, User-Agent, Cache-Control y, con login, X-USERID, X-CSRF-TOKEN y Cookie. Accept, User-Agent y Cache-Control tienen un valor por defecto configurable en «Ajustes» (si no, `application/json`, `LiteDD/versión` y `no-cache`), que vale también para el login. En cada nota su valor se puede cambiar y se pueden desactivar. «Esconder headers generados» las oculta de la lista. |
 | H-16 | Cabeceras propias: filas clave, valor y casilla de activa. Si una tiene el nombre de una generada, manda la propia. Host, Content-Length, Connection, Expect y Upgrade no se pueden escribir. |
 | H-17 | Cuerpo: none, form-data (solo campos de texto, filas clave, valor y activa) o raw (JSON, texto o XML). El Content-Type generado es `application/json`, `multipart/form-data`, `text/plain` o `application/xml`. «Formatear JSON» sangra el cuerpo raw y avisa si no es JSON válido. |
 
@@ -32,7 +33,7 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas, al estilo de
 
 | ID | Requisito |
 |---|---|
-| H-20 | En «Ajustes» se elige la nota de login, una nota HTTP. Por defecto es `GET /users/{userName}/login`. Al ejecutarla, `{userName}` toma el usuario de la llamada. |
+| H-20 | En «Ajustes» se elige la nota de login, una nota HTTP. Por defecto es `GET /users/#{userName}/login`. Al ejecutarla, `#{userName}` toma el usuario de la llamada. |
 | H-21 | El usuario por defecto y la contraseña se configuran en «Ajustes». La contraseña se guarda solo en http.json con permisos 600: nunca en SQLite, en las copias, en la exportación ni en el registro. La API no la devuelve; solo indica si hay una. |
 | H-22 | Cada nota HTTP tiene un campo «Usuario»; vacío, usa el de Ajustes. El login usa Basic Auth: cabecera `Authorization: Basic base64(usuario:contraseña)`, con Accept y Content-Type `application/json`. |
 | H-23 | El login es correcto si responde 200 y trae la cabecera `X-USERID` y la cookie `CSRF-TOKEN`. La llamada envía `X-USERID`, `X-CSRF-TOKEN` (el valor de la cookie) y `Cookie` con todas las cookies del login. |

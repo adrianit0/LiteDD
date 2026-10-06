@@ -92,7 +92,7 @@ class HttpNotesTest {
         routes.put("/demo/users/demo/login", HttpNotesTest::login);
         routes.put("/demo/users/otro/login", ex -> reply(ex, 401, "application/json", "{\"message\":\"Bad credentials\"}"));
         routes.put("/demo/user/5/tasks", ex -> reply(ex, 200, "application/json", "[{\"id\":1,\"title\":\"Tarea\"}]"));
-        loginNote = http("Login", "{\"method\":\"GET\",\"endpoint\":\"/users/{userName}/login\"}");
+        loginNote = http("Login", "{\"method\":\"GET\",\"endpoint\":\"/users/#{userName}/login\"}");
         configure("http://127.0.0.1:" + port + "/demo/", 30, 10);
         runner = new HttpRunner(notes, config::get, credentials, new HttpCaller());
     }
@@ -132,7 +132,7 @@ class HttpNotesTest {
 
     private void configure(String base, int timeout, int maxMb) {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http(base, loginNote.id(), "demo", timeout, maxMb)));
+                new AppConfig.Http(base, loginNote.id(), "demo", timeout, maxMb, null, null, null)));
     }
 
     private Note http(String title, String content) {
@@ -160,14 +160,79 @@ class HttpNotesTest {
     }
 
     @Test
-    void h12_h14_path_variables_and_params_are_encoded() {
-        String url = LocalUrls.compose("http://127.0.0.1:8080/demo/", "/user/{id}/tasks/{name}",
+    void h12_h14_endpoint_variables_and_params_are_encoded() {
+        String url = LocalUrls.compose("http://127.0.0.1:8080/demo/", "/user/#{id}/tasks/#{ name }",
                 Map.of("id", "5", "name", "a b/ñ"),
                 List.of(new Row("q", "x&y=1", true), new Row("off", "1", false), new Row("page", "2", null))).toString();
         assertThat(url).isEqualTo("http://127.0.0.1:8080/demo/user/5/tasks/a%20b%2F%C3%B1?q=x%26y%3D1&page=2");
-        assertThat(LocalUrls.pathVariables("/user/{id}/tasks/{name}/{id}")).containsExactly("id", "name");
-        assertThatThrownBy(() -> LocalUrls.compose("http://127.0.0.1:8080/", "/user/{id}", Map.of("id", " "), List.of()))
-                .isInstanceOf(ApiError.class).hasMessageContaining("id");
+    }
+
+    @Test
+    void h12_variables_anywhere_in_the_note_in_order_and_without_repeating() {
+        HttpNoteContent c = HttpNoteContent.parse("""
+                {"endpoint":"/user/#{id}","params":[{"key":"#{campo}","value":"#{id}"},{"key":"off","value":"#{apagada}","enabled":false}],
+                 "headers":[{"key":"X-Trace","value":"#{traza}"}],"generated":{"Accept":{"value":"#{tipo}"},"User-Agent":{"value":"#{nada}","enabled":false}},
+                 "body":{"mode":"raw","raw":"{\\\"id\\\": #{id}, \\\"nombre\\\": \\\"#{nombre}\\\"}","form":[{"key":"f","value":"#{noEnviada}"}]}}""");
+        assertThat(Variables.names(c)).containsExactly("id", "campo", "traza", "tipo", "nombre");
+
+        // Cualquier variable vacía impide enviar (ADR-0022).
+        assertThatThrownBy(() -> Variables.requireAll(c, Map.of("id", "5", "campo", "", "traza", "t", "tipo", "x", "nombre", "Ana")))
+                .isInstanceOf(ApiError.class).hasMessage("Falta el valor de campo");
+        // H-18: la forma antigua se avisa.
+        HttpNoteContent old = HttpNoteContent.parse("{\"endpoint\":\"/user/{id}/tasks\"}");
+        assertThatThrownBy(() -> Variables.requireAll(old, Map.of()))
+                .isInstanceOf(ApiError.class).hasMessage("Las variables se escriben #{nombre}: cambia {id} por #{id}");
+    }
+
+    @Test
+    void h18_values_go_as_they_are_in_headers_body_and_form_data() throws Exception {
+        routes.put("/demo/items/7", ex -> reply(ex, 200, "application/json", "{}"));
+        Note n = http("Todo con variables", """
+                {"method":"POST","endpoint":"/items/#{id}","login":"none",
+                 "pathValues":{"id":"7","q":"a b","traza":"t-1","tipo":"text/plain","nombre":"Ana \\\"la\\\" grande"},
+                 "params":[{"key":"q","value":"#{q}"},{"key":"id","value":"#{id}"}],
+                 "headers":[{"key":"X-Trace","value":"#{traza}"}],
+                 "generated":{"Accept":{"value":"#{tipo}"}},
+                 "body":{"mode":"raw","rawType":"json","raw":"{\\\"id\\\": #{id}, \\\"nombre\\\": \\\"#{nombre}\\\"}"}}""");
+        Result r = run(n);
+        assertThat(r.error()).isNull();
+        Received call = to("/demo/items/7").getFirst();
+        assertThat(call.uri()).isEqualTo("/demo/items/7?q=a+b&id=7");
+        assertThat(call.header("X-Trace")).isEqualTo("t-1");
+        assertThat(call.header("Accept")).isEqualTo("text/plain");
+        assertThat(call.body()).isEqualTo("{\"id\": 7, \"nombre\": \"Ana \"la\" grande\"}");
+
+        routes.put("/demo/form", ex -> reply(ex, 200, "application/json", "{}"));
+        Note form = http("Formulario", """
+                {"method":"POST","endpoint":"/form","login":"none","pathValues":{"campo":"nombre","valor":"Luz"},
+                 "body":{"mode":"form-data","form":[{"key":"#{campo}","value":"#{valor}"}]}}""");
+        assertThat(run(form).error()).isNull();
+        assertThat(to("/demo/form").getFirst().body()).contains("name=\"nombre\"\r\n\r\nLuz\r\n");
+
+        Note empty = http("Vacía", "{\"endpoint\":\"/form\",\"login\":\"none\",\"headers\":[{\"key\":\"X\",\"value\":\"#{falta}\"}]}");
+        assertThatThrownBy(() -> run(empty)).isInstanceOf(ApiError.class).hasMessage("Falta el valor de falta");
+    }
+
+    @Test
+    void h15_fixed_generated_headers_take_their_value_from_settings_also_for_the_login() {
+        config.set(new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http("http://127.0.0.1:" + port + "/demo/",
+                loginNote.id(), "demo", 30, 10, "application/xml", "MiCliente/2.0", "max-age=0")));
+        Note n = http("Tareas", "{\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"},"
+                + "\"generated\":{\"Cache-Control\":{\"value\":\"no-store\"}}}");
+        assertThat(run(n).error()).isNull();
+        Received login = to("/demo/users/demo/login").getFirst();
+        assertThat(login.header("User-Agent")).isEqualTo("MiCliente/2.0");
+        assertThat(login.header("Accept")).isEqualTo("application/xml");
+        Received call = to("/demo/user/5/tasks").getFirst();
+        assertThat(call.header("User-Agent")).isEqualTo("MiCliente/2.0");
+        assertThat(call.header("Accept")).isEqualTo("application/xml");
+        // Lo que cambia la nota manda sobre Ajustes.
+        assertThat(call.header("Cache-Control")).isEqualTo("no-store");
+
+        // Vacío en Ajustes es el valor de serie; un salto de línea no se admite.
+        assertThat(new AppConfig.Http(null, null, "", 30, 10, " ", null, null).accept()).isNull();
+        assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true,
+                new AppConfig.Http(null, null, "", 30, 10, null, "a\nb", null)).validate()).isInstanceOf(ApiError.class);
     }
 
     @Test
@@ -186,7 +251,7 @@ class HttpNotesTest {
         }
         // Los ajustes no admiten una URL base que no sea local.
         assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http("http://example.org/", null, "", 30, 10)).validate())
+                new AppConfig.Http("http://example.org/", null, "", 30, 10, null, null, null)).validate())
                 .isInstanceOf(ApiError.class).hasMessageContaining("dirección local");
     }
 
@@ -199,7 +264,7 @@ class HttpNotesTest {
                 Map.of("Accept", new Generated("text/plain", null), "User-Agent", new Generated(null, false)), null, null, null, false);
         LoginSession s = new LoginSession("demo", "usr-4711", "csrf", new java.util.LinkedHashMap<>(Map.of("CSRF-TOKEN", "csrf")));
         Map<String, String> h = new java.util.LinkedHashMap<>();
-        RequestHeaders.build(c, "application/json", s, null).forEach(e -> h.put(e.getKey(), e.getValue()));
+        RequestHeaders.build(c, "application/json", s, null, AppConfig.Http.DEFAULT).forEach(e -> h.put(e.getKey(), e.getValue()));
         assertThat(h).containsEntry("Accept", "text/plain").containsEntry("Content-Type", "application/json")
                 .containsEntry("Cache-Control", "max-age=0").containsEntry("X-USERID", "usr-4711").containsEntry("X-CSRF-TOKEN", "csrf")
                 .containsEntry("Cookie", "CSRF-TOKEN=csrf").containsEntry("X-Trace", "7")
@@ -207,7 +272,7 @@ class HttpNotesTest {
 
         HttpNoteContent restricted = new HttpNoteContent("GET", "/x", null, null, List.of(new Row("Host", "evil", true)),
                 null, null, null, null, false);
-        assertThatThrownBy(() -> RequestHeaders.build(restricted, "application/json", null, null))
+        assertThatThrownBy(() -> RequestHeaders.build(restricted, "application/json", null, null, AppConfig.Http.DEFAULT))
                 .isInstanceOf(ApiError.class).hasMessageContaining("Host");
     }
 
@@ -227,7 +292,7 @@ class HttpNotesTest {
 
     @Test
     void h20_h22_h23_login_then_call_with_userid_csrf_and_cookies() throws Exception {
-        Note n = http("Tareas", "{\"method\":\"GET\",\"endpoint\":\"/user/{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
+        Note n = http("Tareas", "{\"method\":\"GET\",\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
         Result r = run(n);
 
         assertThat(r.error()).isNull();
@@ -302,7 +367,7 @@ class HttpNotesTest {
         assertThat(run(http("A", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_password");
         credentials.setPassword(PASSWORD);
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http("http://127.0.0.1:" + port + "/demo/", loginNote.id(), "", 30, 10)));
+                new AppConfig.Http("http://127.0.0.1:" + port + "/demo/", loginNote.id(), "", 30, 10, null, null, null)));
         assertThat(run(http("B", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_user");
         assertThat(received).isEmpty();
     }
@@ -483,7 +548,7 @@ class HttpNotesTest {
             assertThat(credentials.password()).contains("nueva-clave");
 
             credentials.setPassword(PASSWORD);
-            Note n = http("Tareas", "{\"endpoint\":\"/user/{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
+            Note n = http("Tareas", "{\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
             var r = call.apply("/api/http/execute", "{\"noteId\":\"" + n.id() + "\",\"version\":" + n.version() + ",\"executionId\":\"x1\"}");
             assertThat(r.statusCode()).isEqualTo(200);
             assertThat(JSON.readTree(r.body()).get("response").get("status").asInt()).isEqualTo(200);

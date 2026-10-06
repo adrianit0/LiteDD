@@ -4,7 +4,8 @@ import {
   generatedHeaders,
   joinUrl,
   parseContent,
-  pathVariables,
+  oldVariable,
+  variableNames,
   prettyBody,
   serializeContent,
   sizeText,
@@ -42,13 +43,34 @@ describe('contenido de una nota HTTP', () => {
     expect(joinUrl('http://127.0.0.1:8080/demo', '/user')).toBe('http://127.0.0.1:8080/demo/user');
   });
 
-  it('H-12 variables de ruta en orden y sin repetir', () => {
-    expect(pathVariables('/user/{id}/tasks/{taskId}/{id}')).toEqual(['id', 'taskId']);
-    expect(pathVariables('/sin/variables')).toEqual([]);
+  it('H-12 variables #{…} de toda la nota, en orden y sin repetir; solo de lo que se envía', () => {
+    const c = parseContent(
+      JSON.stringify({
+        endpoint: '/user/#{id}/tasks/#{ taskId }/#{id}',
+        params: [
+          { key: '#{campo}', value: '#{id}' },
+          { key: 'off', value: '#{apagada}', enabled: false },
+        ],
+        headers: [{ key: 'X-Trace', value: '#{traza}' }],
+        generated: { Accept: { value: '#{tipo}', enabled: true }, 'User-Agent': { value: '#{nada}', enabled: false } },
+        body: { mode: 'raw', raw: '{"nombre": "#{nombre}"}', form: [{ key: 'f', value: '#{noEnviada}' }] },
+      }),
+    );
+    expect(variableNames(c)).toEqual(['id', 'taskId', 'campo', 'traza', 'tipo', 'nombre']);
+    expect(variableNames(EMPTY_CONTENT)).toEqual([]);
+    const form = { ...c, body: { ...c.body, mode: 'form-data' as const } };
+    expect(variableNames(form)).toContain('noEnviada');
+    expect(variableNames(form)).not.toContain('nombre');
+  });
+
+  it('H-18 la forma antigua {nombre} se detecta', () => {
+    expect(oldVariable('/user/{id}/tasks')).toBe('id');
+    expect(oldVariable('/user/#{id}/tasks')).toBeNull();
   });
 
   it('H-15 cabeceras generadas según el cuerpo y el login', () => {
-    const plain = generatedHeaders(EMPTY_CONTENT, '0.1.0', false);
+    const none = { accept: null, userAgent: null, cacheControl: null };
+    const plain = generatedHeaders(EMPTY_CONTENT, '0.1.0', false, none);
     expect(plain.map((h) => [h.name, h.defaultValue])).toEqual([
       ['Accept', 'application/json'],
       ['Content-Type', 'application/json'],
@@ -56,9 +78,12 @@ describe('contenido de una nota HTTP', () => {
       ['Cache-Control', 'no-cache'],
     ]);
     const xml = { ...EMPTY_CONTENT, body: { ...EMPTY_CONTENT.body, mode: 'raw' as const, rawType: 'xml' as const } };
-    const withLogin = generatedHeaders(xml, '0.1.0', true);
+    const withLogin = generatedHeaders(xml, '0.1.0', true, none);
     expect(withLogin.find((h) => h.name === 'Content-Type')?.defaultValue).toBe('application/xml');
     expect(withLogin.filter((h) => h.fromLogin).map((h) => h.name)).toEqual(['X-USERID', 'X-CSRF-TOKEN', 'Cookie']);
+    // ADR-0022: los valores de «Ajustes» sustituyen a los de serie.
+    const custom = generatedHeaders(EMPTY_CONTENT, '0.1.0', false, { accept: '*/*', userAgent: 'MiCliente/2.0', cacheControl: null });
+    expect(custom.map((h) => h.defaultValue)).toEqual(['*/*', 'application/json', 'MiCliente/2.0', 'no-cache']);
   });
 
   it('H-17 H-34 formatear JSON y mostrar cuerpos', () => {

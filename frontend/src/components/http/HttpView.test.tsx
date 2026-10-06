@@ -123,8 +123,35 @@ describe('nota HTTP', () => {
     expect(useUi.getState().settingsOpen).toBe(true);
   });
 
-  it('H-12 cada variable de ruta tiene su campo; vacía impide enviar', async () => {
-    await mount('{"endpoint":"/user/{id}/tasks"}');
+  it('H-12 H-18 variables en params, cabeceras y cuerpo comparten campo; la forma antigua se avisa', async () => {
+    await mount(
+      JSON.stringify({
+        endpoint: '/user/#{id}',
+        params: [{ key: 'id', value: '#{id}', enabled: true }],
+        headers: [{ key: 'X-Trace', value: '#{traza}', enabled: true }],
+        body: { mode: 'raw', rawType: 'json', raw: '{"n": "#{nombre}"}', form: [] },
+      }),
+    );
+    expect(screen.getByRole('group', { name: 'Variables' })).toBeTruthy();
+    expect(screen.getAllByLabelText(/^Variable /).map((i) => i.getAttribute('aria-label'))).toEqual([
+      'Variable id',
+      'Variable traza',
+      'Variable nombre',
+    ]);
+    fireEvent.change(screen.getByLabelText('Variable traza'), { target: { value: 't-1' } });
+    expect(saved().pathValues).toEqual({ traza: 't-1' });
+    // Cualquier variable vacía impide enviar.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Enviar' }).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Variable id'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Variable nombre'), { target: { value: 'Ana' } });
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Enviar' }).disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: '/user/{id}' } });
+    expect(screen.getByText(/Las variables se escriben #\{nombre\}: cambia \{id\} por #\{id\}/)).toBeTruthy();
+  });
+
+  it('H-12 cada variable tiene su campo; vacía impide enviar', async () => {
+    await mount('{"endpoint":"/user/#{id}/tasks"}');
     const send = screen.getByRole<HTMLButtonElement>('button', { name: 'Enviar' });
     expect(send.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Variable id'), { target: { value: '5' } });
@@ -177,6 +204,9 @@ describe('nota HTTP', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Valor de Accept').placeholder).toBe('application/json');
     expect(screen.getByLabelText<HTMLInputElement>('Valor de User-Agent').placeholder).toBe('LiteDD/0.1.0');
     expect(screen.getByLabelText<HTMLInputElement>('Valor de X-USERID').placeholder).toBe('(del login)');
+    // ADR-0022: los valores por defecto de «Ajustes» se ven como valor generado.
+    act(() => useUi.setState({ config: { ...useUi.getState().config, http: { ...useUi.getState().config.http, userAgent: 'MiCliente/2.0' } } }));
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de User-Agent').placeholder).toBe('MiCliente/2.0');
 
     fireEvent.change(screen.getByLabelText('Valor de Accept'), { target: { value: 'text/plain' } });
     fireEvent.click(screen.getByLabelText('Enviar Cache-Control'));
@@ -227,7 +257,7 @@ describe('nota HTTP', () => {
 
   it('H-30 H-33 H-34 «Enviar» guarda, ejecuta lo guardado y muestra la respuesta', async () => {
     mocked.httpExecute.mockResolvedValue(ok);
-    await mount('{"endpoint":"/user/{id}/tasks","pathValues":{"id":"4"}}');
+    await mount('{"endpoint":"/user/#{id}/tasks","pathValues":{"id":"4"}}');
     fireEvent.change(screen.getByLabelText('Variable id'), { target: { value: '5' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));

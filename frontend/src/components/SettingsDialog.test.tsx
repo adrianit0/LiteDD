@@ -117,7 +117,7 @@ describe('U-10 ajustes', () => {
 });
 
 describe('U-10 sección HTTP', () => {
-  it('H-10 H-20 H-22 H-31 H-35 guarda URL base, nota de login, usuario y límites', async () => {
+  it('H-10 H-15 H-20 H-22 H-31 H-35 guarda URL base, nota de login, usuario, cabeceras y límites', async () => {
     useTree.setState({
       nodes: [
         { id: 'l1', parentId: null, position: 0, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
@@ -133,10 +133,21 @@ describe('U-10 sección HTTP', () => {
     fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'demo' } });
     fireEvent.change(screen.getByLabelText('Tiempo máximo de llamada (s)'), { target: { value: '45' } });
     fireEvent.change(screen.getByLabelText('Tamaño máximo de respuesta (MB)'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('User-Agent'), { target: { value: ' MiCliente/2.0 ' } });
+    expect(screen.getByLabelText<HTMLInputElement>('Accept').placeholder).toBe('application/json');
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
     });
-    const http = { baseUrl: 'http://127.0.0.1:8080/demo/', loginNoteId: 'l1', user: 'demo', timeoutSeconds: 45, maxResponseMb: 20 };
+    const http = {
+      baseUrl: 'http://127.0.0.1:8080/demo/',
+      loginNoteId: 'l1',
+      user: 'demo',
+      timeoutSeconds: 45,
+      maxResponseMb: 20,
+      accept: null,
+      userAgent: 'MiCliente/2.0',
+      cacheControl: null,
+    };
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expect.objectContaining({ http }) });
     expect(useUi.getState().config.http).toEqual(http);
     expect(mocked.setHttpPassword).not.toHaveBeenCalled();

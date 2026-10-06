@@ -30,11 +30,15 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
      * @param user               H-22: usuario por defecto
      * @param timeoutSeconds     H-31
      * @param maxResponseMb      H-35
+     * @param accept             H-15, ADR-0022: Accept por defecto; null el de serie
+     * @param userAgent          H-15: User-Agent por defecto; null el de serie
+     * @param cacheControl       H-15: Cache-Control por defecto; null el de serie
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Http(String baseUrl, String loginNoteId, String user, Integer timeoutSeconds, Integer maxResponseMb) {
+    public record Http(String baseUrl, String loginNoteId, String user, Integer timeoutSeconds, Integer maxResponseMb,
+                       String accept, String userAgent, String cacheControl) {
 
-        public static final Http DEFAULT = new Http(null, null, "", 30, 10);
+        public static final Http DEFAULT = new Http(null, null, "", 30, 10, null, null, null);
 
         public Http {
             baseUrl = baseUrl == null || baseUrl.isBlank() ? null : baseUrl.strip();
@@ -42,6 +46,13 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
             user = user == null ? "" : user.strip();
             timeoutSeconds = timeoutSeconds == null ? 30 : timeoutSeconds;
             maxResponseMb = maxResponseMb == null ? 10 : maxResponseMb;
+            accept = blankToNull(accept);
+            userAgent = blankToNull(userAgent);
+            cacheControl = blankToNull(cacheControl);
+        }
+
+        private static String blankToNull(String value) {
+            return value == null || value.isBlank() ? null : value.strip();
         }
     }
 
@@ -80,6 +91,11 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         }
         if (http.timeoutSeconds() < 1 || http.timeoutSeconds() > 3600) {
             throw invalid("El tiempo máximo de las llamadas HTTP debe estar entre 1 y 3.600 segundos");
+        }
+        for (String header : java.util.Arrays.asList(http.accept(), http.userAgent(), http.cacheControl())) {
+            if (header != null && header.chars().anyMatch(ch -> ch < 32 || ch == 127)) {
+                throw invalid("Una cabecera por defecto no puede tener saltos de línea ni caracteres de control");
+            }
         }
         if (http.maxResponseMb() < 1 || http.maxResponseMb() > 100) {
             throw invalid("El tamaño máximo de respuesta debe estar entre 1 y 100 MB");

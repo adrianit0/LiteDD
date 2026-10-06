@@ -193,11 +193,14 @@ public final class HttpRunner {
 
     private Prepared prepare(HttpNoteContent content, Map<String, String> pathValues, LoginSession session, String authorization,
                              AppConfig.Http settings) {
-        URI uri = LocalUrls.compose(settings.baseUrl(), content.endpoint(), pathValues, content.params());
+        // H-12, H-18: todas las variables con valor; luego se sustituyen en cada sitio.
+        Variables.requireAll(content, pathValues);
+        HttpNoteContent filled = Variables.fill(content, pathValues);
+        URI uri = LocalUrls.compose(settings.baseUrl(), content.endpoint(), pathValues, filled.params());
         String boundary = "LiteDD" + UUID.randomUUID().toString().replace("-", "");
-        List<Map.Entry<String, String>> headers = RequestHeaders.build(content,
-                RequestHeaders.contentTypeFor(content.body(), boundary), session, authorization);
-        byte[] body = body(content.body(), boundary);
+        List<Map.Entry<String, String>> headers = RequestHeaders.build(filled,
+                RequestHeaders.contentTypeFor(filled.body(), boundary), session, authorization, settings);
+        byte[] body = body(filled.body(), boundary);
         List<Header> shown = headers.stream()
                 .map(h -> new Header(h.getKey(), h.getKey().equalsIgnoreCase(RequestHeaders.AUTHORIZATION) ? "Basic ••••••" : h.getValue()))
                 .toList();

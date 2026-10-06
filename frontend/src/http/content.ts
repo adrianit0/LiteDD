@@ -96,13 +96,44 @@ export function serializeContent(content: HttpContent): string {
   return JSON.stringify(content, null, 2);
 }
 
-/** H-12: variables {nombre} del endpoint, en orden y sin repetir. */
-export function pathVariables(endpoint: string): string[] {
+const VARIABLE = /#\{([^{}]+)\}/g;
+
+function collect(text: string | null | undefined, names: string[]) {
+  for (const m of (text ?? '').matchAll(VARIABLE)) {
+    const name = m[1].trim();
+    if (name !== '' && !names.includes(name)) names.push(name);
+  }
+}
+
+/**
+ * H-12, ADR-0022: variables #{nombre} de toda la nota, en orden y sin repetir; solo de lo que se envía.
+ * Mismo criterio que Variables.names en el servidor.
+ */
+export function variableNames(c: HttpContent): string[] {
   const names: string[] = [];
-  for (const m of endpoint.matchAll(/\{([^{}/]+)\}/g)) {
-    if (!names.includes(m[1])) names.push(m[1]);
+  collect(c.endpoint, names);
+  for (const r of c.params.filter((r) => r.enabled)) {
+    collect(r.key, names);
+    collect(r.value, names);
+  }
+  for (const r of c.headers.filter((r) => r.enabled)) {
+    collect(r.key, names);
+    collect(r.value, names);
+  }
+  for (const g of Object.values(c.generated)) if (g.enabled !== false) collect(g.value, names);
+  if (c.body.mode === 'raw') collect(c.body.raw, names);
+  if (c.body.mode === 'form-data') {
+    for (const r of c.body.form.filter((r) => r.enabled)) {
+      collect(r.key, names);
+      collect(r.value, names);
+    }
   }
   return names;
+}
+
+/** H-18: la forma antigua {nombre} en el endpoint, que ya no es variable; null si no hay. */
+export function oldVariable(endpoint: string): string | null {
+  return /(?<!#)\{([^{}/]+)\}/.exec(endpoint.replace(VARIABLE, ''))?.[1] ?? null;
 }
 
 /** H-11: una sola barra entre base y endpoint. */
@@ -130,13 +161,20 @@ export interface GeneratedHeader {
   fromLogin: boolean;
 }
 
+/** H-15: valores por defecto de «Ajustes» para las cabeceras fijas; null = el de serie. */
+export interface GeneratedDefaults {
+  accept: string | null;
+  userAgent: string | null;
+  cacheControl: string | null;
+}
+
 /** H-15: cabeceras generadas, en el orden en que se envían. */
-export function generatedHeaders(content: HttpContent, version: string, withLogin: boolean): GeneratedHeader[] {
+export function generatedHeaders(content: HttpContent, version: string, withLogin: boolean, defaults: GeneratedDefaults): GeneratedHeader[] {
   const list: GeneratedHeader[] = [
-    { name: 'Accept', defaultValue: 'application/json', fromLogin: false },
+    { name: 'Accept', defaultValue: defaults.accept ?? 'application/json', fromLogin: false },
     { name: 'Content-Type', defaultValue: contentTypeFor(content.body), fromLogin: false },
-    { name: 'User-Agent', defaultValue: `LiteDD/${version}`, fromLogin: false },
-    { name: 'Cache-Control', defaultValue: 'no-cache', fromLogin: false },
+    { name: 'User-Agent', defaultValue: defaults.userAgent ?? `LiteDD/${version}`, fromLogin: false },
+    { name: 'Cache-Control', defaultValue: defaults.cacheControl ?? 'no-cache', fromLogin: false },
   ];
   if (withLogin) {
     for (const name of ['X-USERID', 'X-CSRF-TOKEN', 'Cookie']) list.push({ name, defaultValue: null, fromLogin: true });

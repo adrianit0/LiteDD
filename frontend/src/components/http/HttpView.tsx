@@ -10,7 +10,8 @@ import {
   formatJson,
   generatedHeaders,
   parseContent,
-  pathVariables,
+  oldVariable,
+  variableNames,
   serializeContent,
   type BodyMode,
   type HttpContent,
@@ -51,11 +52,12 @@ export function HttpView({ tab }: { tab: Tab }) {
 
   const content = useMemo(() => parseContent(tab.content), [tab.content]);
   const update = (changes: Partial<HttpContent>) => store.edit(tab.id, { content: serializeContent({ ...content, ...changes }) });
-  const variables = pathVariables(content.endpoint);
+  const variables = variableNames(content);
+  const old = oldVariable(content.endpoint);
   const isLoginNote = tab.noteId === http.loginNoteId;
   const loginOff = !isLoginNote && content.login !== 'always';
   const withLogin = !isLoginNote && content.login !== 'none';
-  const generated = generatedHeaders(content, version, withLogin);
+  const generated = generatedHeaders(content, version, withLogin, http);
   const saveOnBlur = () => {
     if (autosave) void store.saveNow(tab.id);
   };
@@ -118,7 +120,7 @@ export function HttpView({ tab }: { tab: Tab }) {
           </span>
           <input
             aria-label="Endpoint"
-            placeholder="/ruta/{id}"
+            placeholder="/ruta/#{id}"
             value={content.endpoint}
             onChange={(e) => update({ endpoint: e.target.value })}
             onBlur={saveOnBlur}
@@ -151,6 +153,13 @@ export function HttpView({ tab }: { tab: Tab }) {
           </>
         )}
       </div>
+
+      {old && (
+        // H-18, ADR-0022
+        <p className="sql-warning" role="status">
+          Las variables se escriben #{'{'}nombre{'}'}: cambia {`{${old}}`} por {`#{${old}}`}.
+        </p>
+      )}
 
       {!http.baseUrl && (
         <p className="sql-warning" role="status">
@@ -201,10 +210,10 @@ export function HttpView({ tab }: { tab: Tab }) {
 
       {variables.length > 0 && (
         <fieldset className="http-path">
-          <legend>Variables de ruta</legend>
+          <legend>Variables</legend>
           {variables.map((name) => (
             <label key={name}>
-              <span className="muted">{`{${name}}`}</span>
+              <span className="muted">{`#{${name}}`}</span>
               <input
                 aria-label={`Variable ${name}`}
                 aria-invalid={missing.includes(name) ? true : undefined}

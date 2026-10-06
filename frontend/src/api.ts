@@ -136,9 +136,22 @@ export interface HttpSettings {
   user: string;
   timeoutSeconds: number;
   maxResponseMb: number;
+  /** H-15, ADR-0022: valores por defecto de las cabeceras generadas fijas; null = el de serie. */
+  accept: string | null;
+  userAgent: string | null;
+  cacheControl: string | null;
 }
 
-export const DEFAULT_HTTP: HttpSettings = { baseUrl: null, loginNoteId: null, user: '', timeoutSeconds: 30, maxResponseMb: 10 };
+export const DEFAULT_HTTP: HttpSettings = {
+  baseUrl: null,
+  loginNoteId: null,
+  user: '',
+  timeoutSeconds: 30,
+  maxResponseMb: 10,
+  accept: null,
+  userAgent: null,
+  cacheControl: null,
+};
 
 export const DEFAULT_CONFIG: AppConfig = {
   defaultPageSize: 20,
