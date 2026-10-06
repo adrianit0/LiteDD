@@ -18,6 +18,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/notes | Crear nota: madre, tipo, título |
 | GET | /api/notes/{id} | Nota completa con contenido y versión |
 | PUT | /api/notes/{id} | Guardar título y contenido con baseVersion; 409 si hay conflicto |
+| POST | /api/notes/{id}/duplicate | Duplicar una nota, sin hijas (N-08) |
 | POST | /api/notes/{id}/move | Mover: nueva madre y posición |
 | DELETE | /api/notes/{id} | A la papelera; 409 si tiene hijas, salvo children=promote |
 | PUT | /api/notes/{id}/tags | Sustituir etiquetas |

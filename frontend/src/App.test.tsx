@@ -22,6 +22,7 @@ vi.mock('./api', async (importOriginal) => {
       connectionStatus: vi.fn(),
       analyze: vi.fn(),
       tags: vi.fn(),
+      duplicateNote: vi.fn(),
     },
   };
 });
@@ -230,6 +231,24 @@ describe('App', () => {
     fireEvent.change(input, { target: { value: 'Después' } });
     expect(useTabs.getState().tabs[0].description).toBe('Después');
     expect(useTabs.getState().tabs[0].status).toBe('pending');
+  });
+
+  it('N-04 N-08 el menú contextual del árbol ofrece «Duplicar» y abre la copia', async () => {
+    mocked.tree.mockResolvedValue([{ ...created, id: 'a', title: 'Libros' }]);
+    mocked.duplicateNote.mockResolvedValue({ ...created, id: 'a2', title: 'Libros (2)' });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const row = await screen.findByRole('treeitem', { name: /Libros/ });
+    fireEvent.contextMenu(row);
+    const items = screen.getAllByRole('menuitem').map((i) => i.textContent);
+    expect(items.indexOf('Duplicar')).toBe(items.findIndex((t) => t?.startsWith('Renombrar')) + 1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicar' }));
+    });
+    expect(mocked.duplicateNote).toHaveBeenCalledWith('a');
+    expect(screen.getByRole('tab', { name: /Libros \(2\)/ })).toBeTruthy();
   });
 
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {

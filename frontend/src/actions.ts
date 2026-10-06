@@ -33,6 +33,20 @@ export async function createAndOpen(parentId: string | null, type: NoteType): Pr
   }
 }
 
+/** N-08: copia la nota, sin hijas, debajo de la original y la abre. */
+export async function duplicateNote(id: string): Promise<void> {
+  try {
+    // Lo que se estuviera escribiendo se guarda antes, para que la copia lo incluya.
+    await useTabs.getState().saveNote(id);
+    const copy = await api.duplicateNote(id);
+    await useTree.getState().load();
+    await useTabs.getState().open(copy.id, { note: copy, preview: true });
+    useUi.getState().notify(`Creada «${copy.title}»`);
+  } catch (e) {
+    fail(e, 'No se pudo duplicar la nota');
+  }
+}
+
 /** N-13: renombrar desde el árbol (F2). */
 export async function renameNote(id: string, title: string): Promise<void> {
   const clean = title.trim();

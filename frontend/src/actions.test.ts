@@ -1,5 +1,5 @@
 import { api } from './api';
-import { deleteNote, emptyTrash, moveNote, purgeNote, restoreNote } from './actions';
+import { deleteNote, duplicateNote, emptyTrash, moveNote, purgeNote, restoreNote } from './actions';
 import { useDialogs } from './stores/dialogStore';
 import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
@@ -15,6 +15,7 @@ vi.mock('./api', async (importOriginal) => {
       saveNote: vi.fn(),
       deleteNote: vi.fn(),
       moveNote: vi.fn(),
+      duplicateNote: vi.fn(),
       restore: vi.fn(),
       purge: vi.fn(),
       emptyTrash: vi.fn(),
@@ -56,6 +57,18 @@ beforeEach(() => {
   mocked.putSession.mockResolvedValue({ tabs: [] });
   useTree.setState({ nodes });
   useTabs.setState({ tabs: [], activeId: null });
+});
+
+describe('duplicar', () => {
+  it('N-08 guarda lo pendiente, duplica, recarga el árbol y abre la copia', async () => {
+    const copy = { ...note('B2'), title: 'B (2)' };
+    mocked.duplicateNote.mockResolvedValue(copy);
+    await duplicateNote('B');
+    expect(mocked.duplicateNote).toHaveBeenCalledWith('B');
+    expect(mocked.tree).toHaveBeenCalled();
+    const tab = useTabs.getState().tabs.find((t) => t.id === useTabs.getState().activeId)!;
+    expect(tab).toMatchObject({ noteId: 'B2', title: 'B (2)' });
+  });
 });
 
 describe('eliminar', () => {

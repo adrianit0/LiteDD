@@ -248,6 +248,8 @@ export const api = {
   uploadAttachment: (noteId: string, file: Blob, name: string) =>
     requestRaw<{ id: string }>('POST', `/api/attachments?noteId=${encodeURIComponent(noteId)}&name=${encodeURIComponent(name)}`, file, file.type),
   attachmentDataUrl,
+  /** N-08 */
+  duplicateNote: (id: string) => request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/duplicate`),
   moveNote: (id: string, parentId: string | null, position: number) =>
     request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/move`, { parentId, position }),
   deleteNote: (id: string, promoteChildren: boolean) =>

@@ -206,6 +206,53 @@ public final class NoteService {
                 q.since() == null || q.since().isBlank() ? null : q.since(), List.copyOf(tags.values()), tags.size()));
     }
 
+    private static final Pattern COPY_SUFFIX = Pattern.compile("^(.*?) \\((\\d+)\\)$");
+
+    /**
+     * N-08: copia la nota (sin hijas) justo debajo de la original, con su contenido, descripción, tipo,
+     * etiquetas y favorita, y el título con el siguiente «(n)» libre entre sus hermanas.
+     */
+    public Note duplicate(String id) {
+        return store.write(s -> {
+            NoteMapper m = s.getMapper(NoteMapper.class);
+            Note original = load(s, id);
+            List<String> siblings = new ArrayList<>(m.selectChildIds(original.parentId()));
+            String now = now();
+            NoteRow copy = new NoteRow(UUID.randomUUID().toString(), original.parentId(), original.position() + 1,
+                    original.type(), copyTitle(original.title(), m.selectChildTitles(original.parentId())),
+                    original.description(), original.content(), original.favorite(), 1, now, now);
+            m.insert(copy);
+            siblings.add(siblings.indexOf(id) + 1, copy.id());
+            renumber(m, siblings);
+            ContentMapper c = s.getMapper(ContentMapper.class);
+            for (String tag : original.tags()) {
+                c.insertNoteTag(copy.id(), c.selectTagId(tag));
+            }
+            return load(s, copy.id());
+        });
+    }
+
+    /**
+     * N-08: «Informe» → «Informe (2)»; el número es el mayor de las hermanas con ese nombre, más uno. Un
+     * «(n)» final solo cuenta como copia si hay una hermana con el nombre base: «Año (2026)» → «Año (2026) (2)».
+     */
+    static String copyTitle(String title, List<String> siblingTitles) {
+        Matcher own = COPY_SUFFIX.matcher(title);
+        String base = own.matches() && siblingTitles.contains(own.group(1)) ? own.group(1) : title;
+        int highest = 1;
+        for (String t : siblingTitles) {
+            Matcher other = COPY_SUFFIX.matcher(t);
+            if (other.matches() && other.group(1).equals(base)) {
+                try {
+                    highest = Math.max(highest, Integer.parseInt(other.group(2)));
+                } catch (NumberFormatException e) {
+                    // Un número enorme no cuenta.
+                }
+            }
+        }
+        return base + " (" + (highest + 1) + ")";
+    }
+
     /** N-80: sustituye las etiquetas; se crean al usarlas y desaparecen sin notas. */
     public Note setTags(String id, List<String> names) {
         Map<String, String> clean = new LinkedHashMap<>();

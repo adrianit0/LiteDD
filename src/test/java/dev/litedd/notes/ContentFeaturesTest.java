@@ -159,6 +159,51 @@ class ContentFeaturesTest {
     }
 
     @Test
+    void n08_duplicate_copies_the_note_below_the_original_with_the_next_number() {
+        Note parent = md("Carpeta", "");
+        Note a = notes.create(parent.id(), "sql", "Informe");
+        notes.save(a.id(), "Informe", "Ventas", "SELECT 1", a.version(), false);
+        notes.setTags(a.id(), List.of("ventas", "mensual"));
+        notes.setFavorite(a.id(), true);
+        Note b = notes.create(parent.id(), "md", "Otra");
+
+        Note copy = notes.duplicate(a.id());
+        assertThat(copy.id()).isNotEqualTo(a.id());
+        assertThat(copy).extracting(Note::parentId, Note::type, Note::title, Note::description, Note::content, Note::favorite, Note::version)
+                .containsExactly(parent.id(), "sql", "Informe (2)", "Ventas", "SELECT 1", true, 1L);
+        assertThat(copy.tags()).containsExactlyInAnyOrder("ventas", "mensual");
+        // Justo debajo de la original; las demás hermanas se desplazan.
+        assertThat(notes.tree().stream().filter(n -> parent.id().equals(n.parentId()))
+                .sorted(java.util.Comparator.comparingInt(TreeNode::position)).map(TreeNode::title))
+                .containsExactly("Informe", "Informe (2)", "Otra");
+        assertThat(notes.get(b.id()).position()).isEqualTo(2);
+
+        // Cada duplicado lleva el siguiente número libre, también al duplicar una copia.
+        assertThat(notes.duplicate(a.id()).title()).isEqualTo("Informe (3)");
+        assertThat(notes.duplicate(copy.id()).title()).isEqualTo("Informe (4)");
+        // La original no cambia.
+        assertThat(notes.get(a.id()).title()).isEqualTo("Informe");
+    }
+
+    @Test
+    void n08_copy_title_rules() {
+        assertThat(NoteService.copyTitle("Informe", List.of("Informe"))).isEqualTo("Informe (2)");
+        assertThat(NoteService.copyTitle("Informe (2)", List.of("Informe", "Informe (2)"))).isEqualTo("Informe (3)");
+        assertThat(NoteService.copyTitle("Informe", List.of("Informe", "Informe (7)", "Otro (9)"))).isEqualTo("Informe (8)");
+        assertThat(NoteService.copyTitle("Año (2026)", List.of("Año (2026)"))).isEqualTo("Año (2026) (2)");
+        assertThat(NoteService.copyTitle("Año (2026) (2)", List.of("Año (2026)", "Año (2026) (2)"))).isEqualTo("Año (2026) (3)");
+    }
+
+    @Test
+    void n08_duplicate_does_not_copy_children_and_needs_an_active_note() {
+        Note a = md("Madre", "x");
+        notes.create(a.id(), "md", "Hija");
+        Note copy = notes.duplicate(a.id());
+        assertThat(notes.tree().stream().filter(n -> copy.id().equals(n.parentId()))).isEmpty();
+        assertThatThrownBy(() -> notes.duplicate("no-existe")).isInstanceOf(ApiError.class);
+    }
+
+    @Test
     void n07_n70_search_also_finds_the_description() {
         Note n = md("Clientes", "SELECT 1");
         notes.save(n.id(), "Clientes", "Altas del último trimestre", "SELECT 1", notes.get(n.id()).version(), false);

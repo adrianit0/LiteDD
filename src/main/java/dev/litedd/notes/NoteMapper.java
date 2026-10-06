@@ -60,6 +60,9 @@ public interface NoteMapper {
     @Select("SELECT id FROM note WHERE parent_id IS #{parentId} AND deleted_at IS NULL ORDER BY position, rid")
     List<String> selectChildIds(@Param("parentId") String parentId);
 
+    @Select("SELECT title FROM note WHERE parent_id IS #{parentId} AND deleted_at IS NULL")
+    List<String> selectChildTitles(@Param("parentId") String parentId);
+
     /** D-05: ¿está noteId en la cadena de antepasados de target, incluido el propio target? */
     @Select("""
             WITH RECURSIVE up(id, parent_id) AS (

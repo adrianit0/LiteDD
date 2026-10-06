@@ -25,7 +25,7 @@ import {
   type DropZone,
   type KeyboardMove,
 } from '../treeOps';
-import { createAndOpen, deleteNote, editTags, moveNote, openNote, renameNote, toggleFavorite } from '../actions';
+import { createAndOpen, deleteNote, duplicateNote, editTags, moveNote, openNote, renameNote, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
@@ -112,6 +112,7 @@ export function Tree() {
     { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
     { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
     { label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) },
+    { label: 'Duplicar', onSelect: () => void duplicateNote(id) },
     {
       label: nodes.find((n) => n.id === id)?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
       onSelect: () => void toggleFavorite(id),

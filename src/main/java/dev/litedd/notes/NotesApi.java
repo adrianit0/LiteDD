@@ -85,6 +85,9 @@ public final class NotesApi implements ApiRoutes {
                     "true".equals(ctx.queryParam("favorite")), ctx.queryParam("since"))));
         });
 
+        // N-08
+        routes.post("/api/notes/{id}/duplicate", ctx -> ctx.status(201).json(notes.duplicate(ctx.pathParam("id"))));
+
         routes.post("/api/notes/{id}/move", ctx -> {
             MoveRequest req = ctx.bodyAsClass(MoveRequest.class);
             if (req.position() == null) {
