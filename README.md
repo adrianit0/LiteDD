@@ -1,11 +1,12 @@
 # LiteDD
 
-LiteDD es un gestor local de notas para un único usuario. Admite dos tipos de nota:
+LiteDD es un gestor local de notas para un único usuario. Admite tres tipos de nota:
 
 - **Markdown**, con vista renderizada, tablas, listas de tareas, código resaltado y diagramas Mermaid.
 - **SQL**, escritas con la sintaxis dinámica de MyBatis (`#{...}`, `<if>`, `<where>`, `<foreach>`…). Se ejecutan en modo de solo lectura contra una base de datos MySQL, con un formulario de variables, paginación, ordenación y cronómetro.
+- **HTTP**, llamadas a un servidor de pruebas en el propio equipo (127.0.0.1 o localhost): método, endpoint con variables de ruta, params, cabeceras y cuerpo, con un login Basic Auth previo opcional. La respuesta muestra estado, tiempos, cuerpo, cabeceras y cookies.
 
-Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet.
+Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet: solo se conecta a MySQL y al servidor local de las notas HTTP.
 
 ## Requisitos
 
@@ -53,6 +54,7 @@ LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los
 | Notas (SQLite) | `~/.local/share/litedd/litedd.db` |
 | Copias de seguridad | `~/.local/share/litedd/backups/` |
 | Ajustes y conexión | `~/.config/litedd/config.json` y `connection.json` |
+| Contraseña de las notas HTTP | `~/.config/litedd/http.json` (solo para tu usuario; no se exporta) |
 | Registro | `~/.local/state/litedd/litedd.log` (rota a 5 MB, 3 ficheros) |
 
 Cada día, al arrancar, se hace una copia `litedd-AAAAMMDD.db` y se conservan las 3 últimas. Antes de «Reemplazar todo» y antes de una migración se hace una copia adicional con sufijo propio, y se conservan las 2 últimas. Desde «Ajustes → Datos» se puede exportar a ZIP, importar, crear una copia al momento y abrir la carpeta de datos.
