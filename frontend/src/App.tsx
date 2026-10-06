@@ -12,6 +12,7 @@ import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { ConnectionDialog } from './components/ConnectionDialog';
 import { useConnection } from './stores/connectionStore';
 import { useSqlRuns } from './stores/sqlRunStore';
+import { useHttpRuns } from './stores/httpRunStore';
 import { QuickSearch } from './components/QuickSearch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { startPresence } from './presence';
@@ -42,9 +43,12 @@ export function App() {
       const tabs = useTabs.getState();
       const active = tabs.activeId;
       switch (shortcut) {
-        case 'toggleMode':
-          if (active) void tabs.toggleMode(active);
+        case 'toggleMode': {
+          // H-02: las notas HTTP no tienen modos.
+          const tab = tabs.tabs.find((t) => t.id === active);
+          if (tab && tab.note?.type !== 'http') void tabs.toggleMode(tab.id);
           break;
+        }
         case 'save':
           if (active) void tabs.saveNow(active);
           break;
@@ -60,6 +64,11 @@ export function App() {
         case 'execute': {
           // Q-23: Ctrl+Intro ejecuta la nota SQL activa; desde edición, pasa antes a consulta.
           const tab = tabs.tabs.find((t) => t.id === active);
+          // H-30: Ctrl+Intro envía la llamada de una nota HTTP.
+          if (tab?.note?.type === 'http') {
+            void useHttpRuns.getState().execute(tab.id);
+            break;
+          }
           if (!tab?.note || tab.note.type !== 'sql') break;
           const run = async () => {
             if (tab.mode === 'edit') await tabs.toggleMode(tab.id);

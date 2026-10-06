@@ -14,7 +14,8 @@ import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
 
 interface Props {
-  type: NoteType;
+  /** plain: texto sin lenguaje, para el cuerpo raw de una nota HTTP (H-17, ADR-0021). */
+  type: NoteType | 'plain';
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
@@ -147,7 +148,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
       EditorView.lineWrapping,
       theme,
       syntaxHighlighting(highlight),
-      placeholder(type === 'md' ? 'Escribe en Markdown…' : 'Escribe la consulta…'),
+      placeholder(type === 'md' ? 'Escribe en Markdown…' : type === 'sql' ? 'Escribe la consulta…' : 'Escribe el cuerpo…'),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) callbacks.current.onChange(u.state.doc.toString());
       }),
@@ -164,8 +165,10 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
         imageDrop((file) => callbacks.current.onImage?.(file) ?? Promise.resolve(null)),
         keymap.of(markdownBindings(format)),
       );
-    } else {
+    } else if (type === 'sql') {
       extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of(sqlBindings()));
+    } else {
+      extensions.push(keymap.of(sqlBindings()));
     }
     extensions.push(keymap.of([...defaultKeymap, ...historyKeymap]));
 

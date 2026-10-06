@@ -5,6 +5,7 @@ import { DialogHost } from './DialogHost';
 import { useConnection } from '../stores/connectionStore';
 import { useDialogs } from '../stores/dialogStore';
 import { defaultSqlState, useTabs } from '../stores/tabsStore';
+import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
 
 vi.mock('../api', async (importOriginal) => {
@@ -18,6 +19,8 @@ vi.mock('../api', async (importOriginal) => {
       backupNow: vi.fn(),
       openDataFolder: vi.fn(),
       tree: vi.fn(),
+      httpCredentials: vi.fn(),
+      setHttpPassword: vi.fn(),
     },
   };
 });
@@ -39,6 +42,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocked.putSettings.mockResolvedValue({});
   mocked.tree.mockResolvedValue([]);
+  mocked.httpCredentials.mockResolvedValue({ hasPassword: false });
+  mocked.setHttpPassword.mockResolvedValue({ hasPassword: true });
   useUi.setState({ config: DEFAULT_CONFIG, settingsOpen: true, notices: [] });
   useTabs.setState({ tabs: [], activeId: null });
   useDialogs.setState({ current: null });
@@ -63,7 +68,7 @@ describe('U-10 ajustes', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
     });
-    const expected = { defaultPageSize: 50, rowCap: 5000, queryTimeoutSeconds: 30, port: 47600, autoShutdownMinutes: 30, autosave: true };
+    const expected = { defaultPageSize: 50, rowCap: 5000, queryTimeoutSeconds: 30, port: 47600, autoShutdownMinutes: 30, autosave: true, http: DEFAULT_CONFIG.http };
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expected });
     expect(useUi.getState().config).toEqual(expected);
     expect(useUi.getState().settingsOpen).toBe(false);
@@ -108,6 +113,55 @@ describe('U-10 ajustes', () => {
     });
     expect(screen.getByRole('alert').textContent).toContain('tope de filas');
     expect(useUi.getState().settingsOpen).toBe(true);
+  });
+});
+
+describe('U-10 sección HTTP', () => {
+  it('H-10 H-20 H-22 H-31 H-35 guarda URL base, nota de login, usuario y límites', async () => {
+    useTree.setState({
+      nodes: [
+        { id: 'l1', parentId: null, position: 0, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
+        { id: 'm1', parentId: null, position: 1, type: 'md', title: 'Texto', description: '', favorite: false, tags: [] },
+      ],
+    });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    const login = screen.getByLabelText<HTMLSelectElement>('Nota de login');
+    expect([...login.options].map((o) => o.textContent)).toEqual(['Sin elegir', 'Login']);
+    fireEvent.change(screen.getByLabelText('URL base'), { target: { value: ' http://127.0.0.1:8080/demo/ ' } });
+    fireEvent.change(login, { target: { value: 'l1' } });
+    fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('Tiempo máximo de llamada (s)'), { target: { value: '45' } });
+    fireEvent.change(screen.getByLabelText('Tamaño máximo de respuesta (MB)'), { target: { value: '20' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    const http = { baseUrl: 'http://127.0.0.1:8080/demo/', loginNoteId: 'l1', user: 'demo', timeoutSeconds: 45, maxResponseMb: 20 };
+    expect(mocked.putSettings).toHaveBeenCalledWith({ config: expect.objectContaining({ http }) });
+    expect(useUi.getState().config.http).toEqual(http);
+    expect(mocked.setHttpPassword).not.toHaveBeenCalled();
+  });
+
+  it('H-21 la contraseña solo se escribe: no se lee, se guarda aparte y se puede borrar', async () => {
+    mocked.httpCredentials.mockResolvedValue({ hasPassword: true });
+    mocked.setHttpPassword.mockResolvedValue({ hasPassword: false });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    const password = screen.getByLabelText<HTMLInputElement>('Contraseña');
+    expect(password.type).toBe('password');
+    expect(password.value).toBe('');
+    expect(password.placeholder).toContain('Guardada');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
+    });
+    expect(mocked.setHttpPassword).toHaveBeenCalledWith('');
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'nueva' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    expect(mocked.setHttpPassword).toHaveBeenLastCalledWith('nueva');
+    // La contraseña nunca viaja en config.json.
+    expect(JSON.stringify(mocked.putSettings.mock.calls)).not.toContain('nueva');
   });
 });
 

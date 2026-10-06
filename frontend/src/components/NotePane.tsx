@@ -6,6 +6,7 @@ import { formatDateTime } from '../format';
 import { NoteEditor, type EditorControls } from '../editor/NoteEditor';
 import { FormatToolbar } from '../editor/FormatToolbar';
 import { SqlView } from './sql/SqlView';
+import { HttpView } from './http/HttpView';
 import { SqlAnalysisPanel, SqlToolbar } from './sql/SqlEditorPanels';
 import { MarkdownView } from './MarkdownView';
 import { Dialog } from './Dialog';
@@ -35,6 +36,9 @@ export function NotePane({ tab }: { tab: Tab }) {
   const { note, title, content, mode, status, conflict, focusTitle } = tab;
   const store = useTabs.getState();
   const autosave = useUi((s) => s.config.autosave);
+  // H-02: las notas HTTP no tienen modos; su formulario siempre se edita.
+  const isHttp = tab.note?.type === 'http';
+  const editing = mode === 'edit' || isHttp;
   // N-40: perder el foco guarda; con el guardado manual (N-46), no.
   const saveOnBlur = () => {
     if (autosave) void store.saveNow(tab.id);
@@ -49,11 +53,11 @@ export function NotePane({ tab }: { tab: Tab }) {
 
   // N-06: el título de una nota nueva aparece seleccionado.
   useEffect(() => {
-    if (focusTitle && mode === 'edit') {
+    if (focusTitle && editing) {
       titleInput.current?.focus();
       titleInput.current?.select();
     }
-  }, [focusTitle, mode, tab.id]);
+  }, [focusTitle, editing, tab.id]);
 
   // P-06: cada pestaña recupera su desplazamiento.
   useLayoutEffect(() => {
@@ -109,7 +113,7 @@ export function NotePane({ tab }: { tab: Tab }) {
           {path.length > 0 && <div className="note-path muted">{path.join(' / ')}</div>}
           <div className="note-title-row">
             <TypeIcon type={note.type} />
-            {mode === 'edit' ? (
+            {editing ? (
               <input
                 ref={titleInput}
                 className="note-title-input"
@@ -130,7 +134,7 @@ export function NotePane({ tab }: { tab: Tab }) {
             <FavoriteButton note={note} />
           </div>
           {/* N-07: descripción opcional entre el título y las etiquetas. */}
-          {mode === 'edit' ? (
+          {editing ? (
             <input
               className="note-description-input"
               aria-label="Descripción"
@@ -171,9 +175,11 @@ export function NotePane({ tab }: { tab: Tab }) {
               Guardar
             </button>
           )}
-          <button type="button" onClick={() => void store.toggleMode(tab.id)} aria-keyshortcuts="Control+E" title="Ctrl+E">
-            {mode === 'edit' ? 'Ver' : 'Editar'}
-          </button>
+          {!isHttp && (
+            <button type="button" onClick={() => void store.toggleMode(tab.id)} aria-keyshortcuts="Control+E" title="Ctrl+E">
+              {mode === 'edit' ? 'Ver' : 'Editar'}
+            </button>
+          )}
           <button type="button" onClick={onRefresh} title="Recargar la nota desde el disco">
             Actualizar
           </button>
@@ -190,11 +196,13 @@ export function NotePane({ tab }: { tab: Tab }) {
       {mode === 'edit' && note.type === 'sql' && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
 
       <div
-        className={`note-body mode-${mode}`}
+        className={`note-body mode-${isHttp ? 'http' : mode}`}
         ref={body}
-        onScroll={mode === 'view' ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
+        onScroll={mode === 'view' && !isHttp ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
       >
-        {mode === 'edit' ? (
+        {isHttp ? (
+          <HttpView tab={tab} />
+        ) : mode === 'edit' ? (
           <NoteEditor
             key={tab.id}
             type={note.type}

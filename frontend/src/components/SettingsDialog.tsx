@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { api, type AppConfig, type ImportMode } from '../api';
 import { PAGE_SIZES } from '../sql/types';
 import { ask } from '../stores/dialogStore';
@@ -15,6 +15,11 @@ interface ConfigForm {
   port: string;
   autoShutdownMinutes: string;
   autosave: boolean;
+  httpBaseUrl: string;
+  httpLoginNoteId: string;
+  httpUser: string;
+  httpTimeoutSeconds: string;
+  httpMaxResponseMb: string;
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -25,6 +30,11 @@ function toForm(c: AppConfig): ConfigForm {
     port: String(c.port),
     autoShutdownMinutes: c.autoShutdownMinutes === null ? '' : String(c.autoShutdownMinutes),
     autosave: c.autosave,
+    httpBaseUrl: c.http.baseUrl ?? '',
+    httpLoginNoteId: c.http.loginNoteId ?? '',
+    httpUser: c.http.user,
+    httpTimeoutSeconds: String(c.http.timeoutSeconds),
+    httpMaxResponseMb: String(c.http.maxResponseMb),
   };
 }
 
@@ -36,6 +46,13 @@ function fromForm(f: ConfigForm): AppConfig {
     port: Number(f.port),
     autoShutdownMinutes: f.autoShutdownMinutes.trim() === '' ? null : Number(f.autoShutdownMinutes),
     autosave: f.autosave,
+    http: {
+      baseUrl: f.httpBaseUrl.trim() === '' ? null : f.httpBaseUrl.trim(),
+      loginNoteId: f.httpLoginNoteId === '' ? null : f.httpLoginNoteId,
+      user: f.httpUser.trim(),
+      timeoutSeconds: Number(f.httpTimeoutSeconds),
+      maxResponseMb: Number(f.httpMaxResponseMb),
+    },
   };
 }
 
@@ -59,6 +76,18 @@ export function SettingsDialog() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // H-21: la contraseña se escribe pero nunca se lee; solo se sabe si hay una.
+  const [password, setPassword] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const nodes = useTree((s) => s.nodes);
+  const httpNotes = useMemo(() => nodes.filter((n) => n.type === 'http'), [nodes]);
+
+  useEffect(() => {
+    api
+      .httpCredentials()
+      .then((c) => setHasPassword(c.hasPassword))
+      .catch(() => {});
+  }, []);
 
   const close = () => useUi.getState().setSettingsOpen(false);
   const update = (changes: Partial<ConfigForm>) => setForm((f) => ({ ...f, ...changes }));
@@ -81,6 +110,11 @@ export function SettingsDialog() {
     void busyWhile(async () => {
       const next = fromForm(form);
       await api.putSettings({ config: next });
+      if (password !== '') {
+        await api.setHttpPassword(password);
+        setPassword('');
+        setHasPassword(true);
+      }
       const portChanged = next.port !== config.port;
       ui.setConfig(next);
       ui.notify(portChanged ? 'Ajustes guardados. El puerto nuevo se aplica al reiniciar LiteDD.' : 'Ajustes guardados');
@@ -207,6 +241,81 @@ export function SettingsDialog() {
             Sin guardado automático, las notas se guardan con «Guardar», Ctrl+S o al cambiar de modo, y al cerrar con cambios se pregunta.
           </p>
           <p className="muted settings-hint">El puerto nuevo se aplica al reiniciar LiteDD.</p>
+
+          <h3 className="settings-subtitle">HTTP</h3>
+          <div className="form-grid">
+            <label htmlFor="st-http-base">URL base</label>
+            <input
+              id="st-http-base"
+              value={form.httpBaseUrl}
+              placeholder="http://127.0.0.1:8080/demo/"
+              onChange={(e) => update({ httpBaseUrl: e.target.value })}
+            />
+
+            <label htmlFor="st-http-login">Nota de login</label>
+            <select id="st-http-login" value={form.httpLoginNoteId} onChange={(e) => update({ httpLoginNoteId: e.target.value })}>
+              <option value="">Sin elegir</option>
+              {httpNotes.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.title}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="st-http-user">Usuario</label>
+            <input id="st-http-user" value={form.httpUser} autoComplete="off" onChange={(e) => update({ httpUser: e.target.value })} />
+
+            <label htmlFor="st-http-password">Contraseña</label>
+            <span className="settings-inline">
+              <input
+                id="st-http-password"
+                type="password"
+                value={password}
+                autoComplete="new-password"
+                placeholder={hasPassword ? 'Guardada (déjala vacía para conservarla)' : ''}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              {hasPassword && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void busyWhile(async () => {
+                      await api.setHttpPassword('');
+                      setHasPassword(false);
+                      setMessage({ kind: 'ok', text: 'Contraseña HTTP borrada' });
+                    })
+                  }
+                >
+                  Borrar
+                </button>
+              )}
+            </span>
+
+            <label htmlFor="st-http-timeout">Tiempo máximo de llamada (s)</label>
+            <input
+              id="st-http-timeout"
+              type="number"
+              min={1}
+              max={3600}
+              required
+              value={form.httpTimeoutSeconds}
+              onChange={(e) => update({ httpTimeoutSeconds: e.target.value })}
+            />
+
+            <label htmlFor="st-http-max">Tamaño máximo de respuesta (MB)</label>
+            <input
+              id="st-http-max"
+              type="number"
+              min={1}
+              max={100}
+              required
+              value={form.httpMaxResponseMb}
+              onChange={(e) => update({ httpMaxResponseMb: e.target.value })}
+            />
+          </div>
+          <p className="muted settings-hint">
+            Solo se admiten 127.0.0.1, localhost o ::1. La contraseña se guarda aparte, solo para tu usuario, y no se exporta.
+          </p>
           <div className="dialog-actions">
             <button type="submit" className="primary" disabled={busy}>
               Guardar ajustes

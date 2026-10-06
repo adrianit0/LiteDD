@@ -22,6 +22,7 @@ vi.mock('./api', async (importOriginal) => {
       connectionStatus: vi.fn(),
       analyze: vi.fn(),
       tags: vi.fn(),
+      httpCredentials: vi.fn().mockResolvedValue({ hasPassword: false }),
       duplicateNote: vi.fn(),
     },
   };
@@ -92,6 +93,31 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: 'N', altKey: true, shiftKey: true });
     });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'sql');
+  });
+
+  it('N-05 H-01 «Nueva nota HTTP» crea una nota HTTP sin modos; Ctrl+E no hace nada y Ctrl+Intro la envía', async () => {
+    const httpNote = { ...created, type: 'http' as const, content: '{"endpoint":"/x","login":"none"}' };
+    mocked.createNote.mockResolvedValue(httpNote);
+    mocked.saveNote.mockResolvedValue(httpNote);
+    const execute = vi.fn().mockResolvedValue({ phase: 'request', error: { code: 'connection_refused', message: 'Error: connect ECONNREFUSED 127.0.0.1:8080' } });
+    (api as unknown as { httpExecute: typeof execute }).httpExecute = execute;
+    (api as unknown as { appVersion: () => Promise<string> }).appVersion = () => Promise.resolve('0.1.0');
+    render(<App />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '+ Nueva nota HTTP' }));
+    });
+    expect(mocked.createNote).toHaveBeenCalledWith(null, 'http');
+    expect(screen.getByLabelText('Endpoint')).toBeTruthy();
+    const mode = useTabs.getState().tabs[0].mode;
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'e', ctrlKey: true });
+    });
+    expect(useTabs.getState().tabs[0].mode).toBe(mode);
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    });
+    expect(execute).toHaveBeenCalledWith('nuevo', 1, expect.any(String));
+    expect(screen.getByRole('alert').textContent).toBe('Error: connect ECONNREFUSED 127.0.0.1:8080');
   });
 
   it('N-01 N-03 el árbol muestra las notas y un clic abre la nota', async () => {

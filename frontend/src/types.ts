@@ -1,4 +1,4 @@
-export type NoteType = 'md' | 'sql';
+export type NoteType = 'md' | 'sql' | 'http';
 export type Mode = 'view' | 'edit';
 
 export interface TreeNode {

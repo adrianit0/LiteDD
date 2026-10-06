@@ -55,6 +55,7 @@ export function SearchBox() {
               <option value="">Todos</option>
               <option value="md">Markdown</option>
               <option value="sql">SQL</option>
+              <option value="http">HTTP</option>
             </select>
           </label>
           <label>

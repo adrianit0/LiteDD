@@ -45,6 +45,9 @@ export function Sidebar() {
             <button type="button" onClick={() => void createAndOpen(null, 'sql')} aria-keyshortcuts="Alt+Shift+N" title="Alt+Mayús+N">
               + Nueva nota SQL
             </button>
+            <button type="button" onClick={() => void createAndOpen(null, 'http')}>
+              + Nueva nota HTTP
+            </button>
           </div>
           <SearchBox />
           {searching ? <SearchResults /> : <Tree />}

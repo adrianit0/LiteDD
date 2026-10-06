@@ -111,6 +111,7 @@ export function Tree() {
   const menuItems = (id: string): MenuItem[] => [
     { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
     { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
+    { label: 'Nueva nota HTTP hija', onSelect: () => void createAndOpen(id, 'http') },
     { label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) },
     { label: 'Duplicar', onSelect: () => void duplicateNote(id) },
     {

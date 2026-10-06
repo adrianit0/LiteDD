@@ -126,7 +126,19 @@ export interface AppConfig {
   autoShutdownMinutes: number | null;
   /** N-40, N-46: false = guardado manual. */
   autosave: boolean;
+  /** H-10, H-20, H-22, H-31, H-35. La contraseña no está aquí (H-21). */
+  http: HttpSettings;
 }
+
+export interface HttpSettings {
+  baseUrl: string | null;
+  loginNoteId: string | null;
+  user: string;
+  timeoutSeconds: number;
+  maxResponseMb: number;
+}
+
+export const DEFAULT_HTTP: HttpSettings = { baseUrl: null, loginNoteId: null, user: '', timeoutSeconds: 30, maxResponseMb: 10 };
 
 export const DEFAULT_CONFIG: AppConfig = {
   defaultPageSize: 20,
@@ -135,7 +147,47 @@ export const DEFAULT_CONFIG: AppConfig = {
   port: 47600,
   autoShutdownMinutes: null,
   autosave: true,
+  http: DEFAULT_HTTP,
 };
+
+export interface HttpHeader {
+  name: string;
+  value: string;
+}
+
+export interface HttpCookie {
+  name: string;
+  value: string;
+  domain: string | null;
+  path: string | null;
+  maxAge: number | null;
+  httpOnly: boolean;
+  secure: boolean;
+}
+
+/** H-33 a H-35: text si es texto; base64 si es binario. */
+export interface HttpReceived {
+  status: number;
+  statusText: string;
+  millis: number;
+  size: number;
+  contentType?: string;
+  headers: HttpHeader[];
+  cookies: HttpCookie[];
+  text?: string;
+  base64?: string;
+  binary: boolean;
+  truncated: boolean;
+}
+
+/** phase «login»: el error o la respuesta son del login (H-26). */
+export interface HttpResult {
+  phase: 'login' | 'request';
+  error?: { code: string; message: string };
+  request?: { method: string; url: string; headers: HttpHeader[] };
+  response?: HttpReceived;
+  login?: { user: string; status: number; millis: number };
+}
 
 export type ImportMode = 'replace' | 'branch';
 
@@ -264,6 +316,13 @@ export const api = {
   execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
   count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
+  /** H-30 */
+  httpExecute: (noteId: string, version: number, executionId: string) =>
+    request<HttpResult>('POST', '/api/http/execute', { noteId, version, executionId }),
+  httpCancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/http/cancel', { executionId }),
+  /** H-21: solo se sabe si hay contraseña; nunca se lee. */
+  httpCredentials: () => request<{ hasPassword: boolean }>('GET', '/api/http/credentials'),
+  setHttpPassword: (password: string) => request<{ hasPassword: boolean }>('PUT', '/api/http/credentials', { password }),
   getConnection: () => request<ConnectionView>('GET', '/api/connection'),
   saveConnection: (form: ConnectionForm) => request<ConnectionStatus>('PUT', '/api/connection', form),
   testConnection: (form: Omit<ConnectionForm, 'schema'>) => request<{ schemas: string[] }>('POST', '/api/connection/test', form),
@@ -295,6 +354,15 @@ export const api = {
       if (token && meta) meta.content = token;
     } catch {
       // Sin página no hay token nuevo; las peticiones siguientes lo indicarán.
+    }
+  },
+  /** Versión de la aplicación, para el User-Agent mostrado (H-15). */
+  appVersion: async () => {
+    try {
+      const info = (await (await fetch('/api/health', { cache: 'no-store' })).json()) as { version?: string };
+      return info.version ?? '';
+    } catch {
+      return '';
     }
   },
   /** Ciclo de vida: la ventana se cierra. */

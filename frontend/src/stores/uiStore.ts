@@ -63,6 +63,11 @@ function persist(changes: Record<string, unknown>) {
   }, PERSIST_DELAY);
 }
 
+/** Un config.json anterior no trae todos los campos. */
+function withDefaults(config: Partial<AppConfig>): AppConfig {
+  return { ...DEFAULT_CONFIG, ...config, http: { ...DEFAULT_CONFIG.http, ...(config.http ?? {}) } };
+}
+
 const clamp = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
 
 export const useUi = create<UiState>((set, get) => ({
@@ -91,7 +96,7 @@ export const useUi = create<UiState>((set, get) => ({
       sidebarWidth: typeof s['ui.sidebarWidth'] === 'number' ? clamp(s['ui.sidebarWidth']) : SIDEBAR_DEFAULT,
       sidebarVisible: s['ui.sidebarVisible'] !== false,
       collapsed: new Set(Array.isArray(s['ui.collapsed']) ? (s['ui.collapsed'] as string[]) : []),
-      config: s.config && typeof s.config === 'object' ? { ...DEFAULT_CONFIG, ...(s.config as Partial<AppConfig>) } : DEFAULT_CONFIG,
+      config: s.config && typeof s.config === 'object' ? withDefaults(s.config as Partial<AppConfig>) : DEFAULT_CONFIG,
     });
   },
 

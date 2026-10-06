@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { defaultSqlState, useTabs, type Tab } from '../../stores/tabsStore';
 import { useSqlRun, useSqlRuns } from '../../stores/sqlRunStore';
 import { useUi } from '../../stores/uiStore';
+import { copyText } from '../../clipboard';
 import { elapsedText, nextSort, rangeText, timingText, toMarkdownTable } from '../../sql/results';
 import { PAGE_SIZES } from '../../sql/types';
 import { VariablesForm } from './VariablesForm';
@@ -9,14 +10,7 @@ import { ResultsTable, type SelectedCell } from './ResultsTable';
 import { FinalSqlPanel } from './FinalSqlPanel';
 import { SqlErrors } from './SqlErrors';
 
-async function copy(text: string, what: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    useUi.getState().notify(`${what} copiado`);
-  } catch {
-    useUi.getState().notify('No se pudo copiar al portapapeles', 'error');
-  }
-}
+const copy = (text: string, what: string) => copyText(text, `${what} copiado`);
 
 const number = (n: number) => n.toLocaleString('es-ES');
 
