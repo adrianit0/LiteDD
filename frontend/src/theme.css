@@ -14,6 +14,8 @@
   --selection: #2c4a75;
   --link: #8ab8ff;
   --code: #e6c07b;
+  /* H-01: icono de las notas HTTP, distinto del azul de MD y del dorado de SQL. */
+  --green: #7ee787;
   --accent-text: #0d1117;
 
   /* U-04 */
@@ -262,7 +264,7 @@ input {
 }
 
 .type-http {
-  color: var(--warning);
+  color: var(--green);
 }
 
 /* Menú contextual */
