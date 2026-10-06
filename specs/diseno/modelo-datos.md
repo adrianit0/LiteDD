@@ -12,7 +12,7 @@ CREATE TABLE note (
   id          TEXT NOT NULL UNIQUE,          -- UUID v4, identidad pública
   parent_id   TEXT REFERENCES note(id),      -- NULL = raíz
   position    INTEGER NOT NULL,              -- orden entre hermanas, 0..n-1
-  type        TEXT NOT NULL CHECK (type IN ('md','sql')),
+  type        TEXT NOT NULL CHECK (type IN ('md','sql','http')),  -- 'http' desde V003 (ADR-0021)
   title       TEXT NOT NULL,
   content     TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',      -- N-07, migración V002

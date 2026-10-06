@@ -38,6 +38,9 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/sql/count | Total de filas |
 | POST | /api/sql/render | SQL final sin ejecutar |
 | POST | /api/sql/cancel | Cancelar por executionId |
+| POST | /api/http/execute | Ejecutar una nota HTTP, con su login (H-30) |
+| POST | /api/http/cancel | Cancelar por executionId |
+| GET, PUT | /api/http/credentials | Indicar si hay contraseña HTTP y guardarla; nunca la devuelve (H-21) |
 | GET | /api/connection | Configuración sin contraseña |
 | PUT | /api/connection | Guardar configuración |
 | POST | /api/connection/test | Probar y listar esquemas |

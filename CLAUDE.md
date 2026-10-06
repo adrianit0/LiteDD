@@ -26,7 +26,7 @@ Plataforma: se desarrolla en Windows 10 y se ejecuta en Ubuntu 22.04 (ADR-0004).
 1. La especificación manda: se corrige primero `specs/` y después el código.
 2. Nada fuera de alcance: ni funciones, ni dependencias, ni ajustes no pedidos.
 3. Solo lectura inviolable: nada que modifique datos o estructura llega a MySQL.
-4. Los datos no salen de la máquina: sin red externa, telemetría ni CDN.
+4. Los datos no salen de la máquina: solo MySQL y la URL base local de las notas HTTP; sin internet, telemetría ni CDN.
 5. Repositorio público: reglas S-30 a S-35 (solo el esquema inventado `litedd_demo`; sin máquinas, usuarios, contraseñas ni rutas personales).
 6. Los datos del usuario no se pierden: transacciones, copia previa y guardado automático.
 7. Simplicidad: sin Spring y sin abstracciones sin dos usos reales.
