@@ -27,7 +27,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Exportación a un ZIP legible (X-01 a X-04): manifest.json, una nota por fichero .md o .sql en
+ * Exportación a un ZIP legible (X-01 a X-04): manifest.json, una nota por fichero .md, .sql o .http.json en
  * carpetas que reproducen el árbol, y los adjuntos. No incluye papelera, historial, pestañas,
  * valores, ajustes ni conexión.
  */
@@ -102,7 +102,8 @@ public final class Exporter {
         for (int i = 0; i < kids.size(); i++) {
             ExportNote n = kids.get(i);
             String base = String.format("%0" + width + "d", i + 1) + "-" + slug(n.title());
-            files.put(n.id(), folder + base + "." + n.type());
+            // H-50: las notas HTTP son JSON.
+            files.put(n.id(), folder + base + ("http".equals(n.type()) ? ".http.json" : "." + n.type()));
             assignFiles(children, n.id(), folder + base + "/", files);
         }
     }

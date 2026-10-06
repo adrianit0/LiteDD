@@ -26,7 +26,7 @@ public final class NoteService {
     public static final String DEFAULT_TITLE = "Sin título";
     /** N-07 */
     public static final int DESCRIPTION_MAX = 200;
-    private static final Set<String> TYPES = Set.of("md", "sql");
+    private static final Set<String> TYPES = Set.of("md", "sql", "http");
 
     /** N-44 */
     static final int VERSIONS_KEPT = 20;
@@ -79,7 +79,7 @@ public final class NoteService {
     /** N-05, N-06: la nota nueva va al final de sus hermanas. */
     public Note create(String parentId, String type, String title) {
         if (type == null || !TYPES.contains(type)) {
-            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md» o «sql»");
+            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md», «sql» o «http»");
         }
         String finalTitle = title == null || title.isBlank() ? DEFAULT_TITLE : title.strip();
         return store.write(s -> {

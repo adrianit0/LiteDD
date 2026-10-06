@@ -66,6 +66,59 @@ class MigratorTest {
     }
 
     @Test
+    void h01_v003_admits_http_notes_and_keeps_every_related_row() throws Exception {
+        try (Connection c = connect()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON");
+            }
+            new Migrator(Migrator.MIGRATIONS.subList(0, 2), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, description, created_at, updated_at)
+                        VALUES ('m', NULL, 0, 'md', 'Préstamos', 'tabla loan', 'resumen', '2026-10-04T08:00:00Z', '2026-10-04T08:00:00Z'),
+                               ('s', 'm', 0, 'sql', 'Consulta', 'SELECT 1', '', '2026-10-04T08:00:00Z', '2026-10-04T08:00:00Z')""");
+                st.execute("INSERT INTO tag (id, name) VALUES (1, 'demo')");
+                st.execute("INSERT INTO note_tag (note_id, tag_id) VALUES ('m', 1)");
+                st.execute("INSERT INTO note_version (note_id, title, content, saved_at) VALUES ('m', 'P', 'v1', '2026-10-04T08:00:00Z')");
+                st.execute("INSERT INTO attachment (id, note_id, name, mime, data, created_at) VALUES ('a1', 'm', 'x.png', 'image/png', x'00', 'now')");
+                st.execute("INSERT INTO variable_value (note_id, name, value) VALUES ('s', 'id', '5')");
+                st.execute("INSERT INTO tab (id, note_id, position, active, mode) VALUES ('t1', 's', 0, 1, 'view')");
+            }
+            String ridBefore = scalar(c, "SELECT rid FROM note WHERE id = 'm'");
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
+            assertThat(scalar(c, "SELECT count(*) FROM note")).isEqualTo("2");
+            assertThat(scalar(c, "SELECT rid FROM note WHERE id = 'm'")).isEqualTo(ridBefore);
+            assertThat(scalar(c, "SELECT description FROM note WHERE id = 'm'")).isEqualTo("resumen");
+            assertThat(scalar(c, "SELECT parent_id FROM note WHERE id = 's'")).isEqualTo("m");
+            for (String table : List.of("note_tag", "note_version", "attachment", "variable_value", "tab")) {
+                assertThat(scalar(c, "SELECT count(*) FROM " + table)).as(table).isEqualTo("1");
+            }
+            // La búsqueda sigue funcionando sobre las filas copiadas y sobre las nuevas.
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"prestamos\"'")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('h', NULL, 1, 'http', 'Login', '{}', '2026-10-06T08:00:00Z', '2026-10-06T08:00:00Z')""");
+                assertThatThrownBy(() -> st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('x', NULL, 2, 'txt', 'X', '', 'now', 'now')""")).isInstanceOf(SQLException.class);
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"login\"'")).isEqualTo("1");
+            // Las claves ajenas vuelven a estar activas y en cascada.
+            assertThat(scalar(c, "PRAGMA foreign_keys")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("DELETE FROM note WHERE id = 's'");
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM tab")).isEqualTo("0");
+            assertThat(scalar(c, "SELECT count(*) FROM variable_value")).isEqualTo("0");
+            assertThat(backups()).hasSize(1);
+        }
+    }
+
+    @Test
     void d02_keeps_only_two_premigration_backups() throws Exception {
         Files.createDirectories(dir);
         for (String name : List.of("litedd-20260101-000000-premigracion.db", "litedd-20260102-000000-premigracion.db",

@@ -138,6 +138,21 @@ class TransferTest {
     }
 
     @Test
+    void h50_http_notes_export_as_http_json_and_import_back() throws Exception {
+        String content = "{\"method\":\"GET\",\"endpoint\":\"/user/{id}/tasks\"}";
+        note(null, "http", "Tareas", content);
+        byte[] zip = exporter.export();
+        Map<String, byte[]> files = unzip(zip);
+        assertThat(files.keySet()).contains("notes/01-tareas.http.json");
+        assertThat(new String(files.get("notes/01-tareas.http.json"), StandardCharsets.UTF_8)).isEqualTo(content);
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        Note copy = notes.get(notes.tree().stream().filter(n -> result.rootId().equals(n.parentId())).findFirst().orElseThrow().id());
+        assertThat(copy.type()).isEqualTo("http");
+        assertThat(copy.content()).isEqualTo(content);
+    }
+
+    @Test
     void x04_trash_history_tabs_and_values_are_not_exported() throws Exception {
         Note keep = note(null, "md", "Activa", "x");
         Note gone = note(null, "md", "En la papelera", "y");

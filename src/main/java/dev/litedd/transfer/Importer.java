@@ -215,7 +215,7 @@ public final class Importer {
             if (n.id() == null || n.id().isBlank() || !ids.add(n.id())) {
                 throw new ApiError(400, "invalid_manifest", "Identificador de nota ausente o repetido: " + n.id());
             }
-            if (!"md".equals(n.type()) && !"sql".equals(n.type())) {
+            if (!"md".equals(n.type()) && !"sql".equals(n.type()) && !"http".equals(n.type())) {
                 throw new ApiError(400, "invalid_manifest", "Tipo de nota no válido en «" + n.title() + "»");
             }
             if (n.title() == null || n.title().isBlank()) {

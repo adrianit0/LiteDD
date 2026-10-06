@@ -25,7 +25,7 @@ public final class Migrator {
 
     /** Orden de aplicación; user_version es el número de migraciones aplicadas. */
     public static final List<String> MIGRATIONS = List.of("db/migration/V001__initial.sql",
-            "db/migration/V002__note_description.sql");
+            "db/migration/V002__note_description.sql", "db/migration/V003__http_notes.sql");
 
     static final String BACKUP_SUFFIX = "-premigracion.db";
     private static final int BACKUPS_KEPT = 2;
@@ -52,21 +52,46 @@ public final class Migrator {
             backup(c);
         }
         boolean autoCommit = c.getAutoCommit();
-        for (int i = current; i < migrations.size(); i++) {
-            String name = migrations.get(i);
-            c.setAutoCommit(false);
-            try (Statement st = c.createStatement()) {
-                for (String sql : split(read(name))) {
-                    st.execute(sql);
+        // Procedimiento oficial de SQLite para reconstruir tablas (V003, ADR-0021): las claves ajenas se
+        // desactivan fuera de la transacción y se comprueban antes de confirmar cada migración.
+        boolean foreignKeys = scalarInt(c, "PRAGMA foreign_keys") == 1;
+        try (Statement off = c.createStatement()) {
+            off.execute("PRAGMA foreign_keys = OFF");
+        }
+        try {
+            for (int i = current; i < migrations.size(); i++) {
+                String name = migrations.get(i);
+                c.setAutoCommit(false);
+                try (Statement st = c.createStatement()) {
+                    for (String sql : split(read(name))) {
+                        st.execute(sql);
+                    }
+                    try (ResultSet broken = st.executeQuery("PRAGMA foreign_key_check")) {
+                        if (broken.next()) {
+                            throw new SQLException("la tabla " + broken.getString(1) + " queda con referencias rotas");
+                        }
+                    }
+                    st.execute("PRAGMA user_version = " + (i + 1));
+                    c.commit();
+                } catch (SQLException e) {
+                    c.rollback();
+                    throw new IllegalStateException("Falló la migración " + name + ": " + e.getMessage(), e);
+                } finally {
+                    c.setAutoCommit(autoCommit);
                 }
-                st.execute("PRAGMA user_version = " + (i + 1));
-                c.commit();
-            } catch (SQLException e) {
-                c.rollback();
-                throw new IllegalStateException("Falló la migración " + name + ": " + e.getMessage(), e);
-            } finally {
-                c.setAutoCommit(autoCommit);
             }
+        } finally {
+            if (foreignKeys) {
+                try (Statement on = c.createStatement()) {
+                    on.execute("PRAGMA foreign_keys = ON");
+                }
+            }
+        }
+    }
+
+    private static int scalarInt(Connection c, String sql) throws SQLException {
+        try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getInt(1) : 0;
         }
     }
 
