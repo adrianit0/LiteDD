@@ -211,7 +211,7 @@ class LifecycleTest {
                 {"config":{"defaultPageSize":null,"rowCap":5000,"queryTimeoutSeconds":60,"port":47700,"autoShutdownMinutes":30},
                  "ui.sidebarWidth":300}""");
         assertThat(ok.statusCode()).isEqualTo(200);
-        assertThat(settings.get()).isEqualTo(new AppConfig(null, 5000, 60, 47700, 30, true));
+        assertThat(settings.get()).isEqualTo(new AppConfig(null, 5000, 60, 47700, 30, true, null));
         assertThat(new AppSettings(dir.resolve("config/config.json")).get()).isEqualTo(settings.get());
         assertThat(get("/api/settings").get("ui.sidebarWidth").asInt()).isEqualTo(300);
 

@@ -1,6 +1,10 @@
 package dev.litedd;
 
 import dev.litedd.http.HttpServer;
+import dev.litedd.httpnotes.HttpApi;
+import dev.litedd.httpnotes.HttpCaller;
+import dev.litedd.httpnotes.HttpCredentials;
+import dev.litedd.httpnotes.HttpRunner;
 import dev.litedd.lifecycle.CommandLine;
 import dev.litedd.lifecycle.CommandLine.Options;
 import dev.litedd.lifecycle.Desktop;
@@ -110,6 +114,7 @@ public final class Main {
         }
 
         ConnectionFile connectionFile = new ConnectionFile(DataPaths.connectionFile());
+        HttpCredentials httpCredentials = new HttpCredentials(DataPaths.httpCredentialsFile());
         MySqlGateway gateway = new MySqlGateway();
         String token = sessionToken();
         AtomicBoolean stopped = new AtomicBoolean();
@@ -146,6 +151,7 @@ public final class Main {
                     new ConnectionApi(connectionFile, gateway),
                     new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                             DataPaths.dataDir(), Desktop::openFolder, clock),
+                    new HttpApi(new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller()), httpCredentials),
                     new LifecycleApi(presence.value, exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());

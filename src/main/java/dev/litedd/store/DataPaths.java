@@ -36,6 +36,11 @@ public final class DataPaths {
     }
 
     /** U-10 */
+    /** H-21: contraseña de las notas HTTP, con permisos 600. */
+    public static Path httpCredentialsFile() {
+        return configDir().resolve("http.json");
+    }
+
     public static Path configFile() {
         return configDir().resolve("config.json");
     }
