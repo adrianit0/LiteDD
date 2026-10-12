@@ -33,7 +33,7 @@ export async function createAndOpen(parentId: string | null, type: NoteType): Pr
   }
 }
 
-/** N-08: copia la nota, sin hijas, debajo de la original y la abre. */
+/** N-08, M-31: copia la nota, sin hijas, debajo de la original y la abre. */
 export async function duplicateNote(id: string): Promise<void> {
   try {
     // Lo que se estuviera escribiendo se guarda antes, para que la copia lo incluya.
@@ -85,13 +85,19 @@ export async function deleteNote(id: string): Promise<void> {
   const { nodes } = useTree.getState();
   const node = nodes.find((n) => n.id === id);
   if (!node) return;
-  const children = nodes.filter((n) => n.parentId === id).length;
+  const kids = nodes.filter((n) => n.parentId === id);
+  const children = kids.length;
+  // M-30: la nota XML va a la papelera con sus hijas generadas, sin preguntar por ellas.
+  const isXml = node.type === 'xml';
 
   const choice =
-    children === 0
+    children === 0 || isXml
       ? await ask({
           title: 'Eliminar nota',
-          body: `«${node.title}» irá a la papelera.`,
+          body:
+            isXml && children > 0
+              ? `«${node.title}» irá a la papelera con ${children === 1 ? 'su sentencia generada' : `sus ${children} sentencias generadas`}.`
+              : `«${node.title}» irá a la papelera.`,
           options: [
             { value: 'delete', label: 'Eliminar', primary: true },
             { value: 'cancel', label: 'Cancelar' },
@@ -114,6 +120,7 @@ export async function deleteNote(id: string): Promise<void> {
     await useTabs.getState().saveNote(id);
     await api.deleteNote(id, choice === 'promote');
     useTabs.getState().dropNote(id);
+    if (isXml) kids.forEach((k) => useTabs.getState().dropNote(k.id));
     useUi.getState().notify(`«${node.title}» se ha movido a la papelera`);
   } catch (e) {
     fail(e, 'No se pudo eliminar la nota');

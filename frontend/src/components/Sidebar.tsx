@@ -48,6 +48,9 @@ export function Sidebar() {
             <button type="button" onClick={() => void createAndOpen(null, 'http')}>
               + Nueva nota HTTP
             </button>
+            <button type="button" onClick={() => void createAndOpen(null, 'xml')}>
+              + Nueva nota MyBatis
+            </button>
           </div>
           <SearchBox />
           {searching ? <SearchResults /> : <Tree />}

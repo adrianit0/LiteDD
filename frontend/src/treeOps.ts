@@ -1,4 +1,5 @@
 import { childrenOf } from './tree';
+import { acceptsChildren, isGenerated } from './mapper';
 import type { TreeNode } from './types';
 
 /** Destino de un movimiento: posición entre las nuevas hermanas, sin contar la propia nota. */
@@ -38,7 +39,8 @@ export function dropDestination(nodes: TreeNode[], dragId: string, targetId: str
   if (dragId === targetId || descendantIds(nodes, dragId).has(targetId)) return null;
   const drag = nodes.find((n) => n.id === dragId);
   const target = nodes.find((n) => n.id === targetId);
-  if (!drag || !target) return null;
+  // M-20: las hijas generadas no se mueven.
+  if (!drag || !target || isGenerated(drag)) return null;
   const children = childrenOf(nodes);
 
   let dest: Destination;
@@ -50,13 +52,24 @@ export function dropDestination(nodes: TreeNode[], dragId: string, targetId: str
     const index = siblings.findIndex((n) => n.id === target.id);
     dest = { parentId: target.parentId, position: zone === 'before' ? index : index + 1 };
   }
-  return isNoOp(drag, dest) ? null : dest;
+  return isNoOp(drag, dest) || !canHold(nodes, dest.parentId) ? null : dest;
+}
+
+/** M-22: la raíz y cualquier nota salvo la XML MyBatis y sus hijas generadas. */
+function canHold(nodes: TreeNode[], parentId: string | null): boolean {
+  return parentId === null || acceptsChildren(nodes.find((n) => n.id === parentId));
 }
 
 /** N-63: Alt+↑ y Alt+↓ entre hermanas; Alt+→ hija de la anterior; Alt+← al nivel de su madre, justo después. */
 export function keyboardDestination(nodes: TreeNode[], id: string, move: KeyboardMove): Destination | null {
   const node = nodes.find((n) => n.id === id);
-  if (!node) return null;
+  if (!node || isGenerated(node)) return null;
+  const dest = keyboardTarget(nodes, node, move);
+  return dest && canHold(nodes, dest.parentId) ? dest : null;
+}
+
+function keyboardTarget(nodes: TreeNode[], node: TreeNode, move: KeyboardMove): Destination | null {
+  const id = node.id;
   const children = childrenOf(nodes);
   const siblings = children.get(node.parentId) ?? [];
   const index = siblings.findIndex((n) => n.id === id);
@@ -85,7 +98,7 @@ export function keyboardDestination(nodes: TreeNode[], id: string, move: Keyboar
 export function moveCandidates(nodes: TreeNode[], id: string): TreeNode[] {
   const excluded = descendantIds(nodes, id);
   excluded.add(id);
-  return nodes.filter((n) => !excluded.has(n.id));
+  return nodes.filter((n) => !excluded.has(n.id) && acceptsChildren(n));
 }
 
 /** Texto comparable sin mayúsculas ni acentos. */

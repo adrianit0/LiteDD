@@ -29,6 +29,7 @@ import { createAndOpen, deleteNote, duplicateNote, editTags, moveNote, openNote,
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
+import { acceptsChildren, isGenerated, writeMark } from '../mapper';
 
 const ROW_HEIGHT = 28;
 /** N-07: fila con la descripción debajo del título. */
@@ -108,20 +109,36 @@ export function Tree() {
     if (row) setFocusId(row.node.id);
   };
 
-  const menuItems = (id: string): MenuItem[] => [
-    { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
-    { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
-    { label: 'Nueva nota HTTP hija', onSelect: () => void createAndOpen(id, 'http') },
-    { label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) },
-    { label: 'Duplicar', onSelect: () => void duplicateNote(id) },
-    {
-      label: nodes.find((n) => n.id === id)?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
-      onSelect: () => void toggleFavorite(id),
-    },
-    { label: 'Etiquetas…', onSelect: () => void editTags(id) },
-    { label: 'Mover a…', onSelect: () => setMovingId(id) },
-    { label: 'Eliminar', shortcut: 'Supr', onSelect: () => void deleteNote(id) },
-  ];
+  /** N-04, M-20, M-22: sin «nueva hija» en la nota XML; en sus hijas, solo duplicar, favorita y etiquetas. */
+  const menuItems = (id: string): MenuItem[] => {
+    const node = nodes.find((n) => n.id === id);
+    const generated = isGenerated(node);
+    const items: MenuItem[] = [];
+    if (acceptsChildren(node)) {
+      items.push(
+        { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
+        { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
+        { label: 'Nueva nota HTTP hija', onSelect: () => void createAndOpen(id, 'http') },
+        { label: 'Nueva nota MyBatis hija', onSelect: () => void createAndOpen(id, 'xml') },
+      );
+    }
+    if (!generated) items.push({ label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) });
+    items.push(
+      { label: 'Duplicar', onSelect: () => void duplicateNote(id) },
+      {
+        label: node?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
+        onSelect: () => void toggleFavorite(id),
+      },
+      { label: 'Etiquetas…', onSelect: () => void editTags(id) },
+    );
+    if (!generated) {
+      items.push(
+        { label: 'Mover a…', onSelect: () => setMovingId(id) },
+        { label: 'Eliminar', shortcut: 'Supr', onSelect: () => void deleteNote(id) },
+      );
+    }
+    return items;
+  };
 
   const openMenuAt = (e: KeyboardEvent, id: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -165,10 +182,10 @@ export function Tree() {
         void openNote(row.node.id);
         break;
       case 'F2':
-        setRenamingId(row.node.id);
+        if (!isGenerated(row.node)) setRenamingId(row.node.id);
         break;
       case 'Delete':
-        void deleteNote(row.node.id);
+        if (!isGenerated(row.node)) void deleteNote(row.node.id);
         break;
       case 'ContextMenu':
         openMenuAt(e, row.node.id);
@@ -306,7 +323,9 @@ interface RowProps {
 
 function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, onPin, onContextMenu, onKeyDown, onRenamed }: RowProps) {
   const { node } = row;
-  const drag = useDraggable({ id: node.id, disabled: renaming });
+  // M-20: las hijas generadas no se arrastran.
+  const drag = useDraggable({ id: node.id, disabled: renaming || isGenerated(node) });
+  const mark = writeMark(node.statementKind);
   const dropRef = useDroppable({ id: node.id });
   const setRef = (el: HTMLDivElement | null) => {
     drag.setNodeRef(el);
@@ -379,6 +398,12 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
               {node.description}
             </span>
           )}
+        </span>
+      )}
+      {mark && !renaming && (
+        // M-24
+        <span className="write-mark" title="Sentencia de escritura: LiteDD solo genera su SQL">
+          {mark}
         </span>
       )}
       {node.favorite && !renaming && (

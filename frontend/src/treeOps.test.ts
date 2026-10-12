@@ -130,3 +130,36 @@ describe('N-65 desplegar al mantener el arrastre', () => {
     expect(expand).not.toHaveBeenCalled();
   });
 });
+
+describe('M-20 M-22 notas XML MyBatis en el árbol', () => {
+  const xml: TreeNode = { ...n('X', null, 3), type: 'xml' };
+  const child: TreeNode = { ...n('X1', 'X', 0), type: 'sql', statementId: 'byAuthor', statementKind: 'select' };
+  const all = [...nodes, xml, child];
+
+  it('no se suelta nada dentro de la nota XML ni de sus hijas', () => {
+    expect(dropDestination(all, 'B', 'X', 'inside')).toBeNull();
+    expect(dropDestination(all, 'B', 'X1', 'before')).toBeNull();
+    expect(dropDestination(all, 'B', 'X1', 'inside')).toBeNull();
+    // Antes o después de la nota XML, sí.
+    expect(dropDestination(all, 'B', 'X', 'after')).toEqual({ parentId: null, position: 3 });
+  });
+
+  it('las hijas generadas no se mueven; la nota XML sí', () => {
+    expect(dropDestination(all, 'X1', 'B', 'after')).toBeNull();
+    expect(keyboardDestination(all, 'X1', 'left')).toBeNull();
+    expect(dropDestination(all, 'X', 'A', 'inside')).toEqual({ parentId: 'A', position: 2 });
+  });
+
+  it('Alt+→ no mete una nota dentro de la nota XML anterior', () => {
+    const after: TreeNode = n('D', null, 4);
+    expect(keyboardDestination([...all, after], 'D', 'right')).toBeNull();
+    expect(keyboardDestination([...all, after], 'D', 'up')).toEqual({ parentId: null, position: 3 });
+  });
+
+  it('«Mover a…» no ofrece la nota XML ni sus hijas como destino', () => {
+    const ids = moveCandidates(all, 'B').map((x) => x.id);
+    expect(ids).not.toContain('X');
+    expect(ids).not.toContain('X1');
+    expect(ids).toContain('A');
+  });
+});

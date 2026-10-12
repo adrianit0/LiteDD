@@ -7,11 +7,19 @@ import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
 import { MySQL, sql } from '@codemirror/lang-sql';
 import { tags } from '@lezer/highlight';
 import { applyFormat, type FormatAction } from './formatting';
-import { mybatisHighlight } from './mybatis';
+import { mapperHighlight, mybatisHighlight } from './mybatis';
 import { insertSnippet, type SnippetKind } from '../sql/snippets';
 import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
 import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
+
+const PLACEHOLDERS: Record<NoteType | 'plain', string> = {
+  md: 'Escribe en Markdown…',
+  sql: 'Escribe la consulta…',
+  xml: 'Pega aquí el mapper.xml completo…',
+  http: 'Escribe el cuerpo…',
+  plain: 'Escribe el cuerpo…',
+};
 
 interface Props {
   /** plain: texto sin lenguaje, para el cuerpo raw de una nota HTTP (H-17, ADR-0021). */
@@ -148,7 +156,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
       EditorView.lineWrapping,
       theme,
       syntaxHighlighting(highlight),
-      placeholder(type === 'md' ? 'Escribe en Markdown…' : type === 'sql' ? 'Escribe la consulta…' : 'Escribe el cuerpo…'),
+      placeholder(PLACEHOLDERS[type]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) callbacks.current.onChange(u.state.doc.toString());
       }),
@@ -165,8 +173,8 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
         imageDrop((file) => callbacks.current.onImage?.(file) ?? Promise.resolve(null)),
         keymap.of(markdownBindings(format)),
       );
-    } else if (type === 'sql') {
-      extensions.push(sql({ dialect: MySQL }), mybatisHighlight, keymap.of(sqlBindings()));
+    } else if (type === 'sql' || type === 'xml') {
+      extensions.push(sql({ dialect: MySQL }), type === 'xml' ? mapperHighlight : mybatisHighlight, keymap.of(sqlBindings()));
     } else {
       extensions.push(keymap.of(sqlBindings()));
     }

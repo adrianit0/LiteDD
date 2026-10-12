@@ -1,4 +1,5 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
+import type { MapperAnalysis } from './mapper';
 import type { Analysis, ExecuteResponse, Sort } from './sql/types';
 import type { SearchHit } from './search';
 
@@ -326,6 +327,8 @@ export const api = {
   getSession: () => request<{ tabs: SessionTab[] }>('GET', '/api/session'),
   putSession: (tabs: SessionTab[]) => request<{ tabs: SessionTab[] }>('PUT', '/api/session', { tabs }),
   analyze: (content: string, noteId?: string) => request<Analysis>('POST', '/api/sql/analyze', { content, noteId }),
+  /** M-41 */
+  analyzeMapper: (content: string) => request<MapperAnalysis>('POST', '/api/mybatis/analyze', { content }),
   execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
   count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),

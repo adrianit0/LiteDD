@@ -176,6 +176,7 @@ export const useTabs = create<TabsState>((set, get) => {
       if (!current) return;
       patch(id, { note: saved });
       applyRename(saved, id);
+      if (saved.type === 'xml') void refreshGenerated(saved.id);
       if (isDirty(tab(id)!)) {
         patch(id, { status: 'pending' });
         if (autosaveEnabled()) schedule(id);
@@ -192,6 +193,34 @@ export const useTabs = create<TabsState>((set, get) => {
         if (!(e instanceof ApiError && e.status === 0)) {
           useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo guardar', 'error');
         }
+      }
+    }
+  };
+
+  /**
+   * M-15: tras guardar una nota XML, el árbol muestra sus hijas actuales y las pestañas de las hijas se
+   * recargan; las de sentencias que ya no están se cierran (N-54).
+   */
+  const refreshGenerated = async (xmlId: string) => {
+    try {
+      await useTree.getState().load();
+    } catch {
+      return;
+    }
+    const alive = new Set(useTree.getState().nodes.filter((n) => n.parentId === xmlId).map((n) => n.id));
+    for (const t of get().tabs) {
+      if (!t.note?.statementId || t.note.parentId !== xmlId) continue;
+      if (!alive.has(t.noteId)) {
+        remove(t.id);
+        continue;
+      }
+      try {
+        const note = await api.getNote(t.noteId);
+        if (tab(t.id) && note.version !== tab(t.id)!.note?.version) {
+          patch(t.id, { note, title: note.title, description: note.description, content: note.content, status: 'saved' });
+        }
+      } catch {
+        remove(t.id);
       }
     }
   };
@@ -390,6 +419,8 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     async toggleMode(id) {
+      // M-20: las hijas generadas no tienen modo edición.
+      if (tab(id)?.note?.statementId) return;
       // P-14: «Editar» fija la pestaña.
       get().pin(id);
       // N-12, N-40: al cambiar de modo se guarda.
@@ -412,6 +443,8 @@ export const useTabs = create<TabsState>((set, get) => {
       clearTimeout(timers.get(id));
       patch(id, { note, title: note.title, description: note.description, content: note.content, status: 'saved', conflict: null });
       applyRename(note, id);
+      // M-14: restaurar una versión del mapper también regenera las hijas.
+      if (note.type === 'xml') void refreshGenerated(note.id);
     },
 
     applyMeta(note) {

@@ -16,6 +16,8 @@
   --code: #e6c07b;
   /* H-01: icono de las notas HTTP, distinto del azul de MD y del dorado de SQL. */
   --green: #7ee787;
+  /* M-01: icono de las notas XML MyBatis. */
+  --violet: #d2a8ff;
   --accent-text: #0d1117;
 
   /* U-04 */
@@ -267,6 +269,29 @@ input {
   color: var(--green);
 }
 
+.type-xml {
+  color: var(--violet);
+}
+
+/* M-24: marca de las sentencias de escritura generadas desde un mapper. */
+.write-mark,
+.statement-kind {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.write-mark,
+.statement-kind.write {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
 /* Menú contextual */
 .context-menu {
   position: fixed;
@@ -431,6 +456,80 @@ input {
 
 .view-empty {
   padding: 16px 20px;
+}
+
+/* Nota XML MyBatis en consulta (M-42) */
+.mapper-statements {
+  padding: 12px 20px 0;
+}
+
+.mapper-statements h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.mapper-statements ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.mapper-statements li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mapper-source {
+  margin: 0;
+  padding: 16px 20px;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}
+
+.mapper-source .cm-mb-tag {
+  color: var(--link);
+}
+
+.mapper-source .cm-mb-param {
+  color: var(--warning);
+}
+
+.mapper-source .cm-mb-textual {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.mapper-source .cm-mb-comment {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* M-21: cabecera de una hija generada. */
+.generated-from {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 0;
+  font-size: 12px;
 }
 
 /* Vista Markdown */

@@ -1,4 +1,6 @@
-export type NoteType = 'md' | 'sql' | 'http';
+export type NoteType = 'md' | 'sql' | 'http' | 'xml';
+/** M-24: etiqueta de la sentencia de la que sale una hija generada. */
+export type StatementKind = 'select' | 'insert' | 'update' | 'delete';
 export type Mode = 'view' | 'edit';
 
 export interface TreeNode {
@@ -11,6 +13,9 @@ export interface TreeNode {
   description: string;
   favorite: boolean;
   tags: string[];
+  /** M-12: id de la sentencia en el mapper de la madre; null en una nota normal. */
+  statementId?: string | null;
+  statementKind?: StatementKind | null;
 }
 
 export interface Note extends TreeNode {

@@ -8,6 +8,8 @@ import { FormatToolbar } from '../editor/FormatToolbar';
 import { SqlView } from './sql/SqlView';
 import { HttpView } from './http/HttpView';
 import { SqlAnalysisPanel, SqlToolbar } from './sql/SqlEditorPanels';
+import { MapperAnalysisPanel, MapperView } from './mapper/MapperView';
+import { isGenerated, writeMark } from '../mapper';
 import { MarkdownView } from './MarkdownView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote } from '../actions';
@@ -38,7 +40,10 @@ export function NotePane({ tab }: { tab: Tab }) {
   const autosave = useUi((s) => s.config.autosave);
   // H-02: las notas HTTP no tienen modos; su formulario siempre se edita.
   const isHttp = tab.note?.type === 'http';
-  const editing = mode === 'edit' || isHttp;
+  // M-20: las hijas generadas de una nota XML son de solo lectura.
+  const generated = isGenerated(tab.note);
+  const editMode = mode === 'edit' && !generated;
+  const editing = editMode || isHttp;
   // N-40: perder el foco guarda; con el guardado manual (N-46), no.
   const saveOnBlur = () => {
     if (autosave) void store.saveNow(tab.id);
@@ -61,7 +66,7 @@ export function NotePane({ tab }: { tab: Tab }) {
 
   // P-06: cada pestaña recupera su desplazamiento.
   useLayoutEffect(() => {
-    if (mode === 'view' && body.current && note) body.current.scrollTop = tab.scroll;
+    if (!editMode && body.current && note) body.current.scrollTop = tab.scroll;
     // Solo al cambiar de pestaña, de modo o al cargar la nota.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.id, mode, note === null]);
@@ -81,6 +86,8 @@ export function NotePane({ tab }: { tab: Tab }) {
     );
   }
   const path = ancestorsOf(nodes, note.id).map((n) => n.title);
+  const source = generated ? nodes.find((n) => n.id === note.parentId) : undefined;
+  const mark = writeMark(note.statementKind);
 
   /** N-92: guarda la imagen como adjunto y la deja ya en la caché para la vista. */
   const uploadImage = async (file: File): Promise<string | null> => {
@@ -153,6 +160,17 @@ export function NotePane({ tab }: { tab: Tab }) {
           ) : (
             tab.description && <p className="note-description muted">{tab.description}</p>
           )}
+          {generated && (
+            // M-21, M-24
+            <p className="generated-from muted">
+              {mark && <span className="statement-kind write">{mark}</span>}
+              Generada desde{' '}
+              <button type="button" className="link-button" onClick={() => note.parentId && void openNote(note.parentId)}>
+                «{source?.title ?? 'su nota XML'}»
+              </button>
+              . Solo lectura: se cambia editando el mapper.
+            </p>
+          )}
           <TagEditor note={note} />
         </div>
         <div className="note-actions">
@@ -175,7 +193,7 @@ export function NotePane({ tab }: { tab: Tab }) {
               Guardar
             </button>
           )}
-          {!isHttp && (
+          {!isHttp && !generated && (
             <button type="button" onClick={() => void store.toggleMode(tab.id)} aria-keyshortcuts="Control+E" title="Ctrl+E">
               {mode === 'edit' ? 'Ver' : 'Editar'}
             </button>
@@ -183,26 +201,30 @@ export function NotePane({ tab }: { tab: Tab }) {
           <button type="button" onClick={onRefresh} title="Recargar la nota desde el disco">
             Actualizar
           </button>
-          <button type="button" onClick={() => setHistoryOpen(true)} title="Versiones guardadas de la nota">
-            Historial
-          </button>
-          <button type="button" onClick={() => void deleteNote(note.id)} title="Mover la nota a la papelera">
-            Eliminar
-          </button>
+          {!generated && (
+            <>
+              <button type="button" onClick={() => setHistoryOpen(true)} title="Versiones guardadas de la nota">
+                Historial
+              </button>
+              <button type="button" onClick={() => void deleteNote(note.id)} title="Mover la nota a la papelera">
+                Eliminar
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {mode === 'edit' && note.type === 'md' && <FormatToolbar onFormat={(a) => editor.current?.format(a)} />}
-      {mode === 'edit' && note.type === 'sql' && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
+      {editMode && note.type === 'md' && <FormatToolbar onFormat={(a) => editor.current?.format(a)} />}
+      {editMode && (note.type === 'sql' || note.type === 'xml') && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
 
       <div
-        className={`note-body mode-${isHttp ? 'http' : mode}`}
+        className={`note-body mode-${isHttp ? 'http' : editMode ? 'edit' : 'view'}`}
         ref={body}
-        onScroll={mode === 'view' && !isHttp ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
+        onScroll={!editMode && !isHttp ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
       >
         {isHttp ? (
           <HttpView tab={tab} />
-        ) : mode === 'edit' ? (
+        ) : editMode ? (
           <NoteEditor
             key={tab.id}
             type={note.type}
@@ -219,11 +241,14 @@ export function NotePane({ tab }: { tab: Tab }) {
           />
         ) : note.type === 'md' ? (
           <MarkdownView content={content} onOpenNote={(id, newTab) => void openNote(id, newTab)} />
+        ) : note.type === 'xml' ? (
+          <MapperView note={note} content={content} />
         ) : (
           <SqlView tab={tab} />
         )}
       </div>
-      {mode === 'edit' && note.type === 'sql' && <SqlAnalysisPanel content={content} />}
+      {editMode && note.type === 'sql' && <SqlAnalysisPanel content={content} />}
+      {editMode && note.type === 'xml' && <MapperAnalysisPanel content={content} />}
 
       {status === 'conflict' && conflict && (
         <Dialog
