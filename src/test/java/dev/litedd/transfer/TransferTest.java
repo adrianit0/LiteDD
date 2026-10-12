@@ -153,6 +153,54 @@ class TransferTest {
     }
 
     @Test
+    void m50_xml_notes_export_as_xml_with_their_children_and_import_back() throws Exception {
+        String mapper = "<mapper><select id=\"all\">SELECT * FROM book</select><update id=\"touch\">UPDATE book SET year = 1</update></mapper>";
+        Note xml = note(null, "xml", "Libros", mapper);
+        String all = notes.tree().stream().filter(n -> "all".equals(n.statementId())).findFirst().orElseThrow().id();
+        notes.setFavorite(all, true);
+        notes.setTags(all, List.of("demo"));
+
+        byte[] zip = exporter.export();
+        Map<String, byte[]> files = unzip(zip);
+        assertThat(files.keySet()).contains("notes/01-libros.xml", "notes/01-libros/01-all.sql", "notes/01-libros/02-touch.sql");
+        assertThat(new String(files.get("notes/01-libros.xml"), StandardCharsets.UTF_8)).isEqualTo(mapper);
+        JsonNode manifest = JSON.readTree(files.get("manifest.json"));
+        JsonNode parent = null;
+        JsonNode touch = null;
+        for (JsonNode n : manifest.get("notes")) {
+            if (n.get("id").asText().equals(xml.id())) {
+                parent = n;
+            } else if ("touch".equals(n.path("statementId").asText())) {
+                touch = n;
+            }
+        }
+        assertThat(parent.has("statementId")).isFalse();
+        assertThat(touch.get("statementKind").asText()).isEqualTo("update");
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        TreeNode copy = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId())).findFirst().orElseThrow();
+        assertThat(copy.type()).isEqualTo("xml");
+        List<TreeNode> kids = notes.tree().stream().filter(n -> copy.id().equals(n.parentId()))
+                .sorted((a, b) -> Integer.compare(a.position(), b.position())).toList();
+        assertThat(kids).extracting(TreeNode::statementId).containsExactly("all", "touch");
+        assertThat(kids.getFirst().favorite()).isTrue();
+        assertThat(kids.getFirst().tags()).containsExactly("demo");
+        // Siguen siendo hijas generadas.
+        assertThatThrownBy(() -> notes.delete(kids.getFirst().id(), true)).isInstanceOf(ApiError.class);
+    }
+
+    @Test
+    void m50_import_rejects_a_plain_note_inside_an_xml_note() throws Exception {
+        String manifest = """
+                {"formatVersion":1,"notes":[
+                  {"id":"x","parentId":null,"position":0,"type":"xml","title":"M","tags":[],"file":"notes/m.xml"},
+                  {"id":"s","parentId":"x","position":0,"type":"sql","title":"S","tags":[],"file":"notes/s.sql"}]}""";
+        assertThatThrownBy(() -> importer.importZip(new ByteArrayInputStream(zip(Map.of("manifest.json", manifest,
+                "notes/m.xml", "<mapper/>", "notes/s.sql", "SELECT 1"))), Mode.BRANCH))
+                .isInstanceOf(ApiError.class).hasMessageContaining("«S»");
+    }
+
+    @Test
     void x04_trash_history_tabs_and_values_are_not_exported() throws Exception {
         Note keep = note(null, "md", "Activa", "x");
         Note gone = note(null, "md", "En la papelera", "y");

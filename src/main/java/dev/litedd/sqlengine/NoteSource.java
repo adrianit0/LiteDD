@@ -113,7 +113,7 @@ public final class NoteSource {
     }
 
     /** Q-04: XML seguro, sin DTD ni entidades externas. */
-    private static Document parse(String xml) throws SAXException, IOException {
+    static Document parse(String xml) throws SAXException, IOException {
         try {
             DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
             f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);

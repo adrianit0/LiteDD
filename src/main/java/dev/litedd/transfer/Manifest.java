@@ -1,6 +1,7 @@
 package dev.litedd.transfer;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 
@@ -10,10 +11,15 @@ public record Manifest(int formatVersion, String appVersion, String exportedAt, 
 
     public static final int FORMAT_VERSION = 1;
 
-    /** description (N-07) falta en los archivos anteriores; se importa como vacía. */
+    /**
+     * description (N-07) falta en los archivos anteriores; se importa como vacía. statementId y statementKind solo
+     * aparecen en las hijas de una nota XML MyBatis (M-50).
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Note(String id, String parentId, int position, String type, String title, String description, List<String> tags,
-                       boolean favorite, String createdAt, String updatedAt, String file) {
+                       boolean favorite, String createdAt, String updatedAt, String file,
+                       @JsonInclude(JsonInclude.Include.NON_NULL) String statementId,
+                       @JsonInclude(JsonInclude.Include.NON_NULL) String statementKind) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -129,6 +129,33 @@ class SqlApiTest {
     }
 
     @Test
+    void m41_mapper_analysis_lists_statements_and_errors() throws Exception {
+        Res r = call("POST", "/api/mybatis/analyze", JSON.writeValueAsString(Map.of("content",
+                "<mapper><select id=\"a\">SELECT 1</select><delete id=\"b\">DELETE FROM loan</delete></mapper>")));
+        assertThat(r.status).isEqualTo(200);
+        assertThat(r.json.get("statements").get(1).get("id").asText()).isEqualTo("b");
+        assertThat(r.json.get("statements").get(1).get("kind").asText()).isEqualTo("delete");
+        assertThat(r.json.get("statements").get(1).has("body")).isFalse();
+        assertThat(r.json.get("errors")).isEmpty();
+
+        Res bad = call("POST", "/api/mybatis/analyze", JSON.writeValueAsString(Map.of("content", "<mapper><select>SELECT 1</select></mapper>")));
+        assertThat(bad.json.get("errors").get(0).get("message").asText()).isEqualTo("Hay un elemento <select> sin id");
+    }
+
+    @Test
+    void m23_generated_update_is_never_executed_and_returns_final_sql() throws Exception {
+        Note xml = notes.create(null, "xml", "Libros");
+        notes.save(xml.id(), "Libros", "<mapper><update id=\"rename\">UPDATE book SET title = #{t} WHERE id = #{id,int}</update></mapper>",
+                xml.version());
+        Note child = notes.get(notes.tree().stream().filter(n -> xml.id().equals(n.parentId())).findFirst().orElseThrow().id());
+        // Sin conexión configurada: si llegara al driver respondería 503.
+        Res r = call("POST", "/api/sql/execute", exec(child, "{\"t\":\"Nuevo\",\"id\":\"7\"}"));
+        assertThat(r.status).isEqualTo(200);
+        assertThat(r.json.get("kind").asText()).isEqualTo("statement");
+        assertThat(r.json.get("finalSql").get("inlined").asText()).isEqualTo("UPDATE book SET title = 'Nuevo' WHERE id = 7");
+    }
+
+    @Test
     void s02_q95_forbidden_clause_is_not_executed() throws Exception {
         Note n = sqlNote("SELECT * FROM book FOR UPDATE");
         Res r = call("POST", "/api/sql/execute", exec(n, "{}"));

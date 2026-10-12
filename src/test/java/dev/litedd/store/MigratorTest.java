@@ -119,6 +119,49 @@ class MigratorTest {
     }
 
     @Test
+    void m01_m12_v004_admits_xml_notes_and_statement_children() throws Exception {
+        try (Connection c = connect()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON");
+            }
+            new Migrator(Migrator.MIGRATIONS.subList(0, 3), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, description, created_at, updated_at)
+                        VALUES ('h', NULL, 0, 'http', 'Login', '{}', 'resumen', '2026-10-06T08:00:00Z', '2026-10-06T08:00:00Z')""");
+                st.execute("INSERT INTO tab (id, note_id, position, active, mode) VALUES ('t1', 'h', 0, 1, 'view')");
+            }
+            String ridBefore = scalar(c, "SELECT rid FROM note WHERE id = 'h'");
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(4);
+            assertThat(scalar(c, "SELECT rid FROM note WHERE id = 'h'")).isEqualTo(ridBefore);
+            assertThat(scalar(c, "SELECT statement_id FROM note WHERE id = 'h'")).isNull();
+            assertThat(scalar(c, "SELECT count(*) FROM tab")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('x', NULL, 1, 'xml', 'Mapper', '<mapper/>', 'now', 'now')""");
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at, statement_id, statement_kind)
+                        VALUES ('s', 'x', 0, 'sql', 'selectBooks', 'SELECT 1', 'now', 'now', 'selectBooks', 'select')""");
+                // Un mismo id de sentencia no se repite bajo la misma nota XML.
+                assertThatThrownBy(() -> st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at, statement_id, statement_kind)
+                        VALUES ('s2', 'x', 1, 'sql', 'selectBooks', 'SELECT 1', 'now', 'now', 'selectBooks', 'select')"""))
+                        .isInstanceOf(SQLException.class);
+                assertThatThrownBy(() -> st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at, statement_id, statement_kind)
+                        VALUES ('s3', 'x', 1, 'sql', 'other', 'SELECT 1', 'now', 'now', 'other', 'merge')"""))
+                        .isInstanceOf(SQLException.class);
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"selectbooks\"'")).isEqualTo("1");
+            assertThat(scalar(c, "PRAGMA foreign_keys")).isEqualTo("1");
+        }
+    }
+
+    @Test
     void d02_keeps_only_two_premigration_backups() throws Exception {
         Files.createDirectories(dir);
         for (String name : List.of("litedd-20260101-000000-premigracion.db", "litedd-20260102-000000-premigracion.db",

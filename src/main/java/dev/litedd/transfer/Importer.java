@@ -56,6 +56,8 @@ public final class Importer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter ROOT_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final Set<String> TYPES = Set.of("md", "sql", "http", "xml");
+    private static final Set<String> STATEMENT_KINDS = Set.of("select", "insert", "update", "delete");
     private static final Pattern LINK = Pattern.compile("litedd://(note|attachment)/([0-9A-Za-z-]+)");
 
     private final Store store;
@@ -95,7 +97,8 @@ public final class Importer {
                 safeList(manifest.attachments()).forEach(a -> attachmentIds.put(a.id(), UUID.randomUUID().toString()));
                 rootId = UUID.randomUUID().toString();
                 String title = "Importado " + LocalDateTime.now(clock).format(ROOT_STAMP);
-                notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", "", false, 1, now, now));
+                notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", "", false, 1, now, now, null,
+                        null));
             }
 
             // Por niveles: una nota se inserta después de su madre (clave foránea).
@@ -116,7 +119,7 @@ public final class Importer {
                         text = relink(text, noteIds, attachmentIds);
                     }
                     notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
-                            orNow(n.createdAt(), now), orNow(n.updatedAt(), now)));
+                            orNow(n.createdAt(), now), orNow(n.updatedAt(), now), n.statementId(), n.statementKind()));
                     for (String tag : tags(n.tags())) {
                         content.insertTag(tag);
                         content.insertNoteTag(id, content.selectTagId(tag));
@@ -215,7 +218,7 @@ public final class Importer {
             if (n.id() == null || n.id().isBlank() || !ids.add(n.id())) {
                 throw new ApiError(400, "invalid_manifest", "Identificador de nota ausente o repetido: " + n.id());
             }
-            if (!"md".equals(n.type()) && !"sql".equals(n.type()) && !"http".equals(n.type())) {
+            if (!TYPES.contains(n.type())) {
                 throw new ApiError(400, "invalid_manifest", "Tipo de nota no válido en «" + n.title() + "»");
             }
             if (n.title() == null || n.title().isBlank()) {
@@ -229,6 +232,16 @@ public final class Importer {
                 throw new ApiError(400, "invalid_manifest", "La madre de «" + n.title() + "» no está en el archivo");
             }
             parents.put(n.id(), n.parentId());
+        }
+        // M-50: la nota XML solo tiene hijas generadas, y estas son SQL con su sentencia.
+        Map<String, String> types = new HashMap<>();
+        manifest.notes().forEach(n -> types.put(n.id(), n.type()));
+        for (Manifest.Note n : manifest.notes()) {
+            boolean underXml = n.parentId() != null && "xml".equals(types.get(n.parentId()));
+            boolean generated = n.statementId() != null;
+            if (underXml != generated || generated && (!"sql".equals(n.type()) || !STATEMENT_KINDS.contains(n.statementKind()))) {
+                throw new ApiError(400, "invalid_manifest", "La nota «" + n.title() + "» no es una sentencia válida de su nota XML");
+            }
         }
         for (String id : ids) {
             // D-05: ninguna nota puede ser descendiente de sí misma.

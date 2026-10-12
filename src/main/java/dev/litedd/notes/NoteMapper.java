@@ -12,11 +12,16 @@ import java.util.List;
 public interface NoteMapper {
 
     record TreeRow(String id, String parentId, int position, String type, String title, String description, boolean favorite,
-                   String tags) {
+                   String tags, String statementId, String statementKind) {
     }
 
+    /** @param statementId M-12: id de la sentencia en el mapper de la madre; null en una nota normal */
     record NoteRow(String id, String parentId, int position, String type, String title, String description, String content,
-                   boolean favorite, long version, String createdAt, String updatedAt) {
+                   boolean favorite, long version, String createdAt, String updatedAt, String statementId, String statementKind) {
+    }
+
+    /** M-12: hija generada de una nota XML. */
+    record StatementRow(String id, String statementId, String statementKind, String content) {
     }
 
     String TAG_SEPARATOR = "\u001f";
@@ -25,14 +30,16 @@ public interface NoteMapper {
             SELECT n.id, n.parent_id, n.position, n.type, n.title, n.description, n.favorite,
                    (SELECT group_concat(name, char(31)) FROM (
                        SELECT t.name FROM note_tag nt JOIN tag t ON t.id = nt.tag_id
-                       WHERE nt.note_id = n.id ORDER BY t.name)) AS tags
+                       WHERE nt.note_id = n.id ORDER BY t.name)) AS tags,
+                   n.statement_id, n.statement_kind
             FROM note n
             WHERE n.deleted_at IS NULL
             ORDER BY n.parent_id, n.position""")
     List<TreeRow> selectTree();
 
     @Select("""
-            SELECT id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at
+            SELECT id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at,
+                   statement_id, statement_kind
             FROM note WHERE id = #{id} AND deleted_at IS NULL""")
     NoteRow selectActive(@Param("id") String id);
 
@@ -45,10 +52,46 @@ public interface NoteMapper {
     int countChildren(@Param("parentId") String parentId);
 
     @Insert("""
-            INSERT INTO note (id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at)
+            INSERT INTO note (id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at,
+                              statement_id, statement_kind)
             VALUES (#{id}, #{parentId}, #{position}, #{type}, #{title}, #{description}, #{content}, #{favorite}, #{version},
-                    #{createdAt}, #{updatedAt})""")
+                    #{createdAt}, #{updatedAt}, #{statementId}, #{statementKind})""")
     void insert(NoteRow note);
+
+    @Select("""
+            SELECT id, statement_id, statement_kind, content FROM note
+            WHERE parent_id = #{parentId} AND statement_id IS NOT NULL AND deleted_at IS NULL""")
+    List<StatementRow> selectStatementChildren(@Param("parentId") String parentId);
+
+    /** M-12: la hija cambia de contenido, y por tanto de versión, solo si cambia su sentencia. */
+    @Update("""
+            UPDATE note SET content = #{content}, statement_kind = #{kind}, version = version + 1, updated_at = #{now}
+            WHERE id = #{id}""")
+    void updateStatement(@Param("id") String id, @Param("kind") String kind, @Param("content") String content,
+                         @Param("now") String now);
+
+    /** M-12: borrado definitivo de una hija cuya sentencia ya no está; historial, valores y pestañas caen en cascada. */
+    @Delete("DELETE FROM note WHERE id = #{id} AND statement_id IS NOT NULL")
+    void deleteStatement(@Param("id") String id);
+
+    /** M-30 */
+    @Delete("DELETE FROM note WHERE parent_id = #{parentId} AND statement_id IS NOT NULL")
+    void deleteStatements(@Param("parentId") String parentId);
+
+    /** M-30: las hijas van a la papelera con su nota XML y se cierran sus pestañas. */
+    @Update("""
+            UPDATE note SET deleted_at = #{now}
+            WHERE parent_id = #{parentId} AND statement_id IS NOT NULL AND deleted_at IS NULL""")
+    void markStatementsDeleted(@Param("parentId") String parentId, @Param("now") String now);
+
+    @Delete("DELETE FROM tab WHERE note_id IN (SELECT id FROM note WHERE parent_id = #{parentId} AND statement_id IS NOT NULL)")
+    void deleteStatementTabs(@Param("parentId") String parentId);
+
+    @Update("UPDATE note SET deleted_at = NULL WHERE parent_id = #{parentId} AND statement_id IS NOT NULL")
+    void markStatementsRestored(@Param("parentId") String parentId);
+
+    @Select("SELECT count(*) FROM note WHERE id = #{id} AND statement_id IS NOT NULL")
+    int countStatement(@Param("id") String id);
 
     @Update("""
             UPDATE note SET title = #{title}, description = #{description}, content = #{content}, version = version + 1, updated_at = #{now}
@@ -86,7 +129,7 @@ public interface NoteMapper {
 
     @Select("""
             SELECT id, parent_id, type, title, deleted_at FROM note
-            WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, title""")
+            WHERE deleted_at IS NOT NULL AND statement_id IS NULL ORDER BY deleted_at DESC, title""")
     List<TrashItem> selectTrash();
 
     @Select("SELECT parent_id FROM note WHERE id = #{id} AND deleted_at IS NOT NULL")

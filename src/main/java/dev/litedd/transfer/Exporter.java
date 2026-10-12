@@ -27,7 +27,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Exportación a un ZIP legible (X-01 a X-04): manifest.json, una nota por fichero .md, .sql o .http.json en
+ * Exportación a un ZIP legible (X-01 a X-04, M-50): manifest.json, una nota por fichero .md, .sql, .http.json o .xml en
  * carpetas que reproducen el árbol, y los adjuntos. No incluye papelera, historial, pestañas,
  * valores, ajustes ni conexión.
  */
@@ -70,7 +70,8 @@ public final class Exporter {
         List<Manifest.Note> manifestNotes = new ArrayList<>();
         for (ExportNote n : data.notes()) {
             manifestNotes.add(new Manifest.Note(n.id(), n.parentId(), n.position(), n.type(), n.title(), n.description(),
-                    tags.getOrDefault(n.id(), List.of()), n.favorite(), n.createdAt(), n.updatedAt(), files.get(n.id())));
+                    tags.getOrDefault(n.id(), List.of()), n.favorite(), n.createdAt(), n.updatedAt(), files.get(n.id()),
+                    n.statementId(), n.statementKind()));
         }
         List<Manifest.Attachment> manifestAttachments = new ArrayList<>();
         for (ExportAttachment a : data.attachments()) {

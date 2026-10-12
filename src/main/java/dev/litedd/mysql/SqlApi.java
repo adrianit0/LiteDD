@@ -10,6 +10,8 @@ import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.VariableValues;
 import dev.litedd.settings.AppConfig;
+import dev.litedd.sqlengine.MapperSource;
+import dev.litedd.sqlengine.MapperSource.ParsedMapper;
 import dev.litedd.sqlengine.SqlEngine.Analysis;
 import dev.litedd.sqlengine.SqlError;
 import dev.litedd.sqlengine.Variable;
@@ -34,7 +36,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-/** Rutas /api/sql: analizar, renderizar, ejecutar, contar y cancelar (Q-40 a Q-57, A-04, A-05). */
+/**
+ * Rutas /api/sql: analizar, renderizar, ejecutar, contar y cancelar (Q-40 a Q-57, A-04, A-05). También
+ * /api/mybatis/analyze, el análisis de una nota XML MyBatis (M-41).
+ */
 public final class SqlApi implements ApiRoutes {
 
     record AnalyzeRequest(String content, String noteId) {
@@ -44,6 +49,13 @@ public final class SqlApi implements ApiRoutes {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record AnalyzeResponse(List<Variable> variables, String kind, String forbiddenClause, List<SqlError> errors,
                            Map<String, String> lastValues) {
+    }
+
+    /** M-41 */
+    record MapperStatement(String id, String kind) {
+    }
+
+    record MapperAnalysis(List<MapperStatement> statements, List<SqlError> errors) {
     }
 
     record Sort(Integer column, String direction) {
@@ -129,6 +141,12 @@ public final class SqlApi implements ApiRoutes {
                 }
             }
             ctx.json(new AnalyzeResponse(a.variables(), a.kind(), a.forbiddenClause(), a.errors(), last));
+        });
+        routes.post("/api/mybatis/analyze", ctx -> {
+            AnalyzeRequest req = ctx.bodyAsClass(AnalyzeRequest.class);
+            ParsedMapper p = MapperSource.parse(req.content() == null ? "" : req.content());
+            ctx.json(new MapperAnalysis(p.statements().stream().map(s -> new MapperStatement(s.id(), s.kind())).toList(),
+                    p.errors()));
         });
         routes.post("/api/sql/render", ctx -> {
             ExecuteRequest req = ctx.bodyAsClass(ExecuteRequest.class);

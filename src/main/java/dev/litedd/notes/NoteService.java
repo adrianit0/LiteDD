@@ -2,6 +2,9 @@ package dev.litedd.notes;
 
 import dev.litedd.http.ApiError;
 import dev.litedd.notes.NoteMapper.NoteRow;
+import dev.litedd.notes.NoteMapper.StatementRow;
+import dev.litedd.sqlengine.MapperSource;
+import dev.litedd.sqlengine.MapperSource.ParsedMapper;
 import dev.litedd.store.Store;
 import org.apache.ibatis.session.SqlSession;
 
@@ -11,6 +14,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -26,7 +30,8 @@ public final class NoteService {
     public static final String DEFAULT_TITLE = "Sin título";
     /** N-07 */
     public static final int DESCRIPTION_MAX = 200;
-    private static final Set<String> TYPES = Set.of("md", "sql", "http");
+    private static final String XML = "xml";
+    private static final Set<String> TYPES = Set.of("md", "sql", "http", XML);
 
     /** N-44 */
     static final int VERSIONS_KEPT = 20;
@@ -68,7 +73,8 @@ public final class NoteService {
     public List<TreeNode> tree() {
         return store.read(s -> s.getMapper(NoteMapper.class).selectTree().stream()
                 .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.favorite(),
-                        r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR))))
+                        r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR)),
+                        r.statementId(), r.statementKind()))
                 .toList());
     }
 
@@ -79,17 +85,21 @@ public final class NoteService {
     /** N-05, N-06: la nota nueva va al final de sus hermanas. */
     public Note create(String parentId, String type, String title) {
         if (type == null || !TYPES.contains(type)) {
-            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md», «sql» o «http»");
+            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md», «sql», «http» o «xml»");
         }
         String finalTitle = title == null || title.isBlank() ? DEFAULT_TITLE : title.strip();
         return store.write(s -> {
             NoteMapper m = s.getMapper(NoteMapper.class);
-            if (parentId != null && m.selectActive(parentId) == null) {
-                throw notFound();
+            if (parentId != null) {
+                NoteRow parent = m.selectActive(parentId);
+                if (parent == null) {
+                    throw notFound();
+                }
+                rejectChildrenOf(parent);
             }
             String now = now();
             NoteRow row = new NoteRow(UUID.randomUUID().toString(), parentId, m.countChildren(parentId), type,
-                    finalTitle, "", "", false, 1, now, now);
+                    finalTitle, "", "", false, 1, now, now, null, null);
             m.insert(row);
             return load(s, row.id());
         });
@@ -121,6 +131,7 @@ public final class NoteService {
         }
         return store.write(s -> {
             Note current = load(s, id);
+            rejectGenerated(current);
             String finalDescription = newDescription == null ? current.description() : newDescription;
             // Sin cambios no se toca la nota: así un snapshot al salir de edición no altera la versión.
             boolean unchanged = current.version() == baseVersion && current.title().equals(title.strip())
@@ -129,9 +140,66 @@ public final class NoteService {
                 update(s, id, title.strip(), finalDescription, finalContent, baseVersion);
             }
             Note saved = unchanged ? current : load(s, id);
+            if (!unchanged) {
+                syncStatements(s, saved);
+            }
             recordVersion(s, saved, snapshot);
             return saved;
         });
+    }
+
+    /**
+     * M-10 a M-13: una hija SQL por sentencia del mapper, emparejadas por id de sentencia. Con errores, las
+     * hijas no se tocan.
+     */
+    private void syncStatements(SqlSession s, Note note) {
+        if (!XML.equals(note.type())) {
+            return;
+        }
+        ParsedMapper mapper = MapperSource.parse(note.content());
+        if (!mapper.valid()) {
+            return;
+        }
+        NoteMapper m = s.getMapper(NoteMapper.class);
+        Map<String, StatementRow> existing = new LinkedHashMap<>();
+        m.selectStatementChildren(note.id()).forEach(r -> existing.put(r.statementId(), r));
+        Set<String> current = new HashSet<>();
+        mapper.statements().forEach(st -> current.add(st.id()));
+        // ADR-0023: las hijas de sentencias que ya no están se borran definitivamente.
+        existing.values().stream().filter(r -> !current.contains(r.statementId())).forEach(r -> m.deleteStatement(r.id()));
+        String now = now();
+        List<MapperSource.Statement> statements = mapper.statements();
+        for (int i = 0; i < statements.size(); i++) {
+            MapperSource.Statement st = statements.get(i);
+            StatementRow row = existing.get(st.id());
+            if (row == null) {
+                m.insert(new NoteRow(UUID.randomUUID().toString(), note.id(), i, "sql", st.id(), "", st.body(), false, 1, now,
+                        now, st.id(), st.kind()));
+                continue;
+            }
+            if (!row.content().equals(st.body()) || !row.statementKind().equals(st.kind())) {
+                m.updateStatement(row.id(), st.kind(), st.body(), now);
+            }
+            m.setPosition(row.id(), i);
+        }
+    }
+
+    /** M-20: las hijas generadas no se editan, no se mueven y no se eliminan. */
+    private static void rejectGenerated(Note note) {
+        if (note.generated()) {
+            throw new ApiError(409, "generated_note",
+                    "Esta nota se genera desde su nota XML MyBatis. Para cambiarla, edita la sentencia en el mapper.");
+        }
+    }
+
+    /** M-20, M-22: ni la nota XML ni sus hijas admiten otras hijas. */
+    private static void rejectChildrenOf(NoteRow parent) {
+        if (XML.equals(parent.type())) {
+            throw new ApiError(409, "xml_children", "Una nota XML MyBatis solo tiene como hijas las sentencias de su mapper");
+        }
+        if (parent.statementId() != null) {
+            throw new ApiError(409, "generated_children", "Una sentencia generada no admite hijas");
+        }
     }
 
     public List<NoteVersion> versions(String id) {
@@ -150,10 +218,13 @@ public final class NoteService {
                 throw new ApiError(404, "not_found", "La versión no existe");
             }
             Note current = load(s, id);
+            rejectGenerated(current);
             recordVersion(s, current, true);
             // El historial guarda título y contenido; la descripción no cambia (ADR-0020).
             update(s, id, v.title(), current.description(), v.content(), baseVersion);
-            return load(s, id);
+            Note restored = load(s, id);
+            syncStatements(s, restored); // M-14
+            return restored;
         });
     }
 
@@ -210,25 +281,30 @@ public final class NoteService {
 
     /**
      * N-08: copia la nota (sin hijas) justo debajo de la original, con su contenido, descripción, tipo,
-     * etiquetas y favorita, y el título con el siguiente «(n)» libre entre sus hermanas.
+     * etiquetas y favorita, y el título con el siguiente «(n)» libre entre sus hermanas. M-31: la copia de una
+     * nota XML genera sus propias hijas; la de una hija es una nota SQL normal, justo debajo de la nota XML.
      */
     public Note duplicate(String id) {
         return store.write(s -> {
             NoteMapper m = s.getMapper(NoteMapper.class);
             Note original = load(s, id);
-            List<String> siblings = new ArrayList<>(m.selectChildIds(original.parentId()));
+            // La copia de una hija no puede quedarse dentro de la nota XML: va tras ella.
+            Note anchor = original.generated() ? load(s, original.parentId()) : original;
+            List<String> siblings = new ArrayList<>(m.selectChildIds(anchor.parentId()));
             String now = now();
-            NoteRow copy = new NoteRow(UUID.randomUUID().toString(), original.parentId(), original.position() + 1,
-                    original.type(), copyTitle(original.title(), m.selectChildTitles(original.parentId())),
-                    original.description(), original.content(), original.favorite(), 1, now, now);
+            NoteRow copy = new NoteRow(UUID.randomUUID().toString(), anchor.parentId(), anchor.position() + 1,
+                    original.type(), copyTitle(original.title(), m.selectChildTitles(anchor.parentId())),
+                    original.description(), original.content(), original.favorite(), 1, now, now, null, null);
             m.insert(copy);
-            siblings.add(siblings.indexOf(id) + 1, copy.id());
+            siblings.add(siblings.indexOf(anchor.id()) + 1, copy.id());
             renumber(m, siblings);
             ContentMapper c = s.getMapper(ContentMapper.class);
             for (String tag : original.tags()) {
                 c.insertNoteTag(copy.id(), c.selectTagId(tag));
             }
-            return load(s, copy.id());
+            Note created = load(s, copy.id());
+            syncStatements(s, created);
+            return created;
         });
     }
 
@@ -303,10 +379,15 @@ public final class NoteService {
             if (note == null) {
                 throw notFound();
             }
+            if (note.statementId() != null) {
+                throw new ApiError(409, "generated_note", "Una sentencia generada no se mueve: va siempre con su nota XML MyBatis");
+            }
             if (parentId != null) {
-                if (m.selectActive(parentId) == null) {
+                NoteRow parent = m.selectActive(parentId);
+                if (parent == null) {
                     throw new ApiError(404, "not_found", "La nota de destino no existe");
                 }
+                rejectChildrenOf(parent);
                 // D-05, N-62: ni sobre sí misma ni sobre una descendiente.
                 if (m.countInAncestry(id, parentId) > 0) {
                     throw new ApiError(409, "cycle",
@@ -325,13 +406,22 @@ public final class NoteService {
         });
     }
 
-    /** N-50, N-51: a la papelera; con hijas, solo si se suben un nivel (promote). */
+    /** N-50, N-51: a la papelera; con hijas, solo si se suben un nivel (promote). M-30: la nota XML, con sus hijas. */
     public void delete(String id, boolean promoteChildren) {
         store.write(s -> {
             NoteMapper m = s.getMapper(NoteMapper.class);
             NoteRow note = m.selectActive(id);
             if (note == null) {
                 throw notFound();
+            }
+            if (note.statementId() != null) {
+                throw new ApiError(409, "generated_note",
+                        "Una sentencia generada no se elimina: quítala del mapper de su nota XML MyBatis");
+            }
+            String now = now();
+            if (XML.equals(note.type())) {
+                m.deleteStatementTabs(id);
+                m.markStatementsDeleted(id, now);
             }
             List<String> children = m.selectChildIds(id);
             if (!children.isEmpty() && !promoteChildren) {
@@ -346,7 +436,7 @@ public final class NoteService {
             for (String child : children) {
                 m.place(child, note.parentId(), 0);
             }
-            m.markDeleted(id, now());
+            m.markDeleted(id, now);
             m.deleteTabs(id);
             renumber(m, siblings);
             return null;
@@ -361,7 +451,7 @@ public final class NoteService {
     public Note restore(String id) {
         return store.write(s -> {
             NoteMapper m = s.getMapper(NoteMapper.class);
-            if (m.countTrashed(id) == 0) {
+            if (m.countTrashed(id) == 0 || m.countStatement(id) > 0) {
                 throw new ApiError(404, "not_found", "La nota no está en la papelera");
             }
             String parent = m.selectTrashedParent(id);
@@ -369,7 +459,11 @@ public final class NoteService {
                 parent = null;
             }
             m.markRestored(id, parent, m.countChildren(parent));
-            return load(s, id);
+            // M-30: la nota XML vuelve con sus hijas.
+            m.markStatementsRestored(id);
+            Note restored = load(s, id);
+            syncStatements(s, restored);
+            return restored;
         });
     }
 
@@ -377,6 +471,13 @@ public final class NoteService {
     public void purge(String id) {
         store.write(s -> {
             NoteMapper m = s.getMapper(NoteMapper.class);
+            if (m.countStatement(id) > 0) {
+                throw new ApiError(404, "not_found", "La nota no está en la papelera");
+            }
+            // M-30: las hijas de una nota XML se borran con ella.
+            if (m.countTrashed(id) > 0) {
+                m.deleteStatements(id);
+            }
             m.detachTrashedChildren(id);
             if (m.deleteTrashed(id) == 0) {
                 throw new ApiError(404, "not_found", "La nota no está en la papelera");
@@ -420,7 +521,7 @@ public final class NoteService {
             throw notFound();
         }
         return new Note(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.content(), r.favorite(),
-                r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id));
+                r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id), r.statementId(), r.statementKind());
     }
 
     private static ApiError notFound() {
