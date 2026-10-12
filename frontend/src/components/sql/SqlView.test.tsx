@@ -215,6 +215,13 @@ describe('ejecución', () => {
     expect(screen.getByText(/s \(servidor 0,01 s\) · 2 filas$/)).toBeTruthy();
   });
 
+  it('Q-45 una consulta sin forbiddenClause en la respuesta (campo nulo omitido) se ejecuta y se cuenta', async () => {
+    const { forbiddenClause: _omitted, ...withoutClause } = analysis();
+    await mount(withoutClause);
+    expect(screen.getByRole('button', { name: 'Ejecutar' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Contar' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('Q-45 una sentencia no ejecutable muestra «Generar SQL», el aviso y el SQL final abierto', async () => {
     mocked.execute.mockResolvedValue({
       kind: 'statement',

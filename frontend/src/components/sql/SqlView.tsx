@@ -61,7 +61,8 @@ export function SqlView({ tab }: { tab: Tab }) {
   const analysis = run.analysis;
   const variables = analysis?.variables ?? [];
   // Q-45: lo que no es ejecutable se genera, no se ejecuta.
-  const generateOnly = analysis !== null && (analysis.kind === 'statement' || analysis.forbiddenClause !== null);
+  // forbiddenClause no llega cuando es null: el servidor omite los campos nulos (ADR-0014).
+  const generateOnly = analysis !== null && (analysis.kind === 'statement' || analysis.forbiddenClause != null);
   const result = run.result;
   const rows = result?.rows ?? [];
   const isQuery = result?.kind === 'query';

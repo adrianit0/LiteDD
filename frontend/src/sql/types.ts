@@ -20,7 +20,8 @@ export interface Analysis {
   variables: SqlVariable[];
   /** query, meta o statement; null si no se pudo renderizar. */
   kind: 'query' | 'meta' | 'statement' | null;
-  forbiddenClause: string | null;
+  /** Ausente cuando no hay cláusula prohibida. */
+  forbiddenClause?: string | null;
   errors: SqlError[];
   /** ADR-0014: solo si se pidió con noteId. */
   lastValues?: Record<string, string | null>;
