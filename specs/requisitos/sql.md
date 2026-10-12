@@ -10,7 +10,7 @@ Una nota SQL contiene exactamente una sentencia, escrita como el cuerpo de un ma
 |---|---|
 | Q-01 | El contenido es el cuerpo de una sentencia MyBatis: SQL con `#{...}`, `${...}` y etiquetas dinámicas. |
 | Q-02 | Se admite también la sentencia envuelta en `<select>`, `<insert>`, `<update>` o `<delete>`. Se ignoran los atributos y se usa el contenido. Más de un elemento envolvente, o texto fuera de él, es un error. |
-| Q-03 | Etiquetas admitidas: todas las del lenguaje dinámico de MyBatis (if, where, choose, when, otherwise, trim, set, foreach, bind). `<include>` da el error «no admitido en esta versión». |
+| Q-03 | Etiquetas admitidas: todas las del lenguaje dinámico de MyBatis (if, where, choose, when, otherwise, trim, set, foreach, bind). `<include>` da el error «no admitido en esta versión»; solo se admite dentro de una nota XML MyBatis (M-05). |
 | Q-04 | El contenido debe ser XML válido, igual que en un mapper: `<` y `&` dentro del SQL se escriben como `&lt;` y `&amp;`, o dentro de `<![CDATA[ ]]>`. El error indica línea y columna. |
 | Q-05 | Una nota contiene una sola sentencia. Un `;` final se ignora; cualquier otro `;` que separe sentencias es un error. |
 | Q-06 | WHERE puede escribirse como cláusula SQL o con la etiqueta `<where>`. |

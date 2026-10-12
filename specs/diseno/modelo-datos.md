@@ -12,7 +12,7 @@ CREATE TABLE note (
   id          TEXT NOT NULL UNIQUE,          -- UUID v4, identidad pública
   parent_id   TEXT REFERENCES note(id),      -- NULL = raíz
   position    INTEGER NOT NULL,              -- orden entre hermanas, 0..n-1
-  type        TEXT NOT NULL CHECK (type IN ('md','sql','http')),  -- 'http' desde V003 (ADR-0021)
+  type        TEXT NOT NULL CHECK (type IN ('md','sql','http','xml')),  -- 'http' desde V003 (ADR-0021), 'xml' desde V004 (ADR-0023)
   title       TEXT NOT NULL,
   content     TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',      -- N-07, migración V002
@@ -20,9 +20,12 @@ CREATE TABLE note (
   version     INTEGER NOT NULL DEFAULT 1,    -- concurrencia optimista
   created_at  TEXT NOT NULL,                 -- ISO-8601 UTC
   updated_at  TEXT NOT NULL,
-  deleted_at  TEXT                           -- NULL = activa; fecha = papelera
+  deleted_at  TEXT,                          -- NULL = activa; fecha = papelera
+  statement_id   TEXT,                       -- M-12: id de la sentencia en el mapper de la madre; NULL = nota normal
+  statement_kind TEXT CHECK (statement_kind IN ('select','insert','update','delete'))  -- M-24, V004
 );
 CREATE INDEX idx_note_parent ON note(parent_id, position);
+CREATE UNIQUE INDEX idx_note_statement ON note(parent_id, statement_id) WHERE statement_id IS NOT NULL;
 
 CREATE TABLE tag (
   id   INTEGER PRIMARY KEY,

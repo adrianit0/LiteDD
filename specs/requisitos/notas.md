@@ -2,20 +2,20 @@
 
 > Extraído de `specs/ESPECIFICACION.md`. Si este fichero y aquel difieren tras un cambio aprobado, manda este y se registra un ADR.
 
-Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol. Estos requisitos valen para los dos tipos; lo específico de SQL está en su sección.
+Una nota tiene tipo (Markdown, SQL, HTTP o XML MyBatis), título, contenido y un lugar en el árbol. Estos requisitos valen para los dos tipos; lo específico de SQL está en su sección.
 
 ## Árbol
 
 | ID | Requisito |
 |---|---|
 | N-01 | El panel izquierdo muestra todas las notas activas en árbol. Cada nodo tiene icono de tipo, título y control de plegado si tiene hijas. El plegado se recuerda. |
-| N-02 | Cualquier nota puede tener hijas de cualquier tipo, sin límite de profundidad. |
+| N-02 | Cualquier nota puede tener hijas de cualquier tipo, sin límite de profundidad. Excepción: la nota XML MyBatis solo tiene sus hijas generadas, y estas no tienen hijas (M-20, M-22). |
 | N-03 | Clic abre la nota; clic central la abre en pestaña nueva (ver Pestañas). |
-| N-04 | Menú contextual: nueva nota Markdown hija, nueva nota SQL hija, nueva nota HTTP hija, renombrar, duplicar, favorita, etiquetas, mover a…, eliminar. |
-| N-05 | Los botones «Nueva nota Markdown», «Nueva nota SQL» y «Nueva nota HTTP» del panel crean la nota en la raíz, al final. |
+| N-04 | Menú contextual: nueva nota Markdown hija, nueva nota SQL hija, nueva nota HTTP hija, nueva nota MyBatis hija, renombrar, duplicar, favorita, etiquetas, mover a…, eliminar. En una nota XML MyBatis no aparecen las de nueva hija; en una hija generada solo aparecen duplicar, favorita y etiquetas (M-20, M-22). |
+| N-05 | Los botones «Nueva nota Markdown», «Nueva nota SQL», «Nueva nota HTTP» y «Nueva nota MyBatis» del panel crean la nota en la raíz, al final. |
 | N-06 | Una nota nueva se llama «Sin título» y se abre en modo edición con el título seleccionado. |
 | N-07 | Cada nota tiene una descripción opcional de hasta 200 caracteres. En edición se escribe entre el título y las etiquetas; en consulta se ve bajo el título. En el árbol aparece bajo el nombre, en gris y más pequeña, en una línea que se corta con «…» donde acaba el panel (ADR-0020). |
-| N-08 | «Duplicar» crea una copia de la nota, sin sus hijas, justo debajo de la original: mismo tipo, contenido, descripción, etiquetas y favorita. El título lleva « (2)», o el siguiente número libre entre las hermanas: «Informe (3)», «Informe (4)»… Un «(n)» final solo cuenta como número de copia si hay una hermana con el nombre sin él. La copia se abre en una pestaña. |
+| N-08 | «Duplicar» crea una copia de la nota, sin sus hijas, justo debajo de la original: mismo tipo, contenido, descripción, etiquetas y favorita. El título lleva « (2)», o el siguiente número libre entre las hermanas: «Informe (3)», «Informe (4)»… Un «(n)» final solo cuenta como número de copia si hay una hermana con el nombre sin él. La copia se abre en una pestaña. Las notas XML MyBatis y sus hijas siguen M-31. |
 
 ## Modos
 
@@ -61,7 +61,7 @@ Una nota tiene tipo (Markdown o SQL), título, contenido y un lugar en el árbol
 | ID | Requisito |
 |---|---|
 | N-50 | Nota sin hijas: tras confirmar, va a la papelera. |
-| N-51 | Nota con hijas: el diálogo ofrece «Subir las hijas un nivel y eliminar» o «Cancelar». No hay eliminado en cascada. Las hijas ocupan el lugar de la nota eliminada, en su mismo orden. |
+| N-51 | Nota con hijas: el diálogo ofrece «Subir las hijas un nivel y eliminar» o «Cancelar». No hay eliminado en cascada. Las hijas ocupan el lugar de la nota eliminada, en su mismo orden. La nota XML MyBatis sigue M-30. |
 | N-52 | La papelera se abre desde el panel izquierdo. Lista título, tipo y fecha; permite restaurar, eliminar definitivamente y vaciar. |
 | N-53 | Restaurar devuelve la nota a su madre original, al final. Si la madre ya no existe o está en la papelera, va a la raíz. |
 | N-54 | Eliminar una nota cierra sus pestañas. |

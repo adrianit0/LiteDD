@@ -14,11 +14,11 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | /api/tree | Árbol completo de notas activas: identidad, madre, posición, tipo, título, favorita, etiquetas |
+| GET | /api/tree | Árbol completo de notas activas: identidad, madre, posición, tipo, título, favorita, etiquetas y, en las hijas de una nota XML, statementId y statementKind |
 | POST | /api/notes | Crear nota: madre, tipo, título |
 | GET | /api/notes/{id} | Nota completa con contenido y versión |
 | PUT | /api/notes/{id} | Guardar título y contenido con baseVersion; 409 si hay conflicto |
-| POST | /api/notes/{id}/duplicate | Duplicar una nota, sin hijas (N-08) |
+| POST | /api/notes/{id}/duplicate | Duplicar una nota, sin hijas (N-08, M-31) |
 | POST | /api/notes/{id}/move | Mover: nueva madre y posición |
 | DELETE | /api/notes/{id} | A la papelera; 409 si tiene hijas, salvo children=promote |
 | PUT | /api/notes/{id}/tags | Sustituir etiquetas |
@@ -38,6 +38,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/sql/count | Total de filas |
 | POST | /api/sql/render | SQL final sin ejecutar |
 | POST | /api/sql/cancel | Cancelar por executionId |
+| POST | /api/mybatis/analyze | Sentencias y errores de un mapper (M-41) |
 | POST | /api/http/execute | Ejecutar una nota HTTP, con su login (H-30) |
 | POST | /api/http/cancel | Cancelar por executionId |
 | GET, PUT | /api/http/credentials | Indicar si hay contraseña HTTP y guardarla; nunca la devuelve (H-21) |
