@@ -164,11 +164,13 @@ export function NotePane({ tab }: { tab: Tab }) {
             // M-21, M-24
             <p className="generated-from muted">
               {mark && <span className="statement-kind write">{mark}</span>}
-              Generada desde{' '}
-              <button type="button" className="link-button" onClick={() => note.parentId && void openNote(note.parentId)}>
-                «{source?.title ?? 'su nota XML'}»
-              </button>
-              . Solo lectura: se cambia editando el mapper.
+              <span>
+                Generada desde{' '}
+                <button type="button" className="link-button" onClick={() => note.parentId && void openNote(note.parentId)}>
+                  «{source?.title ?? 'su nota XML'}»
+                </button>
+                . Solo lectura: se cambia editando el mapper.
+              </span>
             </p>
           )}
           <TagEditor note={note} />

@@ -174,7 +174,7 @@ describe('notas XML MyBatis', () => {
     render(<App />);
     await screen.findByRole('treeitem', { name: /Libros/ });
     await openTab(asNote(xml, '<mapper>'));
-    expect(screen.getByText(/las sentencias generadas no se han actualizado/)).toBeTruthy();
+    expect(await screen.findByText(/las sentencias generadas no se han actualizado/)).toBeTruthy();
     expect(screen.getByText(/XML no válido en la línea 2/)).toBeTruthy();
   });
 
