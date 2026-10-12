@@ -1,10 +1,11 @@
 # LiteDD
 
-LiteDD es un gestor local de notas para un único usuario. Admite tres tipos de nota:
+LiteDD es un gestor local de notas para un único usuario. Admite cuatro tipos de nota:
 
 - **Markdown**, con vista renderizada, tablas, listas de tareas, código resaltado y diagramas Mermaid.
 - **SQL**, escritas con la sintaxis dinámica de MyBatis (`#{...}`, `<if>`, `<where>`, `<foreach>`…). Se ejecutan en modo de solo lectura contra una base de datos MySQL, con un formulario de variables, paginación, ordenación y cronómetro.
 - **HTTP**, llamadas a un servidor de pruebas en el propio equipo (127.0.0.1 o localhost): método, endpoint con variables de ruta, params, cabeceras y cuerpo, con un login Basic Auth previo opcional. La respuesta muestra estado, tiempos, cuerpo, cabeceras y cookies.
+- **XML MyBatis**, un fichero mapper completo. Al guardarlo se genera una nota SQL de solo lectura por cada `<select>`, `<insert>`, `<update>` y `<delete>`, con los fragmentos `<sql>` ya incluidos; si cambia el mapper, cambian sus notas. Las sentencias que modifican datos nunca se ejecutan: se genera su SQL con los valores elegidos para copiarlo.
 
 Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet: solo se conecta a MySQL y al servidor local de las notas HTTP.
 
