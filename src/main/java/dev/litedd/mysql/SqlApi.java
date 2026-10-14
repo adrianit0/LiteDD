@@ -208,7 +208,7 @@ public final class SqlApi implements ApiRoutes {
         String executionId = req.executionId() == null ? UUID.randomUUID().toString() : req.executionId();
         boolean wrapped = !meta && sql.startsWith("SELECT * FROM (\n");
 
-        Result result = run(executionId, wrapped, () -> gateway.withConnection(c -> QueryRunner.query(c, sql,
+        Result result = run(executionId, wrapped, finalSql, () -> gateway.withConnection(c -> QueryRunner.query(c, sql,
                 values(plan), maxRows, timeoutSeconds(), executionId, gateway.running())));
         Page assembled = Pagination.assemble(result.rows(), page, rowCap(), meta);
         List<List<Integer>> truncated = result.truncatedCells().stream()
@@ -226,7 +226,7 @@ public final class SqlApi implements ApiRoutes {
         String executionId = req.executionId() == null ? UUID.randomUUID().toString() : req.executionId();
         List<Object> values = values(plan);
         String sql = plan.rendered().sql();
-        return run(executionId, false, () -> gateway.withConnection(c -> {
+        return run(executionId, false, finalSql(plan), () -> gateway.withConnection(c -> {
             try {
                 return QueryRunner.count(c, Pagination.countSql(sql), values, timeoutSeconds(), executionId, gateway.running(), false);
             } catch (SQLException e) {
@@ -243,34 +243,38 @@ public final class SqlApi implements ApiRoutes {
         T run() throws SQLException;
     }
 
-    /** Q-96 a Q-98: errores de MySQL, tiempo agotado, cancelación y falta de conexión. */
-    private <T> T run(String executionId, boolean wrapped, Work<T> work) {
+    /**
+     * Q-96 a Q-98: errores de MySQL, tiempo agotado, cancelación y falta de conexión. Q-74: todos llevan en
+     * details el SQL final que se envió o se iba a enviar.
+     */
+    private <T> T run(String executionId, boolean wrapped, FinalSql finalSql, Work<T> work) {
+        Map<String, Object> sent = Map.of("finalSql", finalSql);
         long start = System.nanoTime();
         try {
             return work.run();
         } catch (NotConfiguredException e) {
-            throw new ApiError(503, "not_configured", "No hay ninguna conexión a MySQL configurada");
+            throw new ApiError(503, "not_configured", "No hay ninguna conexión a MySQL configurada", sent);
         } catch (SQLException e) {
             double seconds = (System.nanoTime() - start) / 1e9;
             if (gateway.running().wasCancelled(executionId)) {
-                throw new ApiError(422, "cancelled", "Consulta cancelada a los " + seconds(seconds));
+                throw new ApiError(422, "cancelled", "Consulta cancelada a los " + seconds(seconds), sent);
             }
             if (e instanceof SQLTimeoutException || e.getErrorCode() == ER_QUERY_TIMEOUT) {
                 throw new ApiError(422, "timeout", "La consulta superó el tiempo máximo de " + timeoutSeconds()
-                        + " s y se canceló (" + seconds(seconds) + ")");
+                        + " s y se canceló (" + seconds(seconds) + ")", sent);
             }
             if (MySqlGateway.isUnknownSchema(e)) {
-                throw new ApiError(503, "schema_unavailable", gateway.status().message());
+                throw new ApiError(503, "schema_unavailable", gateway.status().message(), sent);
             }
             if (MySqlGateway.isCommunication(e)) {
-                throw new ApiError(503, "not_connected", "Sin conexión con MySQL: " + MySqlGateway.rootMessage(e));
+                throw new ApiError(503, "not_connected", "Sin conexión con MySQL: " + MySqlGateway.rootMessage(e), sent);
             }
             String message = "Error de MySQL " + e.getErrorCode() + ": " + e.getMessage();
             if (wrapped && e.getErrorCode() == ER_DUP_FIELDNAME) {
                 message += ". La consulta tiene columnas con el mismo nombre: quita ORDER BY y LIMIT de la nota para paginarla y ordenarla.";
             }
             throw new ApiError(422, "mysql_error", message, Map.of("errorCode", e.getErrorCode(),
-                    "sqlState", e.getSQLState() == null ? "" : e.getSQLState()));
+                    "sqlState", e.getSQLState() == null ? "" : e.getSQLState(), "finalSql", finalSql));
         }
     }
 

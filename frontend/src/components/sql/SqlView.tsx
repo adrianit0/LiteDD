@@ -4,7 +4,7 @@ import { useSqlRun, useSqlRuns } from '../../stores/sqlRunStore';
 import { useUi } from '../../stores/uiStore';
 import { copyText } from '../../clipboard';
 import { elapsedText, nextSort, rangeText, timingText, toMarkdownTable } from '../../sql/results';
-import { PAGE_SIZES } from '../../sql/types';
+import { PAGE_SIZES, type FinalSql } from '../../sql/types';
 import { VariablesForm } from './VariablesForm';
 import { ResultsTable, type SelectedCell } from './ResultsTable';
 import { FinalSqlPanel } from './FinalSqlPanel';
@@ -64,6 +64,8 @@ export function SqlView({ tab }: { tab: Tab }) {
   // forbiddenClause no llega cuando es null: el servidor omite los campos nulos (ADR-0014).
   const generateOnly = analysis !== null && (analysis.kind === 'statement' || analysis.forbiddenClause != null);
   const result = run.result;
+  // Q-74: si la ejecución falla, se ve el SQL que se intentó y no el de la ejecución anterior.
+  const failedSql = (run.error?.details as { finalSql?: FinalSql } | null)?.finalSql;
   const rows = result?.rows ?? [];
   const isQuery = result?.kind === 'query';
 
@@ -210,7 +212,11 @@ export function SqlView({ tab }: { tab: Tab }) {
         </nav>
       )}
 
-      {result && <FinalSqlPanel key={`${result.kind}-${run.elapsedMs}`} finalSql={result.finalSql} open={result.kind === 'statement'} onCopy={(t, w) => void copy(t, w)} />}
+      {failedSql ? (
+        <FinalSqlPanel key="failed" finalSql={failedSql} open onCopy={(t, w) => void copy(t, w)} />
+      ) : (
+        result && <FinalSqlPanel key={`${result.kind}-${run.elapsedMs}`} finalSql={result.finalSql} open={result.kind === 'statement'} onCopy={(t, w) => void copy(t, w)} />
+      )}
     </div>
   );
 }

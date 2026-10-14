@@ -433,6 +433,22 @@ describe('SQL final', () => {
     await click(panel.getByRole('button', { name: 'Copiar' }));
     expect(writeText).toHaveBeenLastCalledWith("SELECT 'mar' AS a");
   });
+
+  it('Q-74 si la ejecución falla, el panel abierto muestra el SQL que se intentó y no el anterior', async () => {
+    mocked.execute.mockResolvedValueOnce(result());
+    await mount();
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    const tried = { withPlaceholders: 'SELECT * FROM book WHERE year > ?', parameters: [{ index: 1, value: 1990, type: 'int' }], inlined: 'SELECT * FROM book WHERE year > 1990' };
+    mocked.execute.mockRejectedValueOnce(
+      new ApiError(422, 'mysql_error', "Error de MySQL 1054: Unknown column 'year'", { errorCode: 1054, sqlState: '42S22', finalSql: tried }),
+    );
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    expect(screen.getByRole('alert').textContent).toContain('Error de MySQL 1054');
+    const details = document.querySelector('details.final-sql') as HTMLDetailsElement;
+    expect(details.open).toBe(true);
+    expect(within(details).getByText('SELECT * FROM book WHERE year > 1990')).toBeTruthy();
+    expect(within(details).queryByText("SELECT 'mar' AS a")).toBeNull();
+  });
 });
 
 describe('U-06 disposición', () => {

@@ -199,6 +199,21 @@ class SqlApiTest {
     }
 
     @Test
+    void q74_failed_execution_and_count_return_the_final_sql_they_tried() throws Exception {
+        Note n = sqlNote("SELECT * FROM book <where><if test=\"y != null\">AND year > #{y,int}</if></where>");
+        Res r = call("POST", "/api/sql/execute", exec(n, "{\"y\":\"1990\"}"));
+        assertThat(r.status).isEqualTo(503);
+        JsonNode sql = r.json.get("details").get("finalSql");
+        assertThat(sql.get("withPlaceholders").asText()).contains("year > ?");
+        assertThat(sql.get("inlined").asText()).contains("year > 1990").doesNotContain("LIMIT");
+        assertThat(sql.get("parameters").get(0).get("value").asInt()).isEqualTo(1990);
+
+        // Otros valores, otro SQL: el de esta llamada.
+        Res count = call("POST", "/api/sql/count", exec(n, "{}"));
+        assertThat(count.json.get("details").get("finalSql").get("inlined").asText()).doesNotContain("WHERE");
+    }
+
+    @Test
     void q71_q72_render_without_executing() throws Exception {
         Note n = sqlNote("SELECT * FROM book WHERE title = #{t} AND year > #{y,int}");
         Res r = call("POST", "/api/sql/render", exec(n, "{\"t\":\"mar\",\"y\":\"1990\"}"));

@@ -151,6 +151,7 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 | Q-71 | Vista «Con parámetros»: el SQL con `?` y la lista numerada de valores con su tipo. |
 | Q-72 | Vista «Con valores»: los literales insertados con el escapado de MySQL, lista para pegar en otra herramienta. No incluye la paginación añadida por LiteDD. |
 | Q-73 | Las dos vistas tienen botón «Copiar». |
+| Q-74 | Si la ejecución o el recuento fallan después de generar el SQL (Q-96 a Q-98), el panel «SQL final» muestra, abierto en la vista «Con valores», el SQL que se envió o se iba a enviar con los valores elegidos, en lugar del de la ejecución anterior (ADR-0024). Un error al generar el SQL (Q-90 a Q-95) no tiene SQL final: su mensaje indica la causa. |
 
 ## Editor SQL
 

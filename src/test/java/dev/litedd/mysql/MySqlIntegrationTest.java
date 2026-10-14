@@ -164,6 +164,8 @@ class MySqlIntegrationTest {
         Res r = execute(n, Map.of(), 1, 5, Map.of("column", 1, "direction", "asc"));
         assertThat(r.status).isEqualTo(422);
         assertThat(r.json.get("message").asText()).contains("1060").contains("quita ORDER BY y LIMIT");
+        // Q-74: el error lleva el SQL final que se intentó ejecutar, sin la paginación de LiteDD.
+        assertThat(r.json.get("details").get("finalSql").get("inlined").asText()).isEqualTo(n.content());
     }
 
     @Test

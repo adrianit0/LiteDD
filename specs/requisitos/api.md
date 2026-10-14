@@ -98,4 +98,4 @@ Petición y respuesta de `POST /api/sql/execute`:
 }
 ```
 
-Los valores de `values` viajan siempre como texto; la conversión de tipos ocurre en el servidor. `total` solo aparece cuando se conoce (Q-53).
+Los valores de `values` viajan siempre como texto; la conversión de tipos ocurre en el servidor. `total` solo aparece cuando se conoce (Q-53). Los errores de ejecución y recuento posteriores a la generación del SQL (`mysql_error`, `timeout`, `cancelled`, `not_connected`, `schema_unavailable`, `not_configured`) llevan en `details.finalSql` el SQL final de esa llamada, con el mismo formato (Q-74).

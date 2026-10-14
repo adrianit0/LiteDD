@@ -3,7 +3,7 @@ import type { FinalSql } from '../../sql/types';
 
 interface Props {
   finalSql: FinalSql;
-  /** Q-45: con «Generar SQL» el panel se abre, porque es lo que se busca. */
+  /** Q-45, Q-74: con «Generar SQL» o tras un error el panel se abre, porque es lo que se busca. */
   open: boolean;
   onCopy: (text: string, what: string) => void;
 }
