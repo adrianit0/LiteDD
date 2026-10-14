@@ -250,7 +250,7 @@ export function NotePane({ tab }: { tab: Tab }) {
         )}
       </div>
       {editMode && note.type === 'sql' && <SqlAnalysisPanel content={content} />}
-      {editMode && note.type === 'xml' && <MapperAnalysisPanel content={content} />}
+      {editMode && note.type === 'xml' && <MapperAnalysisPanel content={content} noteId={note.id} />}
 
       {status === 'conflict' && conflict && (
         <Dialog

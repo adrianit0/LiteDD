@@ -57,6 +57,18 @@ export interface TagCount {
   count: number;
 }
 
+/** M-61, M-65: constante Java de los mappers, con su valor común a todas las notas. */
+export interface JavaConstant {
+  /** paquete.Clase@CAMPO */
+  name: string;
+  /** Clase.CAMPO */
+  shortName: string;
+  packageName: string;
+  value: string | null;
+  /** Notas SQL y XML que la usan; 0 = «sin uso» (M-66). */
+  notes: number;
+}
+
 /** Para cuerpos que no son JSON: subir una imagen (N-92). */
 async function requestRaw<T>(method: string, path: string, body: Blob, contentType: string): Promise<T> {
   let res: Response;
@@ -328,7 +340,11 @@ export const api = {
   putSession: (tabs: SessionTab[]) => request<{ tabs: SessionTab[] }>('PUT', '/api/session', { tabs }),
   analyze: (content: string, noteId?: string) => request<Analysis>('POST', '/api/sql/analyze', { content, noteId }),
   /** M-41 */
-  analyzeMapper: (content: string) => request<MapperAnalysis>('POST', '/api/mybatis/analyze', { content }),
+  analyzeMapper: (content: string, noteId?: string) => request<MapperAnalysis>('POST', '/api/mybatis/analyze', { content, noteId }),
+  /** M-61, M-65 */
+  constants: () => request<JavaConstant[]>('GET', '/api/constants'),
+  /** M-65, M-66: un valor vacío deja la constante sin valor. */
+  putConstants: (values: Record<string, string>) => request<JavaConstant[]>('PUT', '/api/constants', { values }),
   execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
   count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),

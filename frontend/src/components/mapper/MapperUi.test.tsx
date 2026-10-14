@@ -178,14 +178,15 @@ describe('notas XML MyBatis', () => {
     expect(screen.getByText(/XML no válido en la línea 2/)).toBeTruthy();
   });
 
-  it('M-41 en edición lista en vivo las sentencias con su etiqueta', async () => {
+  it('M-41 M-05 en edición lista en vivo las sentencias y pide el análisis sin contar la propia nota', async () => {
     vi.useFakeTimers();
     try {
       mocked.analyzeMapper.mockResolvedValue({ statements: [{ id: 'rename', kind: 'update' }], errors: [] });
-      render(<MapperAnalysisPanel content={MAPPER} />);
+      render(<MapperAnalysisPanel content={MAPPER} noteId="x" />);
       await act(async () => {
         vi.advanceTimersByTime(500);
       });
+      expect(mocked.analyzeMapper).toHaveBeenCalledWith(MAPPER, 'x');
       const panel = screen.getByRole('region', { name: 'Análisis del mapper' });
       expect(within(panel).getByText('rename')).toBeTruthy();
       expect(within(panel).getByText('UPDATE').className).toContain('write');
@@ -218,5 +219,28 @@ describe('notas XML MyBatis', () => {
     const tabs = useTabs.getState().tabs;
     expect(tabs.some((t) => t.noteId === 'c2')).toBe(false);
     expect(tabs.find((t) => t.noteId === 'c1')?.content).toBe('SELECT 2');
+  });
+
+  it('M-17 guardar una nota XML recarga también las hijas de otros mappers', async () => {
+    const other = node({ id: 'y', position: 1, title: 'Autores' });
+    const withAuthor = node({ id: 'c3', parentId: 'y', type: 'sql', title: 'withAuthor', statementId: 'withAuthor', statementKind: 'select' });
+    mocked.tree.mockResolvedValue([xml, byAuthor, rename, other, withAuthor]);
+    render(<App />);
+    await screen.findByRole('treeitem', { name: /Libros/ });
+    await openTab(asNote(withAuthor, 'SELECT a.name', 1));
+    await act(async () => {
+      await useTabs.getState().open('x', { note: asNote(xml, MAPPER), newTab: true });
+    });
+
+    const xmlTab = useTabs.getState().tabs.find((t) => t.noteId === 'x')!;
+    mocked.saveNote.mockResolvedValue(asNote(xml, MAPPER + ' ', 2));
+    mocked.getNote.mockResolvedValue(asNote(withAuthor, 'SELECT a.name, a.country', 2));
+    await act(async () => {
+      useTabs.getState().edit(xmlTab.id, { content: MAPPER + ' ' });
+      await useTabs.getState().saveNow(xmlTab.id);
+    });
+    await act(async () => {});
+
+    expect(useTabs.getState().tabs.find((t) => t.noteId === 'c3')?.content).toBe('SELECT a.name, a.country');
   });
 });

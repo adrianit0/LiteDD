@@ -861,6 +861,8 @@ input {
 
 /* Pie del panel y papelera (N-52) */
 .sidebar-footer {
+  display: flex;
+  gap: 6px;
   padding: 8px 10px;
   border-top: 1px solid var(--border);
 }
@@ -2041,3 +2043,53 @@ mark {
   flex: 1;
   min-width: 0;
 }
+
+/* M-65: ventana «Constantes». */
+.constants-dialog {
+  width: min(720px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.constants-filter {
+  width: 100%;
+  margin: 8px 0;
+}
+
+.constants-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.constants-table th,
+.constants-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.constants-table input {
+  width: 100%;
+}
+
+.constant-name {
+  display: block;
+  font-family: var(--font-mono);
+}
+
+.constant-package {
+  display: block;
+  font-size: 11px;
+}
+
+.constant-missing .constant-name {
+  color: var(--warning);
+}
+
+.constant-unused {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+

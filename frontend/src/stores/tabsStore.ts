@@ -176,7 +176,7 @@ export const useTabs = create<TabsState>((set, get) => {
       if (!current) return;
       patch(id, { note: saved });
       applyRename(saved, id);
-      if (saved.type === 'xml') void refreshGenerated(saved.id);
+      if (saved.type === 'xml') void refreshGenerated();
       if (isDirty(tab(id)!)) {
         patch(id, { status: 'pending' });
         if (autosaveEnabled()) schedule(id);
@@ -198,18 +198,19 @@ export const useTabs = create<TabsState>((set, get) => {
   };
 
   /**
-   * M-15: tras guardar una nota XML, el árbol muestra sus hijas actuales y las pestañas de las hijas se
-   * recargan; las de sentencias que ya no están se cierran (N-54).
+   * M-15, M-17: tras guardar una nota XML, el árbol muestra las hijas actuales y se recargan las pestañas de todas
+   * las hijas generadas, porque otros mappers pueden usar sus fragmentos (M-16); las de sentencias que ya no están
+   * se cierran (N-54).
    */
-  const refreshGenerated = async (xmlId: string) => {
+  const refreshGenerated = async () => {
     try {
       await useTree.getState().load();
     } catch {
       return;
     }
-    const alive = new Set(useTree.getState().nodes.filter((n) => n.parentId === xmlId).map((n) => n.id));
+    const alive = new Set(useTree.getState().nodes.map((n) => n.id));
     for (const t of get().tabs) {
-      if (!t.note?.statementId || t.note.parentId !== xmlId) continue;
+      if (!t.note?.statementId) continue;
       if (!alive.has(t.noteId)) {
         remove(t.id);
         continue;
@@ -444,7 +445,7 @@ export const useTabs = create<TabsState>((set, get) => {
       patch(id, { note, title: note.title, description: note.description, content: note.content, status: 'saved', conflict: null });
       applyRename(note, id);
       // M-14: restaurar una versión del mapper también regenera las hijas.
-      if (note.type === 'xml') void refreshGenerated(note.id);
+      if (note.type === 'xml') void refreshGenerated();
     },
 
     applyMeta(note) {

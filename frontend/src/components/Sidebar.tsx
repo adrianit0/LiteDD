@@ -58,6 +58,10 @@ export function Sidebar() {
             <button type="button" onClick={() => useUi.getState().setSidebarView('trash')}>
               🗑 Papelera
             </button>
+            {/* M-65 */}
+            <button type="button" onClick={() => useUi.getState().setConstantsOpen(true)}>
+              Constantes
+            </button>
           </div>
         </>
       )}

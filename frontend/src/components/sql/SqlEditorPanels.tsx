@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { SNIPPET_BUTTONS, type SnippetKind } from '../../sql/snippets';
 import type { Analysis } from '../../sql/types';
 import { typeLabel } from '../../sql/values';
+import { useUi } from '../../stores/uiStore';
 
 const ANALYZE_DELAY = 400;
 
@@ -31,6 +32,7 @@ export function SqlToolbar({ onInsert }: { onInsert: (kind: SnippetKind) => void
 export function SqlAnalysisPanel({ content }: { content: string }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [failed, setFailed] = useState(false);
+  const constantsVersion = useUi((s) => s.constantsVersion);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +51,7 @@ export function SqlAnalysisPanel({ content }: { content: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [content]);
+  }, [content, constantsVersion]);
 
   return (
     <section className="sql-analysis" aria-label="Análisis de la consulta" aria-live="polite">

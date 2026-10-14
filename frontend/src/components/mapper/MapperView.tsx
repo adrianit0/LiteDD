@@ -8,15 +8,18 @@ import type { Note, TreeNode } from '../../types';
 
 const ANALYZE_DELAY = 400;
 
-/** M-41, M-42: sentencias y errores de un mapper, pedidos al servidor un momento después del último cambio. */
-function useMapperAnalysis(content: string, delay: number): { analysis: MapperAnalysis | null; failed: boolean } {
+/**
+ * M-41, M-42: sentencias y errores de un mapper, pedidos al servidor un momento después del último cambio. M-05:
+ * con noteId, el servidor usa los fragmentos de las demás notas XML, sin contar esta.
+ */
+function useMapperAnalysis(content: string, delay: number, noteId: string): { analysis: MapperAnalysis | null; failed: boolean } {
   const [analysis, setAnalysis] = useState<MapperAnalysis | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
       api
-        .analyzeMapper(content)
+        .analyzeMapper(content, noteId)
         .then((a) => {
           if (!cancelled) {
             setAnalysis(a);
@@ -29,7 +32,7 @@ function useMapperAnalysis(content: string, delay: number): { analysis: MapperAn
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [content, delay]);
+  }, [content, delay, noteId]);
   return { analysis, failed };
 }
 
@@ -52,8 +55,8 @@ function KindChip({ kind }: { kind: string }) {
 }
 
 /** M-41: bajo el editor, las sentencias del mapper con su etiqueta y los errores, en vivo. */
-export function MapperAnalysisPanel({ content }: { content: string }) {
-  const { analysis, failed } = useMapperAnalysis(content, ANALYZE_DELAY);
+export function MapperAnalysisPanel({ content, noteId }: { content: string; noteId: string }) {
+  const { analysis, failed } = useMapperAnalysis(content, ANALYZE_DELAY, noteId);
   return (
     <section className="sql-analysis" aria-label="Análisis del mapper" aria-live="polite">
       {analysis && (
@@ -82,7 +85,7 @@ export function MapperView({ note, content }: { note: Note; content: string }) {
     () => nodes.filter((n) => n.parentId === note.id && n.statementId).sort((a, b) => a.position - b.position),
     [nodes, note.id],
   );
-  const { analysis, failed } = useMapperAnalysis(content, 0);
+  const { analysis, failed } = useMapperAnalysis(content, 0, note.id);
   const tokens = useMemo(() => mapperTokens(content, mybatisClass), [content]);
 
   if (content.trim() === '') {

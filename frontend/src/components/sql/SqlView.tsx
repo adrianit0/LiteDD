@@ -28,11 +28,12 @@ export function SqlView({ tab }: { tab: Tab }) {
   const [cell, setCell] = useState<SelectedCell | null>(null);
   const [, setTick] = useState(0);
   const version = tab.note?.version;
+  const constantsVersion = useUi((s) => s.constantsVersion);
 
-  // Q-40: al abrir solo se analiza; nunca se ejecuta.
+  // Q-40: al abrir solo se analiza; nunca se ejecuta. M-67: también al guardar las constantes.
   useEffect(() => {
     void useSqlRuns.getState().analyze(tab.id);
-  }, [tab.id, version]);
+  }, [tab.id, version, constantsVersion]);
 
   // Q-41: cronómetro en vivo y Esc para cancelar.
   useEffect(() => {

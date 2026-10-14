@@ -1,6 +1,7 @@
 import type { RunError } from '../../stores/sqlRunStore';
 import type { SqlError } from '../../sql/types';
 import { useConnection } from '../../stores/connectionStore';
+import { useUi } from '../../stores/uiStore';
 
 interface Props {
   /** Errores de análisis de la nota (Q-90 a Q-92, Q-95). */
@@ -16,6 +17,8 @@ export function SqlErrors({ analysisErrors, error, onRefresh }: Props) {
   if (analysisErrors.length === 0 && !runError) return null;
 
   const details = runError?.code === 'sql_error' && Array.isArray(runError.details) ? (runError.details as SqlError[]) : [];
+  // M-63: una constante Java sin valor se arregla en «Constantes».
+  const missingConstant = [...analysisErrors, ...details].some((e) => e.code === 'constant');
 
   return (
     <div className="sql-errors" role="alert">
@@ -41,6 +44,11 @@ export function SqlErrors({ analysisErrors, error, onRefresh }: Props) {
             </button>
           )}
         </div>
+      )}
+      {missingConstant && (
+        <button type="button" onClick={() => useUi.getState().setConstantsOpen(true)}>
+          Constantes…
+        </button>
       )}
     </div>
   );

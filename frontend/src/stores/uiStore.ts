@@ -34,6 +34,12 @@ interface UiState {
   setConfig: (config: AppConfig) => void;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  /** M-65 */
+  constantsOpen: boolean;
+  setConstantsOpen: (open: boolean) => void;
+  /** M-67: cambia al guardar las constantes, para volver a analizar las notas SQL abiertas. */
+  constantsVersion: number;
+  constantsSaved: () => void;
   /** U-11: sin contacto con el servidor. */
   contactLost: boolean;
   setContactLost: (lost: boolean) => void;
@@ -85,6 +91,10 @@ export const useUi = create<UiState>((set, get) => ({
   setConfig: (config) => set({ config }),
   settingsOpen: false,
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+  constantsOpen: false,
+  setConstantsOpen: (open) => set({ constantsOpen: open }),
+  constantsVersion: 0,
+  constantsSaved: () => set({ constantsVersion: get().constantsVersion + 1 }),
   contactLost: false,
   setContactLost: (lost) => {
     if (get().contactLost !== lost) set({ contactLost: lost });
