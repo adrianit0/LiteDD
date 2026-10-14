@@ -7,9 +7,12 @@ import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.HttpServer;
+import dev.litedd.notes.ConstantsApi;
+import dev.litedd.notes.JavaConstantValues;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.VariableValues;
+import dev.litedd.settings.AppConfig;
 import dev.litedd.sqlengine.SqlEngine;
 import dev.litedd.store.Store;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +42,7 @@ class SqlApiTest {
     Path dir;
     Store store;
     NoteService notes;
+    JavaConstantValues constants;
     MySqlGateway gateway;
     ConnectionFile file;
     HttpServer server;
@@ -52,10 +56,12 @@ class SqlApiTest {
         }
         store = Store.open(dir.resolve("litedd.db"), dir.resolve("backups"));
         notes = new NoteService(store);
+        constants = new JavaConstantValues(store);
         file = new ConnectionFile(dir.resolve("config/connection.json"));
         gateway = new MySqlGateway();
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, () -> AppConfig.DEFAULT, constants::values),
+                new ConstantsApi(constants),
                 new ConnectionApi(file, gateway))).start();
     }
 
@@ -322,6 +328,58 @@ class SqlApiTest {
         assertThat(test.json.get("code").asText()).isEqualTo("connection_failed");
 
         assertThat(call("POST", "/api/connection/reconnect", null).json.get("state").asText()).isEqualTo("disconnected");
+    }
+
+    static final String ACTIVE = "demo.DemoConstants@STATUS_ACTIVE";
+
+    @Test
+    void m62_m63_constants_are_analyzed_and_rendered_with_their_value() throws Exception {
+        Note n = sqlNote("SELECT * FROM book WHERE status_id = ${@demo.DemoConstants@STATUS_ACTIVE}");
+        Res before = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content())));
+        assertThat(before.json.get("errors").get(0).get("code").asText()).isEqualTo("constant");
+        assertThat(before.json.get("variables")).isEmpty();
+        Res render = call("POST", "/api/sql/render", exec(n, "{}"));
+        assertThat(render.status).isEqualTo(422);
+        assertThat(render.json.get("details").get(0).get("message").asText())
+                .isEqualTo("La constante «DemoConstants.STATUS_ACTIVE» no tiene valor. Dale uno en «Constantes».");
+
+        Res put = call("PUT", "/api/constants", JSON.writeValueAsString(Map.of("values", Map.of(ACTIVE, " 5 "))));
+        assertThat(put.status).isEqualTo(200);
+        assertThat(call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content()))).json.get("errors")).isEmpty();
+        assertThat(call("POST", "/api/sql/render", exec(n, "{}")).json.get("finalSql").get("inlined").asText())
+                .isEqualTo("SELECT * FROM book WHERE status_id = 5");
+    }
+
+    @Test
+    void m61_m65_m66_constants_list_values_and_unused() throws Exception {
+        sqlNote("SELECT ${@demo.DemoConstants@STATUS_ACTIVE}");
+        call("PUT", "/api/constants", JSON.writeValueAsString(Map.of("values", Map.of("demo.Old@GONE", "x"))));
+        JsonNode list = call("GET", "/api/constants", null).json;
+        assertThat(list).hasSize(2);
+        // Primero las que no tienen valor.
+        assertThat(list.get(0).get("name").asText()).isEqualTo(ACTIVE);
+        assertThat(list.get(0).get("shortName").asText()).isEqualTo("DemoConstants.STATUS_ACTIVE");
+        assertThat(list.get(0).get("packageName").asText()).isEqualTo("demo");
+        assertThat(list.get(0).get("value").isNull()).isTrue();
+        assertThat(list.get(0).get("notes").asInt()).isEqualTo(1);
+        assertThat(list.get(1).get("name").asText()).isEqualTo("demo.Old@GONE");
+        assertThat(list.get(1).get("notes").asInt()).isZero();
+
+        // M-66: sin valor y sin uso, desaparece.
+        JsonNode after = call("PUT", "/api/constants", JSON.writeValueAsString(Map.of("values", Map.of("demo.Old@GONE", "")))).json;
+        assertThat(after).hasSize(1);
+        assertThat(call("PUT", "/api/constants", JSON.writeValueAsString(Map.of("values", Map.of("GONE", "1")))).status).isEqualTo(400);
+    }
+
+    @Test
+    void m05_mybatis_analyze_uses_fragments_of_other_xml_notes() throws Exception {
+        Note authors = notes.create(null, "xml", "Autores");
+        notes.save(authors.id(), "Autores", "<mapper namespace=\"demo.AuthorMapper\"><sql id=\"columns\">a.id</sql></mapper>", authors.version());
+        String books = "<mapper namespace=\"demo.BookMapper\"><select id=\"a\">SELECT <include refid=\"demo.AuthorMapper.columns\"/> FROM author a</select></mapper>";
+        assertThat(call("POST", "/api/mybatis/analyze", JSON.writeValueAsString(Map.of("content", books))).json.get("errors")).isEmpty();
+        // La propia nota no cuenta como otra nota XML.
+        Res self = call("POST", "/api/mybatis/analyze", JSON.writeValueAsString(Map.of("content", books.replace("BookMapper", "X"), "noteId", authors.id())));
+        assertThat(self.json.get("errors")).hasSize(1);
     }
 
     @Test

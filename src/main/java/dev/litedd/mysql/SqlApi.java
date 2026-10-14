@@ -97,6 +97,8 @@ public final class SqlApi implements ApiRoutes {
     private final MySqlGateway gateway;
     /** U-10: el tiempo máximo y el tope se leen de los ajustes en cada ejecución. */
     private final Supplier<AppConfig> config;
+    /** M-62: valores de las constantes Java, leídos en cada análisis y ejecución. */
+    private final Supplier<Map<String, String>> constants;
 
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway) {
         this(notes, variableValues, engine, gateway, DEFAULT_TIMEOUT_SECONDS, DEFAULT_ROW_CAP);
@@ -110,11 +112,17 @@ public final class SqlApi implements ApiRoutes {
 
     public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
                   Supplier<AppConfig> config) {
+        this(notes, variableValues, engine, gateway, config, Map::of);
+    }
+
+    public SqlApi(NoteService notes, VariableValues variableValues, SqlEngine engine, MySqlGateway gateway,
+                  Supplier<AppConfig> config, Supplier<Map<String, String>> constants) {
         this.notes = notes;
         this.variableValues = variableValues;
         this.engine = engine;
         this.gateway = gateway;
         this.config = config;
+        this.constants = constants;
     }
 
     private int timeoutSeconds() {
@@ -129,7 +137,7 @@ public final class SqlApi implements ApiRoutes {
     public void register(RoutesConfig routes) {
         routes.post("/api/sql/analyze", ctx -> {
             AnalyzeRequest req = ctx.bodyAsClass(AnalyzeRequest.class);
-            Analysis a = engine.analyze(req.content() == null ? "" : req.content());
+            Analysis a = engine.analyze(req.content() == null ? "" : req.content(), constants.get());
             Map<String, String> last = null;
             if (req.noteId() != null) {
                 Map<String, String> saved = variableValues.load(req.noteId());
@@ -144,7 +152,8 @@ public final class SqlApi implements ApiRoutes {
         });
         routes.post("/api/mybatis/analyze", ctx -> {
             AnalyzeRequest req = ctx.bodyAsClass(AnalyzeRequest.class);
-            ParsedMapper p = MapperSource.parse(req.content() == null ? "" : req.content());
+            // M-05: con los fragmentos de las demás notas XML.
+            ParsedMapper p = MapperSource.parse(req.content() == null ? "" : req.content(), notes.mapperLibrary(req.noteId()));
             ctx.json(new MapperAnalysis(p.statements().stream().map(s -> new MapperStatement(s.id(), s.kind())).toList(),
                     p.errors()));
         });
@@ -184,7 +193,7 @@ public final class SqlApi implements ApiRoutes {
             throw new ApiError(409, "stale_version", "La nota ha cambiado desde que se abrió. Pulsa «Actualizar».");
         }
         try {
-            Plan plan = engine.plan(note.content(), req.values() == null ? Map.of() : req.values());
+            Plan plan = engine.plan(note.content(), req.values() == null ? Map.of() : req.values(), constants.get());
             // S-22: el SQL solo en depuración y nunca los valores.
             log.debug("SQL de la nota {}: {}", note.id(), plan.rendered().sql());
             return plan;

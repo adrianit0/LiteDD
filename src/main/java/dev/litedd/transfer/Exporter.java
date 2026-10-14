@@ -3,6 +3,8 @@ package dev.litedd.transfer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import dev.litedd.AppInfo;
+import dev.litedd.notes.JavaConstantMapper;
+import dev.litedd.notes.JavaConstantMapper.ConstantRow;
 import dev.litedd.store.Store;
 import dev.litedd.transfer.TransferMapper.ExportAttachment;
 import dev.litedd.transfer.TransferMapper.ExportNote;
@@ -51,11 +53,12 @@ public final class Exporter {
     }
 
     public byte[] export() {
-        record Data(List<ExportNote> notes, List<NoteTagRow> tags, List<ExportAttachment> attachments) {
+        record Data(List<ExportNote> notes, List<NoteTagRow> tags, List<ExportAttachment> attachments, List<ConstantRow> constants) {
         }
         Data data = store.read(s -> {
             TransferMapper m = s.getMapper(TransferMapper.class);
-            return new Data(m.selectActiveNotes(), m.selectActiveTags(), m.selectActiveAttachments());
+            return new Data(m.selectActiveNotes(), m.selectActiveTags(), m.selectActiveAttachments(),
+                    s.getMapper(JavaConstantMapper.class).selectAll());
         });
 
         Map<String, List<String>> tags = new HashMap<>();
@@ -78,7 +81,8 @@ public final class Exporter {
             manifestAttachments.add(new Manifest.Attachment(a.id(), a.noteId(), a.name(), a.mime(), attachmentFile(a.id(), a.mime())));
         }
         Manifest manifest = new Manifest(Manifest.FORMAT_VERSION, AppInfo.VERSION,
-                clock.instant().truncatedTo(ChronoUnit.SECONDS).toString(), manifestNotes, manifestAttachments);
+                clock.instant().truncatedTo(ChronoUnit.SECONDS).toString(), manifestNotes, manifestAttachments,
+                data.constants().stream().map(c -> new Manifest.Constant(c.name(), c.value())).toList());
 
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {

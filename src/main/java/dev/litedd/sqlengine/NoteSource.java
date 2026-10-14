@@ -102,6 +102,11 @@ public final class NoteSource {
         return new PreparedNote(stripTypes(body), variables, analysis.errors);
     }
 
+    /** M-64: las variables internas de las constantes Java no son variables de la nota. */
+    private static boolean reserved(String name) {
+        return RESERVED.contains(name) || name.startsWith(JavaConstants.PREFIX);
+    }
+
     private static PreparedNote failed(String content, SqlError error) {
         return new PreparedNote(content, List.of(), List.of(error));
     }
@@ -231,7 +236,7 @@ public final class NoteSource {
             while (m.find()) {
                 String[] parts = m.group(2).split(",");
                 String root = root(parts[0]);
-                if (root.isEmpty() || RESERVED.contains(root)) {
+                if (root.isEmpty() || reserved(root)) {
                     continue;
                 }
                 SqlType declared = declaredType(parts, root);
@@ -298,7 +303,7 @@ public final class NoteSource {
                 if (before == '.' || before == '@' || before == '#' || Character.isDigit(before)) {
                     continue;
                 }
-                if (OGNL_WORDS.contains(id) || RESERVED.contains(id) || locals.contains(id)) {
+                if (OGNL_WORDS.contains(id) || reserved(id) || locals.contains(id)) {
                     continue;
                 }
                 if (!out.contains(id)) {

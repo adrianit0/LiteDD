@@ -4,6 +4,8 @@ import dev.litedd.http.ApiError;
 import dev.litedd.notes.NoteMapper.NoteRow;
 import dev.litedd.notes.NoteMapper.StatementRow;
 import dev.litedd.sqlengine.MapperSource;
+import dev.litedd.sqlengine.MapperSource.Library;
+import dev.litedd.sqlengine.MapperSource.MapperFile;
 import dev.litedd.sqlengine.MapperSource.ParsedMapper;
 import dev.litedd.store.Store;
 import org.apache.ibatis.session.SqlSession;
@@ -141,28 +143,45 @@ public final class NoteService {
             }
             Note saved = unchanged ? current : load(s, id);
             if (!unchanged) {
-                syncStatements(s, saved);
+                syncMappers(s, saved.type());
             }
             recordVersion(s, saved, snapshot);
             return saved;
         });
     }
 
+    /** M-05: los fragmentos de las notas XML activas, sin la nota indicada (la que se analiza). */
+    public Library mapperLibrary(String excludeId) {
+        return store.read(s -> Library.of(s.getMapper(NoteMapper.class).selectMapperFiles()).without(excludeId));
+    }
+
+    /**
+     * M-16: si cambia una nota XML, se regeneran las hijas de todas las notas XML activas, porque pueden usar sus
+     * fragmentos. Cada nota se analiza una sola vez para la biblioteca.
+     */
+    private void syncMappers(SqlSession s, String changedType) {
+        if (!XML.equals(changedType)) {
+            return;
+        }
+        List<MapperFile> files = s.getMapper(NoteMapper.class).selectMapperFiles();
+        Library library = Library.of(files);
+        for (MapperFile f : files) {
+            syncStatements(s, f.noteId(), f.content(), library.without(f.noteId()));
+        }
+    }
+
     /**
      * M-10 a M-13: una hija SQL por sentencia del mapper, emparejadas por id de sentencia. Con errores, las
      * hijas no se tocan.
      */
-    private void syncStatements(SqlSession s, Note note) {
-        if (!XML.equals(note.type())) {
-            return;
-        }
-        ParsedMapper mapper = MapperSource.parse(note.content());
+    private void syncStatements(SqlSession s, String noteId, String content, Library others) {
+        ParsedMapper mapper = MapperSource.parse(content, others);
         if (!mapper.valid()) {
             return;
         }
         NoteMapper m = s.getMapper(NoteMapper.class);
         Map<String, StatementRow> existing = new LinkedHashMap<>();
-        m.selectStatementChildren(note.id()).forEach(r -> existing.put(r.statementId(), r));
+        m.selectStatementChildren(noteId).forEach(r -> existing.put(r.statementId(), r));
         Set<String> current = new HashSet<>();
         mapper.statements().forEach(st -> current.add(st.id()));
         // ADR-0023: las hijas de sentencias que ya no están se borran definitivamente.
@@ -173,7 +192,7 @@ public final class NoteService {
             MapperSource.Statement st = statements.get(i);
             StatementRow row = existing.get(st.id());
             if (row == null) {
-                m.insert(new NoteRow(UUID.randomUUID().toString(), note.id(), i, "sql", st.id(), "", st.body(), false, 1, now,
+                m.insert(new NoteRow(UUID.randomUUID().toString(), noteId, i, "sql", st.id(), "", st.body(), false, 1, now,
                         now, st.id(), st.kind()));
                 continue;
             }
@@ -223,7 +242,7 @@ public final class NoteService {
             // El historial guarda título y contenido; la descripción no cambia (ADR-0020).
             update(s, id, v.title(), current.description(), v.content(), baseVersion);
             Note restored = load(s, id);
-            syncStatements(s, restored); // M-14
+            syncMappers(s, restored.type()); // M-14, M-16
             return restored;
         });
     }
@@ -303,7 +322,7 @@ public final class NoteService {
                 c.insertNoteTag(copy.id(), c.selectTagId(tag));
             }
             Note created = load(s, copy.id());
-            syncStatements(s, created);
+            syncMappers(s, created.type());
             return created;
         });
     }
@@ -439,6 +458,7 @@ public final class NoteService {
             m.markDeleted(id, now);
             m.deleteTabs(id);
             renumber(m, siblings);
+            syncMappers(s, note.type()); // M-16
             return null;
         });
     }
@@ -462,7 +482,7 @@ public final class NoteService {
             // M-30: la nota XML vuelve con sus hijas.
             m.markStatementsRestored(id);
             Note restored = load(s, id);
-            syncStatements(s, restored);
+            syncMappers(s, restored.type());
             return restored;
         });
     }

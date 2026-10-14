@@ -5,8 +5,10 @@ import dev.litedd.http.ApiError;
 import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.AttachmentsApi;
 import dev.litedd.notes.ContentMapper;
+import dev.litedd.notes.JavaConstantMapper;
 import dev.litedd.notes.NoteMapper;
 import dev.litedd.notes.NoteMapper.NoteRow;
+import dev.litedd.sqlengine.JavaConstants;
 import dev.litedd.notes.NoteService;
 import dev.litedd.store.Store;
 
@@ -90,6 +92,7 @@ public final class Importer {
             String rootId = null;
             if (mode == Mode.REPLACE) {
                 wipe(s.getMapper(TransferMapper.class));
+                s.getMapper(JavaConstantMapper.class).deleteAll();
                 manifest.notes().forEach(n -> noteIds.put(n.id(), n.id()));
                 safeList(manifest.attachments()).forEach(a -> attachmentIds.put(a.id(), a.id()));
             } else {
@@ -131,6 +134,18 @@ public final class Importer {
                 byte[] data = entries.get(a.file());
                 String noteId = a.noteId() == null ? null : noteIds.get(a.noteId());
                 attachments.insert(attachmentIds.get(a.id()), noteId, a.name(), AttachmentsApi.detect(data), data, now);
+            }
+            // M-68: al reemplazar, las constantes del archivo; en una rama, solo las que no tienen valor.
+            JavaConstantMapper constants = s.getMapper(JavaConstantMapper.class);
+            for (Manifest.Constant c : safeList(manifest.constants())) {
+                if (!JavaConstants.isName(c.name()) || c.value() == null || c.value().isBlank()) {
+                    continue;
+                }
+                if (mode == Mode.REPLACE) {
+                    constants.upsert(c.name(), c.value(), now);
+                } else {
+                    constants.insertMissing(c.name(), c.value(), now);
+                }
             }
             return new ImportResult(manifest.notes().size(), safeList(manifest.attachments()).size(), rootId);
         });

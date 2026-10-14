@@ -1,6 +1,7 @@
 package dev.litedd.store;
 
 import dev.litedd.notes.ContentMapper;
+import dev.litedd.notes.JavaConstantMapper;
 import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.NoteMapper;
 import dev.litedd.notes.VariableValueMapper;
@@ -184,6 +185,7 @@ public final class Store implements AutoCloseable {
         cfg.addMapper(ContentMapper.class);
         cfg.addMapper(AttachmentMapper.class);
         cfg.addMapper(TransferMapper.class);
+        cfg.addMapper(JavaConstantMapper.class);
         return new SqlSessionFactoryBuilder().build(cfg);
     }
 }

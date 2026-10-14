@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +49,62 @@ public final class MapperSource {
         }
     }
 
+    /** Una nota XML MyBatis, para la biblioteca de fragmentos (M-05). */
+    public record MapperFile(String noteId, String title, String content) {
+    }
+
+    /**
+     * M-05, ADR-0025: los fragmentos &lt;sql&gt; de las notas XML, por namespace. Cada nota se analiza una sola
+     * vez; las notas mal formadas o sin namespace no aportan fragmentos.
+     */
+    public static final class Library {
+
+        public static final Library EMPTY = new Library(List.of());
+
+        private record Entry(String noteId, String title, String namespace, Map<String, XNode> fragments) {
+        }
+
+        private final List<Entry> entries;
+
+        private Library(List<Entry> entries) {
+            this.entries = entries;
+        }
+
+        public static Library of(List<MapperFile> files) {
+            List<Entry> out = new ArrayList<>();
+            for (MapperFile f : files) {
+                Document doc;
+                try {
+                    doc = NoteSource.parse(blankDoctype(f.content()));
+                } catch (SAXException | IOException e) {
+                    continue;
+                }
+                Element root = doc.getDocumentElement();
+                String namespace = root.getAttribute("namespace").strip();
+                if (!root.getTagName().equals("mapper") || namespace.isEmpty()) {
+                    continue;
+                }
+                XPathParser parser = new XPathParser(doc);
+                Map<String, XNode> fragments = new LinkedHashMap<>();
+                for (Node n = root.getFirstChild(); n != null; n = n.getNextSibling()) {
+                    if (n instanceof Element e && e.getTagName().equals("sql")) {
+                        String id = e.getAttribute("id").strip();
+                        if (!id.isEmpty() && !id.contains(".")) {
+                            fragments.putIfAbsent(id, new XNode(parser, e, null));
+                        }
+                    }
+                }
+                out.add(new Entry(f.noteId(), f.title(), namespace, fragments));
+            }
+            return new Library(List.copyOf(out));
+        }
+
+        /** La biblioteca sin una nota, la que se está analizando. */
+        public Library without(String noteId) {
+            return noteId == null ? this : new Library(entries.stream().filter(e -> !e.noteId().equals(noteId)).toList());
+        }
+    }
+
     public static final Set<String> STATEMENTS = Set.of("select", "insert", "update", "delete");
     private static final String DEFAULT_NAMESPACE = "litedd";
     private static final Pattern DOCTYPE = Pattern.compile("<!DOCTYPE\\b(?:[^>\\[]|\\[[^]]*])*>", Pattern.CASE_INSENSITIVE);
@@ -59,6 +116,11 @@ public final class MapperSource {
     }
 
     public static ParsedMapper parse(String content) {
+        return parse(content, Library.EMPTY);
+    }
+
+    /** M-05: con los fragmentos de las demás notas XML; others no debe contener la propia nota. */
+    public static ParsedMapper parse(String content, Library others) {
         Document doc;
         try {
             doc = NoteSource.parse(blankDoctype(content));
@@ -122,6 +184,24 @@ public final class MapperSource {
             }
         }
 
+        // M-05, ADR-0025: fragmentos de las demás notas XML. El propio mapper resuelve siempre su namespace.
+        Map<String, List<String>> repeated = new LinkedHashMap<>();
+        Map<String, List<Library.Entry>> byNamespace = new LinkedHashMap<>();
+        others.entries.forEach(e -> byNamespace.computeIfAbsent(e.namespace(), k -> new ArrayList<>()).add(e));
+        byNamespace.forEach((ns, entries) -> {
+            if (ns.equals(assistant.getCurrentNamespace())) {
+                return;
+            }
+            if (entries.size() > 1) {
+                repeated.put(ns, entries.stream().map(Library.Entry::title).toList());
+                return;
+            }
+            entries.getFirst().fragments().forEach((id, node) -> {
+                cfg.getSqlFragments().put(ns + "." + id, node);
+                fragments.put(ns + "." + id, (Element) node.getNode());
+            });
+        });
+
         // M-40: un include circular haría que MyBatis no terminase nunca.
         String cycle = findCycle(fragments, assistant);
         if (cycle != null) {
@@ -140,8 +220,8 @@ public final class MapperSource {
                 includes.applyIncludes(element);
             } catch (BuilderException | IllegalArgumentException ex) {
                 Integer line = lineOf(content, s.kind(), s.id(), 1);
-                errors.add(new SqlError("include", "La sentencia «" + s.id() + "» usa un fragmento que no está en este mapper: "
-                        + refids(statements.get(s.id())), line, null, null));
+                errors.add(new SqlError("include", includeError(s.id(), statements.get(s.id()), fragments, repeated, assistant),
+                        line, null, null));
                 continue;
             }
             out.add(new Statement(s.id(), s.kind(), dedent(serializeChildren(element))));
@@ -168,6 +248,55 @@ public final class MapperSource {
             }
         }
         return null;
+    }
+
+    /**
+     * M-40: los fragmentos que faltan, recorriendo los include de la sentencia y de los fragmentos que usa. Los
+     * namespaces repetidos se nombran con sus notas.
+     */
+    private static String includeError(String statementId, Element statement, Map<String, Element> fragments,
+                                       Map<String, List<String>> repeated, MapperBuilderAssistant assistant) {
+        Set<String> missing = new LinkedHashSet<>();
+        Set<String> ambiguous = new LinkedHashSet<>();
+        Set<String> seen = new HashSet<>();
+        List<Element> pending = new ArrayList<>(List.of(statement));
+        while (!pending.isEmpty()) {
+            NodeList list = pending.removeLast().getElementsByTagName("include");
+            for (int i = 0; i < list.getLength(); i++) {
+                String refid = ((Element) list.item(i)).getAttribute("refid").strip();
+                if (refid.contains("${") || !seen.add(refid)) {
+                    continue;
+                }
+                String full;
+                try {
+                    full = assistant.applyCurrentNamespace(refid, true);
+                } catch (BuilderException e) {
+                    missing.add(refid);
+                    continue;
+                }
+                Element found = fragments.get(full);
+                if (found != null) {
+                    pending.add(found);
+                } else if (repeated.containsKey(full.substring(0, full.lastIndexOf('.')))) {
+                    ambiguous.add(full.substring(0, full.lastIndexOf('.')));
+                } else {
+                    missing.add(refid);
+                }
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        if (!missing.isEmpty()) {
+            parts.add("usa un fragmento que no está en este mapper ni en otra nota XML MyBatis: "
+                    + String.join(", ", missing.stream().map(r -> "«" + r + "»").toList()));
+        }
+        for (String ns : ambiguous) {
+            parts.add("usa el namespace «" + ns + "», que está en varias notas XML MyBatis: "
+                    + String.join(", ", repeated.get(ns).stream().map(t -> "«" + t + "»").toList()));
+        }
+        if (parts.isEmpty()) {
+            return "La sentencia «" + statementId + "» no puede resolver sus fragmentos: " + refids(statement);
+        }
+        return "La sentencia «" + statementId + "» " + String.join("; ", parts);
     }
 
     private static String refids(Element statement) {

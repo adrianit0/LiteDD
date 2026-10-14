@@ -3,6 +3,7 @@ package dev.litedd.transfer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.ApiError;
+import dev.litedd.notes.JavaConstantValues;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.TreeNode;
@@ -187,6 +188,29 @@ class TransferTest {
         assertThat(kids.getFirst().tags()).containsExactly("demo");
         // Siguen siendo hijas generadas.
         assertThatThrownBy(() -> notes.delete(kids.getFirst().id(), true)).isInstanceOf(ApiError.class);
+    }
+
+    @Test
+    void m68_constants_with_value_are_exported_replaced_or_added_without_overwriting() throws Exception {
+        JavaConstantValues constants = new JavaConstantValues(store, clock);
+        note(null, "sql", "Activos", "SELECT ${@demo.DemoConstants@STATUS_ACTIVE}");
+        constants.update(Map.of("demo.DemoConstants@STATUS_ACTIVE", "5", "demo.DemoConstants@LABEL", "novel"));
+        byte[] zip = exporter.export();
+        JsonNode manifest = JSON.readTree(unzip(zip).get("manifest.json"));
+        assertThat(manifest.get("constants")).hasSize(2);
+        assertThat(manifest.get("constants").get(0).get("name").asText()).isEqualTo("demo.DemoConstants@LABEL");
+
+        // «Añadir como rama» no cambia los valores que ya hay y añade los que faltan.
+        constants.update(Map.of("demo.DemoConstants@STATUS_ACTIVE", "7", "demo.DemoConstants@LABEL", ""));
+        importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        assertThat(constants.values()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("demo.DemoConstants@STATUS_ACTIVE", "7", "demo.DemoConstants@LABEL", "novel"));
+
+        // «Reemplazar todo» deja solo las del archivo.
+        constants.update(Map.of("demo.Other@X", "1"));
+        importer.importZip(new ByteArrayInputStream(zip), Mode.REPLACE);
+        assertThat(constants.values()).containsExactlyInAnyOrderEntriesOf(
+                Map.of("demo.DemoConstants@STATUS_ACTIVE", "5", "demo.DemoConstants@LABEL", "novel"));
     }
 
     @Test

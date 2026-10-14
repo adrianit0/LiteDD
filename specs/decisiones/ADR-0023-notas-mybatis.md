@@ -38,4 +38,4 @@ Diseño:
 - Las hijas son notas SQL a todos los efectos al ejecutarlas (`/api/sql/*`), así que no hay un motor nuevo.
 - Las hijas aparecen en la búsqueda como cualquier nota SQL.
 - Las clases Java del proyecto (resultType, parameterType…) no hacen falta: se ignoran.
-- Un mapper con fragmentos de otros mappers no se puede resolver. Hay que copiar esos fragmentos en el mismo mapper.
+- ~~Un mapper con fragmentos de otros mappers no se puede resolver.~~ Desde ADR-0025, los fragmentos de las demás notas XML se resuelven por su namespace.

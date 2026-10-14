@@ -7,7 +7,8 @@ import java.util.List;
 
 /** manifest.json del ZIP exportado (X-02). */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record Manifest(int formatVersion, String appVersion, String exportedAt, List<Note> notes, List<Attachment> attachments) {
+public record Manifest(int formatVersion, String appVersion, String exportedAt, List<Note> notes, List<Attachment> attachments,
+                       @JsonInclude(JsonInclude.Include.NON_EMPTY) List<Constant> constants) {
 
     public static final int FORMAT_VERSION = 1;
 
@@ -24,5 +25,10 @@ public record Manifest(int formatVersion, String appVersion, String exportedAt, 
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Attachment(String id, String noteId, String name, String mime, String file) {
+    }
+
+    /** M-68: constante Java con valor; falta en los archivos anteriores. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Constant(String name, String value) {
     }
 }

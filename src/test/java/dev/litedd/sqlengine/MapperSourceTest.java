@@ -4,6 +4,7 @@ import dev.litedd.sqlengine.MapperSource.ParsedMapper;
 import dev.litedd.sqlengine.MapperSource.Statement;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -187,6 +188,86 @@ class MapperSourceTest {
             assertThat(e.line()).isEqualTo(2);
         });
         assertThat(p.statements()).extracting(Statement::body).containsOnlyNulls();
+    }
+
+    static final MapperSource.MapperFile AUTHORS = new MapperSource.MapperFile("n-authors", "Autores", """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+            <mapper namespace="demo.AuthorMapper">
+              <sql id="columns">a.id, a.name</sql>
+              <sql id="activeOnly">AND a.active = 1 <include refid="demo.AuthorMapper.notDeleted"/></sql>
+              <sql id="notDeleted">AND a.deleted_at IS NULL</sql>
+            </mapper>""");
+
+    @Test
+    void m05_fragments_of_other_xml_notes_are_resolved_by_namespace() {
+        ParsedMapper p = MapperSource.parse("""
+                <mapper namespace="demo.BookMapper">
+                  <select id="a">SELECT <include refid="demo.AuthorMapper.columns"/> FROM author a
+                    WHERE 1 = 1 <include refid="demo.AuthorMapper.activeOnly"/></select>
+                </mapper>""", MapperSource.Library.of(List.of(AUTHORS)));
+        assertThat(p.errors()).isEmpty();
+        assertThat(p.statements().getFirst().body())
+                .isEqualTo("SELECT a.id, a.name FROM author a\nWHERE 1 = 1 AND a.active = 1 AND a.deleted_at IS NULL");
+    }
+
+    @Test
+    void m05_own_namespace_wins_over_a_note_with_the_same_namespace() {
+        String own = """
+                <mapper namespace="demo.AuthorMapper">
+                  <sql id="columns">mine</sql>
+                  <select id="a">SELECT <include refid="columns"/>, <include refid="demo.AuthorMapper.columns"/></select>
+                </mapper>""";
+        ParsedMapper p = MapperSource.parse(own, MapperSource.Library.of(List.of(AUTHORS)));
+        assertThat(p.errors()).isEmpty();
+        assertThat(p.statements().getFirst().body()).isEqualTo("SELECT mine, mine");
+    }
+
+    @Test
+    void m05_library_without_excludes_the_note_being_analyzed() {
+        MapperSource.Library library = MapperSource.Library.of(List.of(AUTHORS)).without("n-authors");
+        ParsedMapper p = MapperSource.parse("""
+                <mapper namespace="demo.BookMapper">
+                  <select id="a">SELECT <include refid="demo.AuthorMapper.columns"/></select>
+                </mapper>""", library);
+        assertThat(p.errors()).singleElement().satisfies(e -> assertThat(e.code()).isEqualTo("include"));
+    }
+
+    @Test
+    void m40_message_names_only_missing_fragments() {
+        ParsedMapper p = MapperSource.parse("""
+                <mapper namespace="demo.BookMapper">
+                  <sql id="own">b.id</sql>
+                  <select id="a">SELECT <include refid="own"/>, <include refid="demo.AuthorMapper.columns"/>
+                    FROM book <include refid="demo.PagingMapper.page"/></select>
+                </mapper>""", MapperSource.Library.of(List.of(AUTHORS)));
+        assertThat(p.errors()).singleElement().satisfies(e -> assertThat(e.message()).isEqualTo(
+                "La sentencia «a» usa un fragmento que no está en este mapper ni en otra nota XML MyBatis: «demo.PagingMapper.page»"));
+    }
+
+    @Test
+    void m40_repeated_namespace_names_the_notes() {
+        MapperSource.MapperFile copy = new MapperSource.MapperFile("n-copy", "Autores (2)", AUTHORS.content());
+        ParsedMapper p = MapperSource.parse("""
+                <mapper namespace="demo.BookMapper">
+                  <select id="a">SELECT <include refid="demo.AuthorMapper.columns"/></select>
+                </mapper>""", MapperSource.Library.of(List.of(AUTHORS, copy)));
+        assertThat(p.errors()).singleElement().satisfies(e -> assertThat(e.message()).isEqualTo(
+                "La sentencia «a» usa el namespace «demo.AuthorMapper», que está en varias notas XML MyBatis: «Autores», «Autores (2)»"));
+    }
+
+    @Test
+    void m40_circular_include_across_mappers() {
+        MapperSource.MapperFile other = new MapperSource.MapperFile("n-other", "Otro", """
+                <mapper namespace="demo.Other">
+                  <sql id="x">x <include refid="demo.BookMapper.y"/></sql>
+                </mapper>""");
+        ParsedMapper p = MapperSource.parse("""
+                <mapper namespace="demo.BookMapper">
+                  <sql id="y">y <include refid="demo.Other.x"/></sql>
+                  <select id="s">SELECT <include refid="y"/></select>
+                </mapper>""", MapperSource.Library.of(List.of(other)));
+        assertThat(p.errors()).singleElement().satisfies(e -> assertThat(e.message()).startsWith("<include> circular:"));
     }
 
     @Test

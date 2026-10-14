@@ -16,6 +16,8 @@ import dev.litedd.mysql.ConnectionFile;
 import dev.litedd.mysql.MySqlGateway;
 import dev.litedd.mysql.SqlApi;
 import dev.litedd.notes.AttachmentsApi;
+import dev.litedd.notes.ConstantsApi;
+import dev.litedd.notes.JavaConstantValues;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.NotesApi;
 import dev.litedd.notes.VariableValues;
@@ -108,6 +110,7 @@ public final class Main {
             log.warn("No se pudo crear la copia diaria: {}", e.getMessage());
         }
         NoteService notes = new NoteService(store);
+        JavaConstantValues constants = new JavaConstantValues(store);
         int purged = notes.purgeOrphanAttachments();
         if (purged > 0) {
             log.info("Adjuntos sin referencias eliminados: {}", purged);
@@ -147,7 +150,8 @@ public final class Main {
                     new AttachmentsApi(store),
                     new SettingsApi(store, settings),
                     new SessionApi(store),
-                    new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, settings::get),
+                    new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, settings::get, constants::values),
+                    new ConstantsApi(constants),
                     new ConnectionApi(connectionFile, gateway),
                     new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                             DataPaths.dataDir(), Desktop::openFolder, clock),

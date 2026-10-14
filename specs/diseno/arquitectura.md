@@ -203,7 +203,7 @@ Las pruebas contra MySQL leen `LITEDD_IT_HOST`, `LITEDD_IT_PORT`, `LITEDD_IT_USE
 
 Estas funciones se han aplazado a propósito. No se implementan en la versión 1 y cada una exige ampliar antes la especificación.
 
-- Notas de tipo fragmento compartidas entre notas SQL. Los `<include>` dentro de un mapper ya están admitidos (ADR-0023).
+- Notas de tipo fragmento compartidas entre notas SQL. Los `<include>` dentro de un mapper y entre notas XML ya están admitidos (ADR-0023, ADR-0025).
 - Autocompletado de tablas y columnas a partir de information_schema.
 - Explorador de esquema: tablas, columnas e índices.
 - Bloques SQL ejecutables dentro de notas Markdown.

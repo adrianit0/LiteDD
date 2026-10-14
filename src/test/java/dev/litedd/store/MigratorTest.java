@@ -135,7 +135,7 @@ class MigratorTest {
 
             new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
 
-            assertThat(userVersion(c)).isEqualTo(4);
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
             assertThat(scalar(c, "SELECT rid FROM note WHERE id = 'h'")).isEqualTo(ridBefore);
             assertThat(scalar(c, "SELECT statement_id FROM note WHERE id = 'h'")).isNull();
             assertThat(scalar(c, "SELECT count(*) FROM tab")).isEqualTo("1");

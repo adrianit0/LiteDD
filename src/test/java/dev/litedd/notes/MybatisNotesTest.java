@@ -231,4 +231,54 @@ class MybatisNotesTest {
         assertThat(notes.get(xml.id()).parentId()).isEqualTo(folder);
         assertThat(children(xml.id())).hasSize(3);
     }
+
+    static final String USES_AUTHORS = """
+            <mapper namespace="demo.BookMapper">
+              <select id="withAuthor">SELECT b.id, <include refid="demo.AuthorMapper.cols"/> FROM book b JOIN author a ON a.id = b.author_id</select>
+            </mapper>""";
+
+    private static String authors(String cols) {
+        return "<mapper namespace=\"demo.AuthorMapper\"><sql id=\"cols\">" + cols + "</sql></mapper>";
+    }
+
+    private String body(String parent, String statementId) {
+        return notes.get(child(parent, statementId).id()).content();
+    }
+
+    @Test
+    void m05_m16_saving_the_fragment_mapper_regenerates_the_mappers_that_use_it() {
+        Note books = mapper(null, USES_AUTHORS);
+        // Sin la nota de autores, el mapper tiene errores y no genera hijas (M-13).
+        assertThat(children(books.id())).isEmpty();
+
+        Note authors = notes.create(null, "xml", "Autores");
+        authors = notes.save(authors.id(), "Autores", authors("a.name"), authors.version());
+        assertThat(body(books.id(), "withAuthor")).isEqualTo("SELECT b.id, a.name FROM book b JOIN author a ON a.id = b.author_id");
+
+        saveMapper(authors, authors("a.name, a.country"));
+        assertThat(body(books.id(), "withAuthor")).contains("a.name, a.country");
+    }
+
+    @Test
+    void m16_trash_restore_and_duplicate_of_the_fragment_mapper() {
+        Note authors = notes.create(null, "xml", "Autores");
+        authors = notes.save(authors.id(), "Autores", authors("a.name"), authors.version());
+        Note books = mapper(null, USES_AUTHORS);
+        String childId = child(books.id(), "withAuthor").id();
+
+        // En la papelera no aporta fragmentos: las hijas se quedan como estaban.
+        notes.delete(authors.id(), false);
+        assertThat(notes.get(childId).content()).contains("a.name");
+        notes.restore(authors.id());
+        saveMapper(authors, authors("a.id"));
+        assertThat(notes.get(childId).content()).contains("SELECT b.id, a.id FROM");
+
+        // Con el namespace repetido, error: las hijas tampoco cambian.
+        Note copy = notes.duplicate(authors.id());
+        saveMapper(copy, authors("a.other"));
+        assertThat(notes.get(childId).content()).contains("SELECT b.id, a.id FROM");
+        notes.delete(copy.id(), false);
+        saveMapper(authors, authors("a.last"));
+        assertThat(notes.get(childId).content()).contains("SELECT b.id, a.last FROM");
+    }
 }

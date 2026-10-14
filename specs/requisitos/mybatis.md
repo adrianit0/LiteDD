@@ -32,7 +32,7 @@ Esta nota genera dos hijas: «selectByAuthor», que se ejecuta como cualquier no
 | M-02 | El contenido es un mapper completo: declaración XML, DOCTYPE y `<mapper>` raíz. El DOCTYPE se ignora: no se descarga la DTD ni se resuelve ninguna entidad (principio 4). |
 | M-03 | El elemento raíz debe ser `<mapper>`. El atributo `namespace` es opcional. |
 | M-04 | Son sentencias los hijos directos `<select>`, `<insert>`, `<update>` y `<delete>`. Cada uno necesita un `id` único en el mapper. |
-| M-05 | Los fragmentos `<sql id>` se usan con `<include refid>` desde las sentencias y desde otros fragmentos, con `<property>` incluidas. Los resuelve el `XMLIncludeTransformer` de MyBatis (Q-30). `refid` puede llevar delante el namespace del propio mapper; un fragmento de otro mapper es un error. |
+| M-05 | Los fragmentos `<sql id>` se usan con `<include refid>` desde las sentencias y desde otros fragmentos, con `<property>` incluidas. Los resuelve el `XMLIncludeTransformer` de MyBatis (Q-30). `refid` puede llevar delante el namespace del propio mapper o el de otra nota XML MyBatis que no esté en la papelera: así se usan los fragmentos de otros mappers (ADR-0025). El propio mapper resuelve siempre sus fragmentos, aunque otra nota tenga su mismo namespace. |
 | M-06 | Se ignoran `<resultMap>`, `<parameterMap>`, `<cache>`, `<cache-ref>`, `<selectKey>` y todos los atributos de las sentencias salvo `id`. No se carga ninguna clase Java. |
 
 ## Hijas generadas
@@ -45,6 +45,8 @@ Esta nota genera dos hijas: «selectByAuthor», que se ejecuta como cualquier no
 | M-13 | Si el mapper tiene errores (M-40), el padre se guarda igualmente y las hijas se quedan como estaban. |
 | M-14 | La generación va en la misma transacción que el guardado del padre (D-03). También se genera al restaurar una versión del historial del padre, al duplicarlo y al restaurarlo de la papelera. |
 | M-15 | Las pestañas abiertas de las hijas se recargan cuando el padre se guarda. |
+| M-16 | Cuando una nota XML se guarda, se restaura desde su historial, se duplica, va a la papelera o vuelve de ella, se regeneran también las hijas de las demás notas XML, porque pueden usar sus fragmentos (ADR-0025). Cada una con errores conserva sus hijas (M-13). |
+| M-17 | Tras guardar una nota XML se recargan las pestañas abiertas de todas las hijas generadas, no solo las suyas. |
 
 ## Solo lectura
 
@@ -68,9 +70,29 @@ Esta nota genera dos hijas: «selectByAuthor», que se ejecuta como cualquier no
 
 | ID | Requisito |
 |---|---|
-| M-40 | Errores del mapper, con línea y columna cuando las hay: XML mal formado, raíz que no es `<mapper>`, sentencia sin `id`, `id` repetido, fragmento inexistente o de otro mapper e `<include>` circular. |
+| M-40 | Errores del mapper, con línea y columna cuando las hay: XML mal formado, raíz que no es `<mapper>`, sentencia sin `id`, `id` repetido, fragmento que no está en ninguna nota XML MyBatis, fragmento de un namespace que está en varias notas XML e `<include>` circular. El mensaje nombra solo los fragmentos que faltan. |
 | M-41 | En edición, el editor resalta las etiquetas MyBatis y los tokens `#{}` y `${}` (Q-80). Debajo se listan en vivo las sentencias, con su etiqueta, y los errores. |
 | M-42 | En consulta se ve el XML resaltado, de solo lectura, y encima la lista de sentencias generadas, cada una con un enlace a su hija. Si el mapper guardado tiene errores, también se muestran. |
+
+## Constantes Java
+
+Los mappers usan constantes de clases Java con la sintaxis de OGNL para campos estáticos. LiteDD no carga clases Java (M-06): el usuario da el valor de cada constante una vez y vale para todas las notas (ADR-0025).
+
+```xml
+<if test="statusId == @demo.DemoConstants@STATUS_ACTIVE">AND b.status_id = ${@demo.DemoConstants@STATUS_ACTIVE}</if>
+```
+
+| ID | Requisito |
+|---|---|
+| M-60 | Una constante Java es `@paquete.Clase@CAMPO`. Se reconoce en cualquier parte de una nota SQL o XML: dentro de `${}` y `#{}`, y en las expresiones de `test`, `bind` y `foreach`. `@Clase@metodo(…)` no es una constante. |
+| M-61 | Las constantes que aparecen en las notas SQL y XML activas forman una lista global. Cada una tiene un valor que se da una sola vez y vale para todas las notas. |
+| M-62 | Al generar el SQL, cada constante se sustituye por su valor. Un valor entero o decimal se usa como número y cualquier otro como texto. Dentro de `${}` se inserta tal cual. El contenido de las notas no cambia: cambiar un valor no regenera nada. |
+| M-63 | Una constante sin valor es un error al analizar y al ejecutar la nota: «La constante «Clase.CAMPO» no tiene valor. Dale uno en «Constantes».». Junto al error hay un botón que abre «Constantes». |
+| M-64 | Las constantes no son variables: no aparecen en el formulario ni se guardan con los últimos valores de la nota. |
+| M-65 | La ventana «Constantes» se abre desde el pie del panel y desde el error de M-63. Muestra cada constante como «Clase.CAMPO», con el paquete debajo, su valor editable y el número de notas que la usan. Primero van las que no tienen valor y después el resto por nombre. Tiene un filtro por texto. «Guardar» aplica todos los cambios a la vez. |
+| M-66 | Una constante que ya no aparece en ninguna nota se conserva con su valor, marcada «sin uso» y con un botón «Borrar». Dejar vacío el valor la deja sin valor; si además no se usa, desaparece de la lista. |
+| M-67 | Al guardar las constantes se vuelven a analizar las notas SQL abiertas. |
+| M-68 | Las constantes con valor se exportan en el manifiesto. «Reemplazar todo» las sustituye. «Añadir como rama» solo añade las que todavía no tienen valor. |
 
 ## Exportación
 

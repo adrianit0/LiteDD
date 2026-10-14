@@ -1,5 +1,6 @@
 package dev.litedd.notes;
 
+import dev.litedd.sqlengine.MapperSource;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
@@ -62,6 +63,10 @@ public interface NoteMapper {
             SELECT id, statement_id, statement_kind, content FROM note
             WHERE parent_id = #{parentId} AND statement_id IS NOT NULL AND deleted_at IS NULL""")
     List<StatementRow> selectStatementChildren(@Param("parentId") String parentId);
+
+    /** M-05, M-16: las notas XML activas, para la biblioteca de fragmentos. */
+    @Select("SELECT id AS note_id, title, content FROM note WHERE type = 'xml' AND deleted_at IS NULL ORDER BY rid")
+    List<MapperSource.MapperFile> selectMapperFiles();
 
     /** M-12: la hija cambia de contenido, y por tanto de versión, solo si cambia su sentencia. */
     @Update("""

@@ -70,6 +70,12 @@ CREATE TABLE tab (
   state    TEXT                              -- JSON: tamaño de página, orden, valores
 );
 
+CREATE TABLE java_constant (               -- M-61, V005: solo las constantes con valor (ADR-0025)
+  name       TEXT PRIMARY KEY,               -- paquete.Clase@CAMPO
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE setting (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
