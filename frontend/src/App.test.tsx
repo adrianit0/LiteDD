@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { App } from './App';
 import { api, ApiError, DEFAULT_CONFIG } from './api';
 import { useTabs } from './stores/tabsStore';
@@ -74,9 +74,27 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: /Sin conexión configurada/ })).toBeTruthy();
   });
 
-  it('N-05 N-06 «Nueva nota Markdown» crea en la raíz y abre en edición con el título seleccionado', async () => {
+  it('N-05 el botón «+ Nuevo» abre un menú flotante con los cuatro tipos de nota', async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: '+ Nueva nota Markdown' }));
+    await act(async () => {});
+    const button = screen.getByRole('button', { name: '+ Nuevo' });
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByRole('menuitem').map((i) => i.firstChild?.textContent)).toEqual([
+      'Nota Markdown',
+      'Nota SQL',
+      'Nota HTTP',
+      'Nota MyBatis',
+    ]);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(mocked.createNote).not.toHaveBeenCalled();
+  });
+
+  it('N-05 N-06 «Nuevo → Nota Markdown» crea en la raíz y abre en edición con el título seleccionado', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Nuevo' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Nota Markdown/ }));
     const input = await screen.findByRole<HTMLInputElement>('textbox', { name: 'Título' });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'md');
     expect(input.value).toBe('Sin título');
@@ -95,7 +113,7 @@ describe('App', () => {
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'sql');
   });
 
-  it('N-05 H-01 «Nueva nota HTTP» crea una nota HTTP sin modos; Ctrl+E no hace nada y Ctrl+Intro la envía', async () => {
+  it('N-05 H-01 «Nuevo → Nota HTTP» crea una nota HTTP sin modos; Ctrl+E no hace nada y Ctrl+Intro la envía', async () => {
     const httpNote = { ...created, type: 'http' as const, content: '{"endpoint":"/x","login":"none"}' };
     mocked.createNote.mockResolvedValue(httpNote);
     mocked.saveNote.mockResolvedValue(httpNote);
@@ -103,8 +121,9 @@ describe('App', () => {
     (api as unknown as { httpExecute: typeof execute }).httpExecute = execute;
     (api as unknown as { appVersion: () => Promise<string> }).appVersion = () => Promise.resolve('0.1.0');
     render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Nuevo' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '+ Nueva nota HTTP' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Nota HTTP' }));
     });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'http');
     expect(screen.getByLabelText('Endpoint')).toBeTruthy();
@@ -137,6 +156,40 @@ describe('App', () => {
     // U-06: una nota SQL en consulta muestra su vista ejecutable; Q-40: sin ejecutar.
     expect(await screen.findByRole('button', { name: 'Ejecutar' })).toBeTruthy();
     expect(mocked.analyze).toHaveBeenCalledWith('SELECT 1', 'a');
+  });
+
+  it('N-09 «Contraer todo» pliega las notas con hijas y «Localizar nota abierta» despliega sus madres y la enfoca', async () => {
+    mocked.tree.mockResolvedValue([
+      { ...created, id: 'a', title: 'Raíz' },
+      { ...created, id: 'b', parentId: 'a', title: 'Capítulo' },
+      { ...created, id: 'c', parentId: 'b', title: 'Página' },
+      { ...created, id: 'd', position: 1, title: 'Otra' },
+    ]);
+    mocked.getNote.mockResolvedValue({ ...created, id: 'c', parentId: 'b', title: 'Página', content: 'texto' });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    await screen.findByRole('treeitem', { name: /Página/ });
+    const locate = screen.getByRole<HTMLButtonElement>('button', { name: 'Localizar nota abierta' });
+    expect(locate.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Contraer todo' }));
+    expect([...useUi.getState().collapsed].sort()).toEqual(['a', 'b']);
+    expect(screen.getAllByRole('treeitem').map((r) => r.querySelector('.tree-title')?.textContent)).toEqual(['Raíz', 'Otra']);
+
+    await act(async () => {
+      await useTabs.getState().open('c');
+    });
+    expect(locate.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(locate);
+      await new Promise((r) => requestAnimationFrame(r));
+    });
+    expect(useUi.getState().collapsed.size).toBe(0);
+    const row = screen.getByRole('treeitem', { name: /Página/ });
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(row);
   });
 
   it('N-40 el guardado que cambia el título en el árbol no quita el foco al campo que se está editando', async () => {
@@ -277,6 +330,34 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: /Libros \(2\)/ })).toBeTruthy();
   });
 
+  it('N-04 «Nuevo» del menú contextual despliega a la derecha los tipos y crea la nota como hija', async () => {
+    mocked.tree.mockResolvedValue([{ ...created, id: 'a', title: 'Libros' }]);
+    mocked.createNote.mockResolvedValue({ ...created, id: 'b', type: 'sql', parentId: 'a' });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    fireEvent.contextMenu(await screen.findByRole('treeitem', { name: /Libros/ }));
+    const labels = screen.getAllByRole('menuitem').map((i) => i.firstChild?.textContent);
+    expect(labels[0]).toBe('Nuevo');
+    expect(labels.some((l) => l?.startsWith('Nueva nota') || l?.startsWith('Nota '))).toBe(false);
+    const nuevo = screen.getByRole('menuitem', { name: /^Nuevo/ });
+    // Flecha derecha abre el submenú y flecha izquierda vuelve a «Nuevo».
+    nuevo.focus();
+    fireEvent.keyDown(nuevo, { key: 'ArrowRight' });
+    const submenu = screen.getByRole('menu', { name: 'Nuevo' });
+    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis']);
+    fireEvent.keyDown(within(submenu).getAllByRole('menuitem')[0], { key: 'ArrowLeft' });
+    expect(screen.queryByRole('menu', { name: 'Nuevo' })).toBeNull();
+    expect(screen.getByRole('menu')).toBeTruthy();
+    fireEvent.mouseEnter(nuevo.parentElement!);
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('menu', { name: 'Nuevo' })).getByRole('menuitem', { name: 'Nota SQL' }));
+    });
+    expect(mocked.createNote).toHaveBeenCalledWith('a', 'sql');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('U-01 Alt+B oculta y muestra el panel izquierdo', async () => {
     render(<App />);
     await act(async () => {});
@@ -366,7 +447,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Eliminar definitivamente' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Vaciar la papelera' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Volver al árbol' }));
-    expect(screen.getByRole('button', { name: '+ Nueva nota Markdown' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Nuevo' })).toBeTruthy();
   });
 
   it('U-10 U-11 el botón ⚙ abre «Ajustes» y sin contacto aparece la banda', async () => {

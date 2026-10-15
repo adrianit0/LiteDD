@@ -5,6 +5,7 @@ import { useUi } from './stores/uiStore';
 import { ask } from './stores/dialogStore';
 import type { Destination } from './treeOps';
 import type { NoteType } from './types';
+import type { MenuItem } from './components/ContextMenu';
 
 function fail(e: unknown, fallback: string) {
   useUi.getState().notify(e instanceof Error ? e.message : fallback, 'error');
@@ -31,6 +32,17 @@ export async function createAndOpen(parentId: string | null, type: NoteType): Pr
   } catch (e) {
     fail(e, 'No se pudo crear la nota');
   }
+}
+
+/** N-04, N-05: tipos del menú «Nuevo», en la raíz o como hijas (ADR-0026). */
+export function newNoteItems(parentId: string | null): MenuItem[] {
+  const root = parentId === null;
+  return [
+    { label: 'Nota Markdown', shortcut: root ? 'Alt+N' : undefined, onSelect: () => void createAndOpen(parentId, 'md') },
+    { label: 'Nota SQL', shortcut: root ? 'Alt+Mayús+N' : undefined, onSelect: () => void createAndOpen(parentId, 'sql') },
+    { label: 'Nota HTTP', onSelect: () => void createAndOpen(parentId, 'http') },
+    { label: 'Nota MyBatis', onSelect: () => void createAndOpen(parentId, 'xml') },
+  ];
 }
 
 /** N-08, M-31: copia la nota, sin hijas, debajo de la original y la abre. */

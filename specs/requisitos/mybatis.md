@@ -28,7 +28,7 @@ Esta nota genera dos hijas: «selectByAuthor», que se ejecuta como cualquier no
 
 | ID | Requisito |
 |---|---|
-| M-01 | Las notas XML MyBatis se crean con «Nueva nota MyBatis» del panel o «Nueva nota MyBatis hija» del menú contextual. Tienen título, descripción, etiquetas, favorita e historial como las demás. |
+| M-01 | Las notas XML MyBatis se crean con «Nuevo → Nota MyBatis» del panel o del menú contextual (N-04, N-05). Tienen título, descripción, etiquetas, favorita e historial como las demás. |
 | M-02 | El contenido es un mapper completo: declaración XML, DOCTYPE y `<mapper>` raíz. El DOCTYPE se ignora: no se descarga la DTD ni se resuelve ninguna entidad (principio 4). |
 | M-03 | El elemento raíz debe ser `<mapper>`. El atributo `namespace` es opcional. |
 | M-04 | Son sentencias los hijos directos `<select>`, `<insert>`, `<update>` y `<delete>`. Cada uno necesita un `id` único en el mapper. |
@@ -89,7 +89,7 @@ Los mappers usan constantes de clases Java con la sintaxis de OGNL para campos e
 | M-62 | Al generar el SQL, cada constante se sustituye por su valor. Un valor entero o decimal se usa como número y cualquier otro como texto. Dentro de `${}` se inserta tal cual. El contenido de las notas no cambia: cambiar un valor no regenera nada. |
 | M-63 | Una constante sin valor es un error al analizar y al ejecutar la nota: «La constante «Clase.CAMPO» no tiene valor. Dale uno en «Constantes».». Junto al error hay un botón que abre «Constantes». |
 | M-64 | Las constantes no son variables: no aparecen en el formulario ni se guardan con los últimos valores de la nota. |
-| M-65 | La ventana «Constantes» se abre desde el pie del panel y desde el error de M-63. Muestra cada constante como «Clase.CAMPO», con el paquete debajo, su valor editable y el número de notas que la usan. Primero van las que no tienen valor y después el resto por nombre. Tiene un filtro por texto. «Guardar» aplica todos los cambios a la vez. |
+| M-65 | La ventana «Constantes» se abre desde el pie del panel y desde el error de M-63. Muestra cada constante como «Clase.CAMPO», con el paquete debajo, su valor editable y el número de notas que la usan. Primero van las que no tienen valor y después el resto por nombre. Tiene un filtro por texto. «Guardar» aplica todos los cambios a la vez. La ventana es ancha y se puede redimensionar; los nombres largos se parten en varias líneas. El título y los botones quedan fijos y solo la lista se desplaza. Una «×» arriba a la derecha la cierra; si hay cambios sin guardar, al cerrarla (con «×», «Cerrar» o Esc) pregunta si guardarlos, descartarlos o seguir editando (ADR-0026). |
 | M-66 | Una constante que ya no aparece en ninguna nota se conserva con su valor, marcada «sin uso» y con un botón «Borrar». Dejar vacío el valor la deja sin valor; si además no se usa, desaparece de la lista. |
 | M-67 | Al guardar las constantes se vuelven a analizar las notas SQL abiertas. |
 | M-68 | Las constantes con valor se exportan en el manifiesto. «Reemplazar todo» las sustituye. «Añadir como rama» solo añade las que todavía no tienen valor. |

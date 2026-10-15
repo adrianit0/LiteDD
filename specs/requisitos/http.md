@@ -6,7 +6,7 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas, al estilo de
 
 | ID | Requisito |
 |---|---|
-| H-01 | Las notas HTTP se crean con «Nueva nota HTTP» del panel o «Nueva nota HTTP hija» del menú contextual. Tienen nombre, descripción, etiquetas y favorita como las demás. |
+| H-01 | Las notas HTTP se crean con «Nuevo → Nota HTTP» del panel o del menú contextual (N-04, N-05). Tienen nombre, descripción, etiquetas y favorita como las demás. |
 | H-02 | No tienen modo consulta y edición: el formulario siempre se puede editar y se guarda como el resto (N-40, N-46). Modificarlo o enviar la llamada fija una pestaña provisional (P-14). |
 | H-03 | El contenido es un JSON con método, endpoint, valores de las variables, params, cabeceras, cuerpo y modo de login. Todo se guarda en la nota salvo la contraseña (H-21). |
 

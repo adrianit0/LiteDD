@@ -48,6 +48,12 @@ interface UiState {
   toggleSidebar: () => void;
   toggleCollapsed: (id: string) => void;
   expand: (id: string) => void;
+  /** N-09: pliega todas las notas indicadas (las que tienen hijas). */
+  collapseAll: (ids: string[]) => void;
+  /** N-09: despliega las madres de la nota y pide al árbol que la muestre y le dé el foco. */
+  revealNote: (id: string, ancestorIds: string[]) => void;
+  /** N-09: última petición de localizar; seq distingue dos peticiones seguidas de la misma nota. */
+  reveal: { id: string; seq: number } | null;
   notify: (text: string, kind?: Notice['kind']) => void;
   dismiss: (id: number) => void;
 }
@@ -82,6 +88,7 @@ export const useUi = create<UiState>((set, get) => ({
   sidebarWidth: SIDEBAR_DEFAULT,
   sidebarVisible: true,
   collapsed: new Set(),
+  reveal: null,
   notices: [],
   quickSearchOpen: false,
   setQuickSearch: (open) => set({ quickSearchOpen: open }),
@@ -133,6 +140,23 @@ export const useUi = create<UiState>((set, get) => ({
   expand(id) {
     if (!get().collapsed.has(id)) return;
     get().toggleCollapsed(id);
+  },
+
+  collapseAll(ids) {
+    const next = new Set(ids);
+    set({ collapsed: next });
+    persist({ 'ui.collapsed': [...next] });
+  },
+
+  revealNote(id, ancestorIds) {
+    const current = get().collapsed;
+    if (ancestorIds.some((a) => current.has(a))) {
+      const next = new Set(current);
+      for (const a of ancestorIds) next.delete(a);
+      set({ collapsed: next });
+      persist({ 'ui.collapsed': [...next] });
+    }
+    set({ reveal: { id, seq: (get().reveal?.seq ?? 0) + 1 } });
   },
 
   notify(text, kind = 'info') {

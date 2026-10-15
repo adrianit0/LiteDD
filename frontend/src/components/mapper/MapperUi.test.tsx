@@ -95,12 +95,13 @@ const menuOf = async (name: RegExp) => {
 };
 
 describe('notas XML MyBatis', () => {
-  it('M-01 N-05 «Nueva nota MyBatis» crea una nota xml en la raíz', async () => {
+  it('M-01 N-05 «Nuevo → Nota MyBatis» crea una nota xml en la raíz', async () => {
     mocked.tree.mockResolvedValue([]);
     mocked.createNote.mockResolvedValue(asNote(node({ id: 'nueva', title: 'Sin título' }), ''));
     render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nuevo' }));
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: '+ Nueva nota MyBatis' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Nota MyBatis' }));
     });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'xml');
   });
@@ -108,7 +109,7 @@ describe('notas XML MyBatis', () => {
   it('N-04 M-20 M-22 menú de la nota XML sin nuevas hijas y de la hija solo duplicar, favorita y etiquetas', async () => {
     render(<App />);
     const parentMenu = await menuOf(/Libros/);
-    expect(parentMenu.some((l) => l.startsWith('Nueva nota'))).toBe(false);
+    expect(parentMenu.some((l) => l.startsWith('Nuevo'))).toBe(false);
     expect(parentMenu).toEqual(expect.arrayContaining(['Duplicar', 'Mover a…']));
     expect(parentMenu.some((l) => l.startsWith('Eliminar'))).toBe(true);
 

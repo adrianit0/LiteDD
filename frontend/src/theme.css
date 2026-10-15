@@ -155,7 +155,7 @@ input {
 
 .sidebar-actions {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
   padding: 10px;
   border-bottom: 1px solid var(--border);
@@ -163,6 +163,10 @@ input {
 
 .sidebar-actions button {
   text-align: left;
+}
+
+.sidebar-actions button[aria-haspopup] {
+  flex: 1;
 }
 
 .sidebar-resizer {
@@ -315,9 +319,26 @@ input {
 }
 
 .context-menu button:hover,
-.context-menu button:focus-visible {
+.context-menu button:focus-visible,
+.context-menu button[aria-expanded='true'] {
   background: var(--selection);
   outline: none;
+}
+
+/* ADR-0026: submenú a la derecha de su entrada, o a la izquierda si no cabe. */
+.context-submenu-host {
+  position: relative;
+}
+
+.context-menu.context-submenu {
+  position: absolute;
+  top: -4px;
+  left: calc(100% + 4px);
+}
+
+.context-menu.context-submenu-left {
+  left: auto;
+  right: calc(100% + 4px);
 }
 
 /* Nota */
@@ -1617,6 +1638,56 @@ mark {
   max-width: 100%;
 }
 
+.markdown img[src]:not([src='']) {
+  cursor: zoom-in;
+}
+
+/* N-35: visor de imágenes */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgb(0 0 0 / 80%);
+  outline: none;
+}
+
+.image-viewer > img {
+  max-width: 92vw;
+  max-height: calc(100vh - 96px);
+  cursor: grab;
+  user-select: none;
+  transform-origin: center;
+  touch-action: none;
+}
+
+.image-viewer > img:active {
+  cursor: grabbing;
+}
+
+.image-viewer-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.image-viewer-zoom {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .markdown img.attachment:not([src]),
 .markdown img.attachment[src=''] {
   min-width: 120px;
@@ -2044,11 +2115,57 @@ mark {
   min-width: 0;
 }
 
-/* M-65: ventana «Constantes». */
+/* M-65, ADR-0026: ventana «Constantes», redimensionable; solo se desplaza la lista. */
 .constants-dialog {
-  width: min(720px, 94vw);
-  max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 96vw);
+  min-width: min(420px, 96vw);
+  max-width: 98vw;
+  min-height: 280px;
+  max-height: 94vh;
+  overflow: hidden;
+  resize: both;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dialog-close {
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.dialog-close:hover {
+  background: var(--selection);
+}
+
+.constants-form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.constants-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.constants-col-name {
+  width: 42%;
+}
+
+.constants-col-notes {
+  width: 150px;
 }
 
 .constants-filter {
@@ -2059,6 +2176,7 @@ mark {
 .constants-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .constants-table th,
@@ -2076,11 +2194,13 @@ mark {
 .constant-name {
   display: block;
   font-family: var(--font-mono);
+  overflow-wrap: anywhere;
 }
 
 .constant-package {
   display: block;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .constant-missing .constant-name {
@@ -2093,3 +2213,9 @@ mark {
   align-items: center;
 }
 
+
+.constants-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-raised);
+}

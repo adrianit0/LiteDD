@@ -272,6 +272,31 @@ describe('imágenes', () => {
     expect(mocked.attachmentDataUrl).toHaveBeenCalledWith(id);
     expect(screen.getByRole('img', { name: 'foto' }).getAttribute('src')).toBe('data:image/png;base64,AAAA');
   });
+
+  it('N-35 pulsar una imagen la abre en un visor con zoom propio que se cierra con Escape o clic fuera', async () => {
+    const id = '3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90';
+    useAttachments.setState({ urls: { [id]: 'data:image/png;base64,AAAA' }, failed: {} });
+    render(<MarkdownView content={`![foto](litedd://attachment/${id})`} onOpenNote={() => {}} />);
+    fireEvent.click(screen.getByRole('img', { name: 'foto' }));
+    const viewer = screen.getByRole('dialog', { name: 'Imagen: foto' });
+    const big = within(viewer).getByRole('img', { name: 'foto' });
+    expect(big.getAttribute('src')).toBe('data:image/png;base64,AAAA');
+    expect(within(viewer).getByText('100 %')).toBeTruthy();
+
+    fireEvent.click(within(viewer).getByRole('button', { name: 'Acercar' }));
+    expect(within(viewer).getByText('125 %')).toBeTruthy();
+    expect(big.style.transform).toContain('scale(1.25)');
+    fireEvent.wheel(viewer, { deltaY: 200, clientX: 10, clientY: 10 });
+    expect(big.style.transform).not.toContain('scale(1.25)');
+    fireEvent.doubleClick(big);
+    expect(big.style.transform).toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent.keyDown(viewer, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('img', { name: 'foto' }));
+    fireEvent.click(screen.getByRole('dialog'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 describe('Mermaid', () => {

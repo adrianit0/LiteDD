@@ -25,7 +25,7 @@ import {
   type DropZone,
   type KeyboardMove,
 } from '../treeOps';
-import { createAndOpen, deleteNote, duplicateNote, editTags, moveNote, openNote, renameNote, toggleFavorite } from '../actions';
+import { deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
@@ -62,6 +62,7 @@ function sameDest(a: Destination | null, b: Destination | null): boolean {
 export function Tree() {
   const nodes = useTree((s) => s.nodes);
   const collapsed = useUi((s) => s.collapsed);
+  const reveal = useUi((s) => s.reveal);
   const openId = useActiveTab()?.noteId;
   const rows = useMemo(() => visibleRows(nodes, collapsed), [nodes, collapsed]);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -104,23 +105,32 @@ export function Tree() {
     });
   }, [focusId, rows, virtualizer]);
 
+  // N-09: «Localizar nota abierta» la desplaza a la vista y le da el foco aunque el foco esté fuera del árbol.
+  const revealed = useRef(0);
+  useEffect(() => {
+    if (!reveal || reveal.seq === revealed.current) return;
+    const index = rows.findIndex((r) => r.node.id === reveal.id);
+    if (index < 0) return;
+    revealed.current = reveal.seq;
+    setFocusId(reveal.id);
+    virtualizer.scrollToIndex(index, { align: 'center' });
+    requestAnimationFrame(() => {
+      scroller.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(reveal.id)}"]`)?.focus();
+    });
+  }, [reveal, rows, virtualizer]);
+
   const moveFocus = (index: number) => {
     const row = rows[Math.min(rows.length - 1, Math.max(0, index))];
     if (row) setFocusId(row.node.id);
   };
 
-  /** N-04, M-20, M-22: sin «nueva hija» en la nota XML; en sus hijas, solo duplicar, favorita y etiquetas. */
+  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita y etiquetas. */
   const menuItems = (id: string): MenuItem[] => {
     const node = nodes.find((n) => n.id === id);
     const generated = isGenerated(node);
     const items: MenuItem[] = [];
     if (acceptsChildren(node)) {
-      items.push(
-        { label: 'Nueva nota Markdown hija', onSelect: () => void createAndOpen(id, 'md') },
-        { label: 'Nueva nota SQL hija', onSelect: () => void createAndOpen(id, 'sql') },
-        { label: 'Nueva nota HTTP hija', onSelect: () => void createAndOpen(id, 'http') },
-        { label: 'Nueva nota MyBatis hija', onSelect: () => void createAndOpen(id, 'xml') },
-      );
+      items.push({ label: 'Nuevo', submenu: newNoteItems(id) });
     }
     if (!generated) items.push({ label: 'Renombrar', shortcut: 'F2', onSelect: () => setRenamingId(id) });
     items.push(

@@ -3,6 +3,7 @@ import { api, type JavaConstant } from '../api';
 import { ConstantsDialog } from './ConstantsDialog';
 import { SqlErrors } from './sql/SqlErrors';
 import { useUi } from '../stores/uiStore';
+import { DialogHost } from './DialogHost';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
@@ -84,6 +85,52 @@ describe('M-65 constantes', () => {
     });
     expect(mocked.putConstants).toHaveBeenCalledWith({ 'demo.Old@GONE': '' });
     expect(screen.queryByText('Old.GONE')).toBeNull();
+  });
+
+  it('M-65 la «×» de arriba cierra sin preguntar si no hay cambios', async () => {
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar la ventana' }));
+    expect(useUi.getState().constantsOpen).toBe(false);
+  });
+
+  it('M-65 con cambios, la «×» pregunta: «Seguir editando» no cierra y «Descartar» cierra sin guardar', async () => {
+    render(<DialogHost />);
+    await open();
+    fireEvent.change(screen.getByLabelText('Valor de DemoConstants.STATUS_ACTIVE'), { target: { value: '5' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar la ventana' }));
+    });
+    expect(screen.getByText('Una constante tiene cambios sin guardar.')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Seguir editando' }));
+    });
+    expect(useUi.getState().constantsOpen).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de DemoConstants.STATUS_ACTIVE').value).toBe('5');
+    // Esc también pregunta.
+    await act(async () => {
+      fireEvent.keyDown(screen.getByLabelText('Valor de DemoConstants.STATUS_ACTIVE'), { key: 'Escape' });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    });
+    expect(useUi.getState().constantsOpen).toBe(false);
+    expect(mocked.putConstants).not.toHaveBeenCalled();
+  });
+
+  it('M-65 con cambios, «Guardar» del aviso guarda y cierra', async () => {
+    mocked.putConstants.mockResolvedValue([{ ...active, value: '5' }, label, gone]);
+    render(<DialogHost />);
+    await open();
+    fireEvent.change(screen.getByLabelText('Valor de DemoConstants.STATUS_ACTIVE'), { target: { value: '5' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
+    });
+    const dialog = screen.getByRole('dialog', { name: 'Cambios sin guardar' });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Guardar' }));
+    });
+    expect(mocked.putConstants).toHaveBeenCalledWith({ 'demo.DemoConstants@STATUS_ACTIVE': '5' });
+    expect(useUi.getState().constantsOpen).toBe(false);
   });
 
   it('M-63 el error de una constante sin valor ofrece abrir «Constantes»', () => {

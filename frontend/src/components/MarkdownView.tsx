@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { renderMarkdown } from '../markdown/render';
 import { attachmentIds } from '../markdown/links';
 import { useAttachments } from '../markdown/attachments';
 import { renderMermaidBlocks } from '../markdown/mermaid';
 import { useTree } from '../stores/treeStore';
 import { copyText } from '../clipboard';
+import { ImageViewer } from './ImageViewer';
 
 /** N-34: copia el código de un bloque, sin los números de línea. */
 function copyCode(button: Element) {
@@ -18,12 +19,13 @@ interface Props {
   onOpenNote: (id: string, newTab: boolean) => void;
 }
 
-/** N-11, N-30 a N-33, N-91 a N-93: vista renderizada de una nota Markdown. */
+/** N-11, N-30 a N-35, N-91 a N-93: vista renderizada de una nota Markdown. */
 export function MarkdownView({ content, onOpenNote }: Props) {
   const nodes = useTree((s) => s.nodes);
   const urls = useAttachments((s) => s.urls);
   const container = useRef<HTMLDivElement>(null);
   const ids = useMemo(() => attachmentIds(content), [content]);
+  const [image, setImage] = useState<{ src: string; alt: string } | null>(null);
 
   useEffect(() => {
     if (ids.length > 0) useAttachments.getState().load(ids);
@@ -52,6 +54,11 @@ export function MarkdownView({ content, onOpenNote }: Props) {
       return;
     }
     const a = target.closest('a');
+    // N-35: una imagen que no es enlace se abre en el visor.
+    if (!a && target instanceof HTMLImageElement && target.getAttribute('src')) {
+      setImage({ src: target.src, alt: target.alt });
+      return;
+    }
     if (!a) return;
     e.preventDefault();
     const noteId = a.dataset.noteId;
@@ -75,5 +82,10 @@ export function MarkdownView({ content, onOpenNote }: Props) {
   if (content.trim() === '') {
     return <p className="muted view-empty">Nota vacía. Pulsa «Editar» o Ctrl+E para escribir.</p>;
   }
-  return <div className="markdown" ref={container} onClick={onClick} onAuxClick={onAuxClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <>
+      <div className="markdown" ref={container} onClick={onClick} onAuxClick={onAuxClick} dangerouslySetInnerHTML={{ __html: html }} />
+      {image && <ImageViewer src={image.src} alt={image.alt} onClose={() => setImage(null)} />}
+    </>
+  );
 }
