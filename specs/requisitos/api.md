@@ -41,9 +41,12 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/mybatis/analyze | Sentencias y errores de un mapper, con los fragmentos de las demás notas XML (M-41, M-05) |
 | GET | /api/constants | Constantes Java: nombre, valor y número de notas que la usan (M-61, M-65) |
 | PUT | /api/constants | Dar o quitar valores en bloque; un valor vacío deja la constante sin valor (M-65, M-66) |
-| POST | /api/http/execute | Ejecutar una nota HTTP, con su login (H-30) |
+| POST | /api/http/execute | Ejecutar una nota HTTP con el perfil activo, con su login y la clave de confirmación si el perfil la pide (H-30, H-63, H-69) |
 | POST | /api/http/cancel | Cancelar por executionId |
-| GET, PUT | /api/http/credentials | Indicar si hay contraseña HTTP y guardarla; nunca la devuelve (H-21) |
+| GET, PUT | /api/http/profile | Perfil activo de las notas HTTP (H-63) |
+| GET, PUT | /api/http/credentials | Indicar qué perfiles tienen contraseña y guardar la de uno; nunca la devuelve (H-21) |
+| PUT | /api/http/confirm-key | Definir o borrar la clave de confirmación; nunca la devuelve (H-69) |
+| GET, PUT | /api/http/ca | Ver e importar la CA corporativa de los perfiles de preproducción (H-66) |
 | GET | /api/connection | Configuración sin contraseña |
 | PUT | /api/connection | Guardar configuración |
 | POST | /api/connection/test | Probar y listar esquemas |

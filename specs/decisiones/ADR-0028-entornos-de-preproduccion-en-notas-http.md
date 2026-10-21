@@ -77,6 +77,9 @@ Diseño:
   - Las llamadas de preproducción usan un `SSLContext` propio con un almacén de confianza que solo contiene la CA importada.
   - No hay ninguna opción para aceptar certificados no válidos.
 - **Perfil activo:** vive en memoria del servidor. Cambiarlo descarta el login reutilizable (H-25), porque pertenece al entorno anterior.
+- **Coherencia (aprobada con el plan del Sprint 9):** la petición de ejecución lleva el perfil que muestra la interfaz. Si no es el activo, por ejemplo con dos ventanas abiertas, responde 409 sin conectar. Así nunca sale una llamada a un entorno distinto del que se ve.
+- **CA en «Ajustes»:** se muestran el sujeto y la caducidad de cada certificado importado, para comprobar que es el correcto.
+- **Coste de la clave:** unas 210 000 iteraciones de PBKDF2, alrededor de 0,2 s por envío. Las iteraciones se guardan junto al hash para poder cambiarlas.
 - **Ajustes heredados:** la URL base, el usuario y la contraseña actuales pasan a ser los del perfil Local, sin intervención del usuario.
 - **Constitución, principio 4:** pasa a decir «Los datos no salen de la máquina salvo hacia MySQL y hacia los destinos de las notas HTTP: el propio equipo y, si el usuario lo activa, los entornos de preproducción que configure, solo por HTTPS validado contra su CA (ADR-0028); sin internet, sin telemetría, sin CDN».
 
