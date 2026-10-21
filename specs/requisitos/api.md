@@ -17,7 +17,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | GET | /api/tree | Árbol completo de notas activas: identidad, madre, posición, tipo, título, favorita, etiquetas y, en las hijas de una nota XML, statementId y statementKind |
 | POST | /api/notes | Crear nota: madre, tipo, título |
 | GET | /api/notes/{id} | Nota completa con contenido y versión |
-| PUT | /api/notes/{id} | Guardar título y contenido con baseVersion; 409 si hay conflicto |
+| PUT | /api/notes/{id} | Guardar título y contenido con baseVersion; 409 si hay conflicto. En una pizarra, el contenido se valida según B-31 |
 | POST | /api/notes/{id}/duplicate | Duplicar una nota, sin hijas (N-08, M-31) |
 | POST | /api/notes/{id}/move | Mover: nueva madre y posición |
 | DELETE | /api/notes/{id} | A la papelera; 409 si tiene hijas, salvo children=promote |

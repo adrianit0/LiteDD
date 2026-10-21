@@ -12,9 +12,9 @@ CREATE TABLE note (
   id          TEXT NOT NULL UNIQUE,          -- UUID v4, identidad pública
   parent_id   TEXT REFERENCES note(id),      -- NULL = raíz
   position    INTEGER NOT NULL,              -- orden entre hermanas, 0..n-1
-  type        TEXT NOT NULL CHECK (type IN ('md','sql','http','xml')),  -- 'http' desde V003 (ADR-0021), 'xml' desde V004 (ADR-0023)
+  type        TEXT NOT NULL CHECK (type IN ('md','sql','http','xml','board')),  -- 'http' desde V003 (ADR-0021), 'xml' desde V004 (ADR-0023), 'board' desde V006 (ADR-0029)
   title       TEXT NOT NULL,
-  content     TEXT NOT NULL DEFAULT '',
+  content     TEXT NOT NULL DEFAULT '',      -- en una pizarra, '' o data:image/png;base64,… (B-30)
   description TEXT NOT NULL DEFAULT '',      -- N-07, migración V002
   favorite    INTEGER NOT NULL DEFAULT 0,
   version     INTEGER NOT NULL DEFAULT 1,    -- concurrencia optimista
@@ -88,6 +88,7 @@ CREATE VIRTUAL TABLE note_fts USING fts5(
   prefix='2 3'
 );
 -- Triggers AFTER INSERT / UPDATE / DELETE sobre note mantienen note_fts al día.
+-- Desde V006, el contenido de una pizarra se indexa como '' (B-33, ADR-0029).
 ```
 
 Las reglas D-01 a D-07 están en [requisitos/datos.md](../requisitos/datos.md).
