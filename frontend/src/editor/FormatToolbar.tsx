@@ -24,6 +24,7 @@ export const FORMAT_BUTTONS: Button[] = [
   { action: 'link', label: 'Enlace', text: '🔗' },
   { action: 'noteLink', label: 'Enlace a nota', text: '[[ ]]' },
   { action: 'image', label: 'Imagen', text: '🖼' },
+  { action: 'board', label: 'Pizarra', text: '![[ ]]' },
   { action: 'table', label: 'Tabla', text: '▦' },
   { action: 'hr', label: 'Línea horizontal', text: '―' },
 ];

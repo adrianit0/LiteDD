@@ -57,6 +57,7 @@ export function SearchBox() {
               <option value="sql">SQL</option>
               <option value="http">HTTP</option>
               <option value="xml">XML MyBatis</option>
+              <option value="board">Pizarra</option>
             </select>
           </label>
           <label>

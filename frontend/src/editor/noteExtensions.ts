@@ -1,26 +1,30 @@
 import { autocompletion, startCompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
-import { linkCandidates, noteLink } from '../markdown/links';
+import { boardImage, linkCandidates, noteLink } from '../markdown/links';
 import type { TreeNode } from '../types';
 
 /**
- * N-90: al escribir «[[» aparece un autocompletado de notas que inserta [Título](litedd://note/<id>).
+ * N-90: al escribir «[[» aparece un autocompletado de notas que inserta [Título](litedd://note/<id>). B-40: con
+ * «![[», solo pizarras, que se insertan como imagen ![Título](litedd://note/<id>).
  */
 export function noteLinkSource(nodes: () => TreeNode[]) {
   return (context: CompletionContext): CompletionResult | null => {
-    const match = context.matchBefore(/\[\[[^\]\n]*/);
+    const match = context.matchBefore(/!?\[\[[^\]\n]*/);
     if (!match) return null;
-    const typed = match.text.slice(2);
+    const embed = match.text.startsWith('!');
+    const opening = embed ? 3 : 2;
+    const typed = match.text.slice(opening);
+    const candidates = embed ? nodes().filter((n) => n.type === 'board') : nodes();
     return {
-      from: match.from + 2,
+      from: match.from + opening,
       filter: false,
-      options: linkCandidates(nodes(), typed).map((n) => ({
+      options: linkCandidates(candidates, typed).map((n) => ({
         label: n.title,
         type: n.type === 'sql' ? 'class' : 'text',
-        detail: n.type === 'sql' ? 'SQL' : 'MD',
+        detail: n.type === 'board' ? 'Pizarra' : n.type === 'sql' ? 'SQL' : 'MD',
         apply: (view: EditorView, _completion: unknown, _from: number, to: number) => {
-          const insert = noteLink(n);
+          const insert = embed ? boardImage(n) : noteLink(n);
           view.dispatch({ changes: { from: match.from, to, insert }, selection: { anchor: match.from + insert.length } });
         },
       })),
@@ -32,10 +36,10 @@ export function noteLinkCompletion(nodes: () => TreeNode[]): Extension {
   return autocompletion({ override: [noteLinkSource(nodes)], icons: false });
 }
 
-/** Botón «enlace a nota» de la barra: escribe «[[» y abre el autocompletado. */
-export function startNoteLink(view: EditorView): void {
+/** Botones «Enlace a nota» y «Pizarra» (B-40) de la barra: escriben «[[» o «![[» y abren el autocompletado. */
+export function startNoteLink(view: EditorView, opening: '[[' | '![[' = '[['): void {
   const { from, to } = view.state.selection.main;
-  view.dispatch({ changes: { from, to, insert: '[[' }, selection: { anchor: from + 2 } });
+  view.dispatch({ changes: { from, to, insert: opening }, selection: { anchor: from + opening.length } });
   view.focus();
   startCompletion(view);
 }

@@ -11,6 +11,8 @@ import { SqlAnalysisPanel, SqlToolbar } from './sql/SqlEditorPanels';
 import { MapperAnalysisPanel, MapperView } from './mapper/MapperView';
 import { isGenerated, writeMark } from '../mapper';
 import { MarkdownView } from './MarkdownView';
+import { BoardEditor } from './board/BoardEditor';
+import { BoardView } from './board/BoardView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote } from '../actions';
 import { TypeIcon } from './TypeIcon';
@@ -40,6 +42,8 @@ export function NotePane({ tab }: { tab: Tab }) {
   const autosave = useUi((s) => s.config.autosave);
   // H-02: las notas HTTP no tienen modos; su formulario siempre se edita.
   const isHttp = tab.note?.type === 'http';
+  // B-02, B-03: la pizarra es una imagen en consulta y un lienzo en edición.
+  const isBoard = tab.note?.type === 'board';
   // M-20: las hijas generadas de una nota XML son de solo lectura.
   const generated = isGenerated(tab.note);
   const editMode = mode === 'edit' && !generated;
@@ -220,12 +224,26 @@ export function NotePane({ tab }: { tab: Tab }) {
       {editMode && (note.type === 'sql' || note.type === 'xml') && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
 
       <div
-        className={`note-body mode-${isHttp ? 'http' : editMode ? 'edit' : 'view'}`}
+        className={`note-body mode-${isHttp ? 'http' : editMode ? (isBoard ? 'board' : 'edit') : 'view'}`}
         ref={body}
         onScroll={!editMode && !isHttp ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
       >
         {isHttp ? (
           <HttpView tab={tab} />
+        ) : note.type === 'board' ? (
+          editMode ? (
+            <BoardEditor
+              key={tab.id}
+              tabId={tab.id}
+              title={title}
+              content={content}
+              initialScroll={tab.scroll}
+              onScroll={rememberScroll}
+              onChange={(value) => store.edit(tab.id, { content: value })}
+            />
+          ) : (
+            <BoardView title={title} content={content} />
+          )
         ) : editMode ? (
           <NoteEditor
             key={tab.id}

@@ -4,6 +4,7 @@ import type { Mode, Note } from '../types';
 import { useTree } from './treeStore';
 import { useUi } from './uiStore';
 import { ask } from './dialogStore';
+import { useBoards } from '../markdown/boards';
 
 /**
  * Pestañas abiertas (P-01 a P-13). Cada pestaña tiene su copia de la nota, su modo, su guardado y su
@@ -100,6 +101,13 @@ function descriptionChange(tab: Tab): { description: string } | undefined {
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const inFlight = new Map<string, Promise<void>>();
+/** B-30: editores que entregan su contenido justo antes de guardar, como la pizarra, que lo codifica al terminar cada paso. */
+const flushers = new Map<string, () => void>();
+
+export function setFlusher(tabId: string, flush: (() => void) | null): void {
+  if (flush) flushers.set(tabId, flush);
+  else flushers.delete(tabId);
+}
 
 function newTabId(): string {
   return crypto.randomUUID();
@@ -177,6 +185,8 @@ export const useTabs = create<TabsState>((set, get) => {
       patch(id, { note: saved });
       applyRename(saved, id);
       if (saved.type === 'xml') void refreshGenerated();
+      // B-41: las notas Markdown abiertas muestran la pizarra recién guardada.
+      useBoards.getState().remember(saved);
       if (isDirty(tab(id)!)) {
         patch(id, { status: 'pending' });
         if (autosaveEnabled()) schedule(id);
@@ -398,6 +408,7 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     async saveNow(id) {
+      flushers.get(id)?.();
       clearTimeout(timers.get(id));
       if (tab(id)?.status === 'conflict') return;
       while (inFlight.has(id)) await inFlight.get(id);
@@ -446,6 +457,7 @@ export const useTabs = create<TabsState>((set, get) => {
       applyRename(note, id);
       // M-14: restaurar una versión del mapper también regenera las hijas.
       if (note.type === 'xml') void refreshGenerated();
+      useBoards.getState().remember(note);
     },
 
     applyMeta(note) {
@@ -465,6 +477,7 @@ export const useTabs = create<TabsState>((set, get) => {
       const note = await api.getNote(t.noteId);
       patch(id, { note, title: note.title, description: note.description, content: note.content, status: 'saved', conflict: null });
       useTree.getState().applyNote(note);
+      useBoards.getState().remember(note);
     },
 
     async resolveConflict(id, choice) {
@@ -508,6 +521,7 @@ export const useTabs = create<TabsState>((set, get) => {
     flushOnUnload() {
       // N-46: con el guardado manual, al cerrar la ventana avisa el navegador (beforeunload).
       if (!autosaveEnabled()) return;
+      flushers.forEach((flush) => flush());
       for (const t of get().tabs) {
         if (!t.note || !isDirty(t) || t.status === 'conflict') continue;
         const title = t.title.trim() === '' ? t.note.title : t.title;

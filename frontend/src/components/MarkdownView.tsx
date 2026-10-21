@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { renderMarkdown } from '../markdown/render';
-import { attachmentIds } from '../markdown/links';
+import { renderMarkdown, type BoardState } from '../markdown/render';
+import { attachmentIds, noteIds } from '../markdown/links';
 import { useAttachments } from '../markdown/attachments';
+import { useBoards } from '../markdown/boards';
 import { renderMermaidBlocks } from '../markdown/mermaid';
 import { useTree } from '../stores/treeStore';
 import { copyText } from '../clipboard';
@@ -19,10 +20,11 @@ interface Props {
   onOpenNote: (id: string, newTab: boolean) => void;
 }
 
-/** N-11, N-30 a N-35, N-91 a N-93: vista renderizada de una nota Markdown. */
+/** N-11, N-30 a N-35, N-91 a N-93, B-41 a B-43: vista renderizada de una nota Markdown. */
 export function MarkdownView({ content, onOpenNote }: Props) {
   const nodes = useTree((s) => s.nodes);
   const urls = useAttachments((s) => s.urls);
+  const boards = useBoards((s) => s.boards);
   const container = useRef<HTMLDivElement>(null);
   const ids = useMemo(() => attachmentIds(content), [content]);
   const [image, setImage] = useState<{ src: string; alt: string } | null>(null);
@@ -31,10 +33,30 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     if (ids.length > 0) useAttachments.getState().load(ids);
   }, [ids]);
 
+  // B-41: cada vez que se muestra la nota se pide la última versión de sus pizarras.
+  const boardIds = useMemo(() => {
+    const types = new Map(nodes.map((n) => [n.id, n.type]));
+    return noteIds(content).filter((id) => types.get(id) === 'board');
+  }, [content, nodes]);
+  const boardKey = boardIds.join(',');
+  useEffect(() => {
+    if (boardKey) useBoards.getState().load(boardKey.split(','));
+  }, [boardKey]);
+
   const html = useMemo(() => {
-    const active = new Set(nodes.map((n) => n.id));
-    return renderMarkdown(content, { noteExists: (id) => active.has(id), attachmentUrl: (id) => urls[id] });
-  }, [content, nodes, urls]);
+    const types = new Map(nodes.map((n) => [n.id, n.type]));
+    // B-43: una nota que no está en el árbol no existe o está en la papelera.
+    const board = (id: string): BoardState => {
+      const type = types.get(id);
+      if (type === undefined) return { state: 'missing' };
+      if (type !== 'board') return { state: 'notBoard' };
+      const url = boards[id];
+      if (url === undefined) return { state: 'loading' };
+      if (url === null) return { state: 'missing' };
+      return url === '' ? { state: 'empty' } : { state: 'ready', url };
+    };
+    return renderMarkdown(content, { noteExists: (id) => types.has(id), attachmentUrl: (id) => urls[id], board });
+  }, [content, nodes, urls, boards]);
 
   // N-30: los diagramas se dibujan después, con Mermaid cargado solo si hace falta.
   useEffect(() => {
@@ -71,12 +93,21 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     if (href && /^(https?:|mailto:)/i.test(href)) window.open(href, '_blank', 'noopener,noreferrer');
   };
 
-  // N-32, P-03: clic central sobre un enlace a nota abre una pestaña nueva.
+  // N-32, P-03: clic central sobre un enlace a nota abre una pestaña nueva. B-42: también sobre una pizarra.
   const onAuxClick = (e: MouseEvent<HTMLDivElement>) => {
-    const a = (e.target as HTMLElement).closest('a');
-    if (e.button !== 1 || !a) return;
-    e.preventDefault();
-    if (a.dataset.noteId) onOpenNote(a.dataset.noteId, true);
+    if (e.button !== 1) return;
+    const target = e.target as HTMLElement;
+    const a = target.closest('a');
+    if (a) {
+      e.preventDefault();
+      if (a.dataset.noteId) onOpenNote(a.dataset.noteId, true);
+      return;
+    }
+    const board = target.closest<HTMLElement>('[data-board-id]');
+    if (board?.dataset.boardId) {
+      e.preventDefault();
+      onOpenNote(board.dataset.boardId, true);
+    }
   };
 
   if (content.trim() === '') {

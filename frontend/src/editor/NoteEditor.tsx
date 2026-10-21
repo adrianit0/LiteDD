@@ -13,7 +13,10 @@ import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
 import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
 
-const PLACEHOLDERS: Record<NoteType | 'plain', string> = {
+/** La pizarra no usa este editor (B-03). */
+type EditorType = Exclude<NoteType, 'board'> | 'plain';
+
+const PLACEHOLDERS: Record<EditorType, string> = {
   md: 'Escribe en Markdown…',
   sql: 'Escribe la consulta…',
   xml: 'Pega aquí el mapper.xml completo…',
@@ -23,7 +26,7 @@ const PLACEHOLDERS: Record<NoteType | 'plain', string> = {
 
 interface Props {
   /** plain: texto sin lenguaje, para el cuerpo raw de una nota HTTP (H-17, ADR-0021). */
-  type: NoteType | 'plain';
+  type: EditorType;
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
@@ -136,8 +139,8 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
     const format = (action: FormatAction) => {
       const v = view.current;
       if (!v) return;
-      if (action === 'noteLink') {
-        startNoteLink(v);
+      if (action === 'noteLink' || action === 'board') {
+        startNoteLink(v, action === 'board' ? '![[' : '[[');
         return;
       }
       v.dispatch(applyFormat(v.state, action));

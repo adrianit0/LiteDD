@@ -18,6 +18,8 @@
   --green: #7ee787;
   /* M-01: icono de las notas XML MyBatis. */
   --violet: #d2a8ff;
+  /* B-01: icono de las pizarras. */
+  --orange: #ffa657;
   --accent-text: #0d1117;
 
   /* U-04 */
@@ -275,6 +277,10 @@ input {
 
 .type-xml {
   color: var(--violet);
+}
+
+.type-board {
+  color: var(--orange);
 }
 
 /* M-24: marca de las sentencias de escritura generadas desde un mapper. */
@@ -2287,5 +2293,287 @@ mark {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  color: var(--text-muted);
+}
+
+/* B-01 a B-22: pizarra. El lienzo es blanco (propuesta B) y se ve a tamaño real. */
+.note-body.mode-board {
+  overflow: hidden;
+}
+
+.board-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.board-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.board-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+}
+
+.board-group + .board-group {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.board-toolbar .tool {
+  padding: 3px 8px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.board-toolbar .tool:hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+
+.board-toolbar .tool[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--selection);
+}
+
+.board-toolbar .swatch {
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.board-toolbar .swatch[aria-pressed='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.board-toolbar input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+.board-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.board-value {
+  min-width: 36px;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-end {
+  margin-left: auto;
+}
+
+.board-hint {
+  font-size: 12px;
+}
+
+.board-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 28px 28px 16px;
+}
+
+.board-stage {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  line-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.board-canvas {
+  display: block;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.board-tool-brush,
+.board-tool-eraser,
+.board-tool-fill,
+.board-tool-select {
+  cursor: crosshair;
+}
+
+.board-tool-text {
+  cursor: text;
+}
+
+.board-floating {
+  position: absolute;
+  outline: 1px dashed var(--accent);
+  cursor: move;
+}
+
+.board-floating > canvas {
+  display: block;
+}
+
+.board-marquee {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgb(110 168 254 / 12%);
+  pointer-events: none;
+}
+
+/* B-14: misma tipografía y altura de línea (1,25) que el texto que se dibuja. */
+.board-text {
+  position: absolute;
+  min-width: 2ch;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: 1px dashed var(--accent);
+  background: transparent;
+  font-family: var(--font-ui);
+  line-height: 1.25;
+  white-space: pre;
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+}
+
+.board-handle {
+  position: absolute;
+  z-index: 1;
+}
+
+.board-handle-right {
+  top: 0;
+  right: -7px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.board-handle-bottom {
+  bottom: -7px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.board-handle-right:hover,
+.board-handle-bottom:hover {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.board-handle-corner {
+  right: -11px;
+  bottom: -11px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+  cursor: nwse-resize;
+}
+
+.board-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px dashed var(--accent);
+  pointer-events: none;
+}
+
+.board-size {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-view {
+  padding: 12px 20px 20px;
+}
+
+.board-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.board-open {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+
+.board-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* B-32 */
+.history-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 48px;
+  margin-top: 4px;
+  background: #ffffff;
+}
+
+.history-board {
+  display: block;
+  max-width: 100%;
+  background: #ffffff;
+}
+
+/* B-41 a B-43: pizarras dentro de una nota Markdown. */
+.markdown img.board-embed {
+  max-width: 100%;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.markdown img.board-embed:not([src]),
+.markdown img.board-embed[src=''] {
+  min-width: 120px;
+  min-height: 60px;
+  border: 1px dashed var(--border);
+}
+
+.markdown .board-broken {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.markdown .board-empty {
+  display: inline-block;
+  padding: 12px 20px;
+  border: 1px dashed var(--border);
   color: var(--text-muted);
 }

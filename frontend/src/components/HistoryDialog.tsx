@@ -6,11 +6,12 @@ import { useUi } from '../stores/uiStore';
 
 const PREVIEW = 160;
 
-/** N-45: versiones con fecha y vista previa; se puede restaurar una. */
+/** N-45: versiones con fecha y vista previa; se puede restaurar una. B-32: en una pizarra, con miniaturas. */
 export function HistoryDialog({ tab, onClose }: { tab: Tab; onClose: () => void }) {
   const [versions, setVersions] = useState<NoteVersion[] | null>(null);
   const [selected, setSelected] = useState<NoteVersion | null>(null);
   const [busy, setBusy] = useState(false);
+  const isBoard = tab.note?.type === 'board';
 
   useEffect(() => {
     api
@@ -66,10 +67,19 @@ export function HistoryDialog({ tab, onClose }: { tab: Tab; onClose: () => void 
                 <li key={v.id} role="option" aria-selected={selected?.id === v.id}>
                   <button type="button" className={selected?.id === v.id ? 'selected' : undefined} onClick={() => setSelected(v)}>
                     <strong>{formatDateTime(v.savedAt)}</strong>
-                    <span className="muted history-preview">
-                      {v.content.slice(0, PREVIEW) || '(vacía)'}
-                      {v.content.length > PREVIEW ? '…' : ''}
-                    </span>
+                    {isBoard ? (
+                      // B-32: miniatura en lugar del texto.
+                      v.content ? (
+                        <img className="history-thumb" src={v.content} alt="" />
+                      ) : (
+                        <span className="muted history-preview">(vacía)</span>
+                      )
+                    ) : (
+                      <span className="muted history-preview">
+                        {v.content.slice(0, PREVIEW) || '(vacía)'}
+                        {v.content.length > PREVIEW ? '…' : ''}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -77,7 +87,15 @@ export function HistoryDialog({ tab, onClose }: { tab: Tab; onClose: () => void 
             {selected && (
               <section className="history-content" aria-label="Contenido de la versión">
                 <h3>{selected.title}</h3>
-                <pre>{selected.content}</pre>
+                {isBoard ? (
+                  selected.content ? (
+                    <img className="history-board" src={selected.content} alt={`Pizarra del ${formatDateTime(selected.savedAt)}`} />
+                  ) : (
+                    <p className="muted">Pizarra vacía</p>
+                  )
+                ) : (
+                  <pre>{selected.content}</pre>
+                )}
               </section>
             )}
           </div>

@@ -19,6 +19,18 @@ export function linkCandidates(nodes: TreeNode[], typed: string, limit = 50): Tr
   return matches.slice(0, limit);
 }
 
+/** B-40: ![Título](litedd://note/<id>), la pizarra como imagen. */
+export function boardImage(node: Pick<TreeNode, 'id' | 'title'>): string {
+  return `!${noteLink(node)}`;
+}
+
+/** B-41: identificadores de las notas citadas en un texto. */
+export function noteIds(source: string): string[] {
+  const ids = new Set<string>();
+  for (const m of source.matchAll(/litedd:\/\/note\/([^)\s"'<>]+)/g)) ids.add(decodeURIComponent(m[1]));
+  return [...ids];
+}
+
 /** N-92: identificadores de los adjuntos citados en un texto. */
 export function attachmentIds(source: string): string[] {
   const ids = new Set<string>();

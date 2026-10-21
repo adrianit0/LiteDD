@@ -20,6 +20,7 @@ export type FormatAction =
   | 'link'
   | 'noteLink'
   | 'image'
+  | 'board'
   | 'table'
   | 'hr';
 

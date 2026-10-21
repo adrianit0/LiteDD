@@ -42,6 +42,7 @@ export function newNoteItems(parentId: string | null): MenuItem[] {
     { label: 'Nota SQL', shortcut: root ? 'Alt+Mayús+N' : undefined, onSelect: () => void createAndOpen(parentId, 'sql') },
     { label: 'Nota HTTP', onSelect: () => void createAndOpen(parentId, 'http') },
     { label: 'Nota MyBatis', onSelect: () => void createAndOpen(parentId, 'xml') },
+    { label: 'Nota Pizarra', onSelect: () => void createAndOpen(parentId, 'board') },
   ];
 }
 

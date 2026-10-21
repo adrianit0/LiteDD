@@ -14,7 +14,22 @@ export interface RenderOptions {
   noteExists?: (id: string) => boolean;
   /** N-92, N-93, ADR-0016: URL data: de un adjunto ya descargado, o undefined si aún no está. */
   attachmentUrl?: (id: string) => string | undefined;
+  /** B-41, B-43: estado de la pizarra que muestra una imagen litedd://note/<id>; sin la opción, aún se carga. */
+  board?: (id: string) => BoardState;
 }
+
+/** B-41, B-43: pizarra cargada, pendiente, vacía o que no se puede mostrar. */
+export type BoardState =
+  | { state: 'ready'; url: string }
+  | { state: 'loading' }
+  | { state: 'empty' }
+  | { state: 'missing' }
+  | { state: 'notBoard' };
+
+const BOARD_PROBLEMS = {
+  missing: 'La pizarra no existe o está en la papelera',
+  notBoard: 'La nota no es una pizarra',
+};
 
 const md = new MarkdownIt({
   html: true,
@@ -103,6 +118,8 @@ function resolveLinks(children: Token[], options: RenderOptions) {
         c.attrSet('src', options.attachmentUrl?.(id) ?? '');
         c.attrSet('data-attachment-id', id);
         c.attrJoin('class', 'attachment');
+      } else if (src.startsWith(NOTE_LINK)) {
+        resolveBoard(c, decodeURIComponent(src.slice(NOTE_LINK.length)), options);
       }
       continue;
     }
@@ -121,6 +138,30 @@ function resolveLinks(children: Token[], options: RenderOptions) {
   }
 }
 
+/**
+ * B-41 a B-43: ![Título](litedd://note/<id>) muestra la última versión de la pizarra. Si está vacía o no se puede
+ * mostrar, queda un aviso en su lugar; el de una pizarra vacía la abre con el clic central.
+ */
+function resolveBoard(image: Token, id: string, options: RenderOptions) {
+  const board = options.board?.(id) ?? { state: 'loading' };
+  if (board.state === 'ready' || board.state === 'loading') {
+    image.attrSet('src', board.state === 'ready' ? board.url : '');
+    image.attrSet('data-board-id', id);
+    image.attrSet('title', 'Clic: ampliar. Clic central: abrir la pizarra');
+    image.attrJoin('class', 'board-embed');
+    return;
+  }
+  const alt = (image.children ?? []).map((t) => t.content).join('') || 'Pizarra';
+  image.type = 'html_inline';
+  image.children = null;
+  image.content =
+    board.state === 'empty'
+      ? `<span class="board-empty" data-board-id="${escapeHtml(id)}" title="Clic central: abrir la pizarra">Pizarra vacía</span>`
+      : `<span class="board-broken" title="${BOARD_PROBLEMS[board.state]}">${escapeHtml(alt)}</span>`;
+}
+
 export function renderMarkdown(source: string, options: RenderOptions = {}): string {
-  return DOMPurify.sanitize(md.render(source, { ...options }), { ADD_ATTR: ['data-note-id', 'data-attachment-id'] });
+  return DOMPurify.sanitize(md.render(source, { ...options }), {
+    ADD_ATTR: ['data-note-id', 'data-attachment-id', 'data-board-id'],
+  });
 }

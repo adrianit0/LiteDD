@@ -109,7 +109,7 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: /Sin conexión configurada/ })).toBeTruthy();
   });
 
-  it('N-05 el botón «+ Nuevo» abre un menú flotante con los cuatro tipos de nota', async () => {
+  it('N-05 B-01 el botón «+ Nuevo» abre un menú flotante con los cinco tipos de nota', async () => {
     render(<App />);
     await act(async () => {});
     const button = screen.getByRole('button', { name: '+ Nuevo' });
@@ -120,6 +120,7 @@ describe('App', () => {
       'Nota SQL',
       'Nota HTTP',
       'Nota MyBatis',
+      'Nota Pizarra',
     ]);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
@@ -135,8 +136,9 @@ describe('App', () => {
     expect(input.value).toBe('Sin título');
     expect(document.activeElement).toBe(input);
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 'Sin título'.length]);
-    // N-20: en edición aparece la barra de formato con todos sus botones.
-    expect(screen.getByRole('toolbar', { name: 'Formato' }).querySelectorAll('button')).toHaveLength(17);
+    // N-20, B-40: en edición aparece la barra de formato con todos sus botones, también «Pizarra».
+    expect(screen.getByRole('toolbar', { name: 'Formato' }).querySelectorAll('button')).toHaveLength(18);
+    expect(screen.getByRole('button', { name: 'Pizarra' })).toBeTruthy();
   });
 
   it('N-05 Alt+Mayús+N crea una nota SQL', async () => {
@@ -381,7 +383,7 @@ describe('App', () => {
     nuevo.focus();
     fireEvent.keyDown(nuevo, { key: 'ArrowRight' });
     const submenu = screen.getByRole('menu', { name: 'Nuevo' });
-    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis']);
+    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis', 'Nota Pizarra']);
     fireEvent.keyDown(within(submenu).getAllByRole('menuitem')[0], { key: 'ArrowLeft' });
     expect(screen.queryByRole('menu', { name: 'Nuevo' })).toBeNull();
     expect(screen.getByRole('menu')).toBeTruthy();

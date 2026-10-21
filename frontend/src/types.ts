@@ -1,4 +1,4 @@
-export type NoteType = 'md' | 'sql' | 'http' | 'xml';
+export type NoteType = 'md' | 'sql' | 'http' | 'xml' | 'board';
 /** M-24: etiqueta de la sentencia de la que sale una hija generada. */
 export type StatementKind = 'select' | 'insert' | 'update' | 'delete';
 export type Mode = 'view' | 'edit';
