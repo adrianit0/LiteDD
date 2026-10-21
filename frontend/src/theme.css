@@ -2219,3 +2219,73 @@ mark {
   top: 0;
   background: var(--surface-raised);
 }
+
+/* H-60 a H-69, U-12, ADR-0028: entornos de preproducción en las notas HTTP. */
+.profile-select {
+  max-width: 180px;
+}
+
+/* Propuesta A: fuera de Local, el destino se ve en el color de aviso. */
+.profile-select.profile-preproduction {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.http-profile-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+}
+
+.http-profile-tag.profile-preproduction {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.settings-profile {
+  margin: 12px 0 0;
+  padding: 4px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.settings-profile legend {
+  padding: 0 4px;
+  color: var(--text);
+}
+
+.settings-profile .form-grid {
+  margin: 8px 0;
+}
+
+.settings-profile + button {
+  margin-top: 8px;
+}
+
+.settings-ca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 0;
+}
+
+.settings-ca-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.confirm-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+}

@@ -3,9 +3,11 @@ import { api, type AppConfig, type ImportMode } from '../api';
 import { PAGE_SIZES } from '../sql/types';
 import { ask } from '../stores/dialogStore';
 import { useConnection } from '../stores/connectionStore';
+import { useHttpProfile } from '../stores/httpProfileStore';
 import { useTabs } from '../stores/tabsStore';
 import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
+import { CorporateCaSettings, HttpProfilesSettings, fromProfileForms, toProfileForms, type ProfileForm } from './HttpProfilesSettings';
 
 /** Formulario: los números se editan como texto para poder dejar campos vacíos. */
 interface ConfigForm {
@@ -15,9 +17,9 @@ interface ConfigForm {
   port: string;
   autoShutdownMinutes: string;
   autosave: boolean;
-  httpBaseUrl: string;
+  httpPreproduction: boolean;
+  httpProfiles: ProfileForm[];
   httpLoginNoteId: string;
-  httpUser: string;
   httpTimeoutSeconds: string;
   httpMaxResponseMb: string;
   httpAccept: string;
@@ -33,9 +35,9 @@ function toForm(c: AppConfig): ConfigForm {
     port: String(c.port),
     autoShutdownMinutes: c.autoShutdownMinutes === null ? '' : String(c.autoShutdownMinutes),
     autosave: c.autosave,
-    httpBaseUrl: c.http.baseUrl ?? '',
+    httpPreproduction: c.http.preproduction,
+    httpProfiles: toProfileForms(c.http.profiles),
     httpLoginNoteId: c.http.loginNoteId ?? '',
-    httpUser: c.http.user,
     httpTimeoutSeconds: String(c.http.timeoutSeconds),
     httpMaxResponseMb: String(c.http.maxResponseMb),
     httpAccept: c.http.accept ?? '',
@@ -53,9 +55,9 @@ function fromForm(f: ConfigForm): AppConfig {
     autoShutdownMinutes: f.autoShutdownMinutes.trim() === '' ? null : Number(f.autoShutdownMinutes),
     autosave: f.autosave,
     http: {
-      baseUrl: f.httpBaseUrl.trim() === '' ? null : f.httpBaseUrl.trim(),
+      preproduction: f.httpPreproduction,
+      profiles: fromProfileForms(f.httpProfiles),
       loginNoteId: f.httpLoginNoteId === '' ? null : f.httpLoginNoteId,
-      user: f.httpUser.trim(),
       timeoutSeconds: Number(f.httpTimeoutSeconds),
       maxResponseMb: Number(f.httpMaxResponseMb),
       accept: f.httpAccept.trim() === '' ? null : f.httpAccept.trim(),
@@ -85,16 +87,20 @@ export function SettingsDialog() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  // H-21: la contraseña se escribe pero nunca se lee; solo se sabe si hay una.
-  const [password, setPassword] = useState('');
-  const [hasPassword, setHasPassword] = useState(false);
+  // H-21, H-69: las contraseñas y la clave se escriben pero nunca se leen; solo se sabe si las hay.
+  const [savedPasswords, setSavedPasswords] = useState<Record<string, boolean>>({});
+  const [confirmKey, setConfirmKey] = useState('');
+  const [hasConfirmKey, setHasConfirmKey] = useState(false);
   const nodes = useTree((s) => s.nodes);
   const httpNotes = useMemo(() => nodes.filter((n) => n.type === 'http'), [nodes]);
 
   useEffect(() => {
     api
       .httpCredentials()
-      .then((c) => setHasPassword(c.hasPassword))
+      .then((c) => {
+        setSavedPasswords(c.passwords);
+        setHasConfirmKey(c.hasConfirmKey);
+      })
       .catch(() => {});
   }, []);
 
@@ -119,13 +125,18 @@ export function SettingsDialog() {
     void busyWhile(async () => {
       const next = fromForm(form);
       await api.putSettings({ config: next });
-      if (password !== '') {
-        await api.setHttpPassword(password);
-        setPassword('');
-        setHasPassword(true);
+      // Después de los ajustes: un entorno nuevo ya existe y uno quitado ya no tiene contraseña (H-62).
+      for (const p of form.httpProfiles) {
+        if (p.password !== '') await api.setHttpPassword(p.id, p.password);
       }
+      if (confirmKey !== '') await api.setConfirmKey(confirmKey);
       const portChanged = next.port !== config.port;
       ui.setConfig(next);
+      // H-62: sin la casilla, o sin el perfil elegido, el servidor vuelve a Local.
+      await useHttpProfile
+        .getState()
+        .load()
+        .catch(() => {});
       ui.notify(portChanged ? 'Ajustes guardados. El puerto nuevo se aplica al reiniciar LiteDD.' : 'Ajustes guardados');
       close();
     });
@@ -253,13 +264,56 @@ export function SettingsDialog() {
 
           <h3 className="settings-subtitle">HTTP</h3>
           <div className="form-grid">
-            <label htmlFor="st-http-base">URL base</label>
-            <input
-              id="st-http-base"
-              value={form.httpBaseUrl}
-              placeholder="http://127.0.0.1:8080/demo/"
-              onChange={(e) => update({ httpBaseUrl: e.target.value })}
-            />
+            <label htmlFor="st-http-pre">Permitir entornos de preproducción</label>
+            <span>
+              <input
+                id="st-http-pre"
+                type="checkbox"
+                checked={form.httpPreproduction}
+                onChange={(e) => update({ httpPreproduction: e.target.checked })}
+              />
+            </span>
+          </div>
+          <HttpProfilesSettings
+            profiles={form.httpProfiles}
+            preproduction={form.httpPreproduction}
+            saved={savedPasswords}
+            busy={busy}
+            onChange={(httpProfiles) => update({ httpProfiles })}
+            onClearPassword={(id) =>
+              void busyWhile(async () => {
+                setSavedPasswords((await api.setHttpPassword(id, '')).passwords);
+                setMessage({ kind: 'ok', text: 'Contraseña HTTP borrada' });
+              })
+            }
+          />
+          {form.httpPreproduction && <CorporateCaSettings onMessage={setMessage} />}
+          <div className="form-grid">
+            <label htmlFor="st-http-confirm-key">Clave de confirmación</label>
+            <span className="settings-inline">
+              <input
+                id="st-http-confirm-key"
+                type="password"
+                value={confirmKey}
+                autoComplete="new-password"
+                placeholder={hasConfirmKey ? 'Guardada (déjala vacía para conservarla)' : ''}
+                onChange={(e) => setConfirmKey(e.target.value)}
+              />
+              {hasConfirmKey && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void busyWhile(async () => {
+                      setHasConfirmKey((await api.setConfirmKey('')).hasConfirmKey);
+                      setMessage({ kind: 'ok', text: 'Clave de confirmación borrada' });
+                    })
+                  }
+                >
+                  Borrar
+                </button>
+              )}
+            </span>
 
             <label htmlFor="st-http-login">Nota de login</label>
             <select id="st-http-login" value={form.httpLoginNoteId} onChange={(e) => update({ httpLoginNoteId: e.target.value })}>
@@ -270,35 +324,6 @@ export function SettingsDialog() {
                 </option>
               ))}
             </select>
-
-            <label htmlFor="st-http-user">Usuario</label>
-            <input id="st-http-user" value={form.httpUser} autoComplete="off" onChange={(e) => update({ httpUser: e.target.value })} />
-
-            <label htmlFor="st-http-password">Contraseña</label>
-            <span className="settings-inline">
-              <input
-                id="st-http-password"
-                type="password"
-                value={password}
-                autoComplete="new-password"
-                placeholder={hasPassword ? 'Guardada (déjala vacía para conservarla)' : ''}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              {hasPassword && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void busyWhile(async () => {
-                      await api.setHttpPassword('');
-                      setHasPassword(false);
-                      setMessage({ kind: 'ok', text: 'Contraseña HTTP borrada' });
-                    })
-                  }
-                >
-                  Borrar
-                </button>
-              )}
-            </span>
 
             <label htmlFor="st-http-timeout">Tiempo máximo de llamada (s)</label>
             <input
@@ -337,7 +362,11 @@ export function SettingsDialog() {
             Valen para todas las notas HTTP y para el login; vacío, el valor de serie. Cada nota puede cambiarlos. Content-Type depende del cuerpo.
           </p>
           <p className="muted settings-hint">
-            Solo se admiten 127.0.0.1, localhost o ::1. La contraseña se guarda aparte, solo para tu usuario, y no se exporta.
+            Local solo admite 127.0.0.1, localhost o ::1. Los entornos de preproducción solo admiten https con un nombre de host y
+            un certificado de la CA corporativa. Con «Pedir clave al enviar», cada envío a ese perfil pide la clave de confirmación.
+          </p>
+          <p className="muted settings-hint">
+            Las contraseñas y la clave se guardan aparte, solo para tu usuario: no se exportan ni entran en las copias.
           </p>
           <div className="dialog-actions">
             <button type="submit" className="primary" disabled={busy}>

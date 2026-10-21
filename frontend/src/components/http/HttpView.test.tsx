@@ -1,8 +1,11 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { api, DEFAULT_CONFIG, type HttpResult } from '../../api';
+import { api, ApiError, DEFAULT_CONFIG, type HttpResult } from '../../api';
 import { NotePane } from '../NotePane';
+import { ConfirmKeyDialog } from '../ConfirmKeyDialog';
 import { useActiveTab, useTabs } from '../../stores/tabsStore';
 import { useHttpRuns } from '../../stores/httpRunStore';
+import { useHttpProfile } from '../../stores/httpProfileStore';
+import { useConfirmKey } from '../../stores/confirmKeyStore';
 import { useUi } from '../../stores/uiStore';
 import { parseContent } from '../../http/content';
 import type { Note } from '../../types';
@@ -18,6 +21,7 @@ vi.mock('../../api', async (importOriginal) => {
       tags: vi.fn(),
       httpExecute: vi.fn(),
       httpCancel: vi.fn(),
+      httpProfile: vi.fn(),
       appVersion: vi.fn(),
     },
   };
@@ -81,11 +85,21 @@ beforeEach(() => {
   mocked.tags.mockResolvedValue([]);
   mocked.saveNote.mockImplementation(async (id, title, content, baseVersion) => httpNote(content, { id, title, version: baseVersion + 1 }));
   mocked.httpCancel.mockResolvedValue({ cancelled: true });
+  mocked.httpProfile.mockResolvedValue({ active: 'local' });
   useUi.setState({
-    config: { ...DEFAULT_CONFIG, http: { ...DEFAULT_CONFIG.http, baseUrl: 'http://127.0.0.1:8080/demo/', loginNoteId: 'login', user: 'demo' } },
+    config: {
+      ...DEFAULT_CONFIG,
+      http: {
+        ...DEFAULT_CONFIG.http,
+        profiles: [{ id: 'local', name: 'Local', baseUrl: 'http://127.0.0.1:8080/demo/', user: 'demo', requireKey: false }],
+        loginNoteId: 'login',
+      },
+    },
   });
   useTabs.setState({ tabs: [], activeId: null, restored: false });
   useHttpRuns.setState({ runs: {} });
+  useHttpProfile.setState({ active: 'local' });
+  useConfirmKey.setState({ current: null });
 });
 
 describe('nota HTTP', () => {
@@ -263,7 +277,7 @@ describe('nota HTTP', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
     });
     expect(mocked.saveNote).toHaveBeenCalled();
-    expect(mocked.httpExecute).toHaveBeenCalledWith('h1', 4, expect.any(String));
+    expect(mocked.httpExecute).toHaveBeenCalledWith('h1', 4, expect.any(String), 'local', undefined);
     expect(useTabs.getState().tabs[0].preview).toBe(false);
 
     expect(screen.getByText('200 OK')).toBeTruthy();
@@ -359,5 +373,119 @@ describe('nota HTTP', () => {
       await useTabs.getState().close(id);
     });
     expect(useHttpRuns.getState().runs[id]).toBeUndefined();
+  });
+});
+
+describe('entornos de preproducción (ADR-0028)', () => {
+  const PRE1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: 'pre-ana', requireKey: true };
+
+  /** Elige PRE1 como perfil activo, con o sin «Pedir clave al enviar». */
+  function choosePre(requireKey = true) {
+    const http = useUi.getState().config.http;
+    useUi.setState({
+      config: { ...DEFAULT_CONFIG, http: { ...http, preproduction: true, profiles: [...http.profiles, { ...PRE1, requireKey }] } },
+    });
+    useHttpProfile.setState({ active: 'pre1' });
+  }
+
+  async function mountWithKeyDialog(content: string) {
+    await act(async () => {
+      await useTabs.getState().open('h1', { note: httpNote(content), preview: true });
+    });
+    render(
+      <>
+        <Pane />
+        <ConfirmKeyDialog />
+      </>,
+    );
+    await act(async () => {});
+  }
+
+  const sendButton = () => within(screen.getByRole('toolbar', { name: 'Llamada' })).getByRole('button', { name: 'Enviar' });
+  const keyDialog = () => screen.getByRole('dialog', { name: 'Enviar a «PRE1»' });
+
+  async function typeKey(key: string) {
+    fireEvent.change(within(keyDialog()).getByLabelText('Clave de confirmación'), { target: { value: key } });
+    await act(async () => {
+      fireEvent.click(within(keyDialog()).getByRole('button', { name: 'Enviar' }));
+    });
+  }
+
+  it('H-10 H-22 H-63 la URL base y el usuario por defecto son los del perfil activo', async () => {
+    choosePre(false);
+    await mountWithKeyDialog('');
+    expect(screen.getByText('https://pre1.litedd-demo.test/demo/')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Usuario').placeholder).toBe('pre-ana');
+  });
+
+  it('H-69 con «Pedir clave al enviar» cada envío pide la clave; Escape no envía nada', async () => {
+    mocked.httpExecute.mockResolvedValue(ok);
+    choosePre();
+    await mountWithKeyDialog('{"endpoint":"/user/5/tasks"}');
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    expect(keyDialog().textContent).toContain('El perfil «PRE1» pide la clave de confirmación');
+    await act(async () => {
+      fireEvent.keyDown(within(keyDialog()).getByLabelText('Clave de confirmación'), { key: 'Escape' });
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocked.httpExecute).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    await typeKey('confirmo');
+    expect(mocked.httpExecute).toHaveBeenCalledWith('h1', expect.any(Number), expect.any(String), 'pre1', 'confirmo');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // La interfaz no la recuerda: el siguiente envío la vuelve a pedir.
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    expect(keyDialog()).toBeTruthy();
+  });
+
+  it('H-69 una clave incorrecta no envía nada y se vuelve a pedir con el motivo', async () => {
+    mocked.httpExecute
+      .mockRejectedValueOnce(new ApiError(403, 'confirm_key_wrong', 'La clave de confirmación no es correcta', null))
+      .mockResolvedValueOnce(ok);
+    choosePre();
+    await mountWithKeyDialog('{"endpoint":"/user/5/tasks"}');
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    await typeKey('mala');
+    expect(within(keyDialog()).getByRole('alert').textContent).toBe('La clave de confirmación no es correcta');
+    expect(within(keyDialog()).getByLabelText<HTMLInputElement>('Clave de confirmación').value).toBe('');
+    expect(screen.queryByText('200 OK')).toBeNull();
+    await typeKey('buena');
+    expect(mocked.httpExecute).toHaveBeenLastCalledWith('h1', expect.any(Number), expect.any(String), 'pre1', 'buena');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('200 OK')).toBeTruthy();
+  });
+
+  it('H-33 la respuesta indica el perfil con el que se hizo', async () => {
+    mocked.httpExecute.mockResolvedValue({ ...ok, profile: { id: 'pre1', name: 'PRE1' } });
+    choosePre(false);
+    await mountWithKeyDialog('{"endpoint":"/user/5/tasks"}');
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    const tag = screen.getByText('PRE1', { selector: '.http-profile-tag' });
+    expect(tag.className).toContain('profile-preproduction');
+  });
+
+  it('H-63 si el perfil activo ya no es el que se ve, no se envía, se avisa y se recarga', async () => {
+    mocked.httpExecute.mockRejectedValue(
+      new ApiError(409, 'profile_changed', 'El perfil activo es «Local». Revisa el destino y vuelve a enviar.', null),
+    );
+    choosePre(false);
+    await mountWithKeyDialog('{"endpoint":"/user/5/tasks"}');
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    expect(screen.getByText(/El perfil activo es «Local»/)).toBeTruthy();
+    expect(mocked.httpProfile).toHaveBeenCalled();
+    expect(useHttpProfile.getState().active).toBe('local');
   });
 });

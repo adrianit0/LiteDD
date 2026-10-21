@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { api, ApiError, type HttpResult } from '../api';
+import { askConfirmKey } from './confirmKeyStore';
+import { profileOf, useHttpProfile } from './httpProfileStore';
 import { isDirty, useTabs } from './tabsStore';
+import { useUi } from './uiStore';
 
 /**
  * Llamada de una pestaña HTTP. Solo vive en memoria: la respuesta no se guarda y se pierde al cerrar la
@@ -41,15 +44,37 @@ export const useHttpRuns = create<HttpRunState>((set, get) => {
         patch(tabId, { error: { code: 'unsaved', message: 'La nota tiene cambios sin guardar. Resuelve el guardado antes de enviar.' } });
         return;
       }
-      const executionId = crypto.randomUUID();
-      patch(tabId, { running: { executionId, startedAt: performance.now() }, error: null });
-      try {
-        const result = await api.httpExecute(tab.noteId, tab.note.version, executionId);
-        if (get().runs[tabId]) patch(tabId, { result, running: null });
-      } catch (e) {
-        if (!get().runs[tabId]) return;
-        const error = e instanceof ApiError ? { code: e.code, message: e.message } : { code: 'error', message: String(e) };
-        patch(tabId, { error, running: null });
+      // H-63: se envía al perfil que se ve. H-69: si el perfil pide la clave, se pide en cada envío.
+      const profile = profileOf(useUi.getState().config.http, useHttpProfile.getState().active);
+      let askKey = profile.requireKey;
+      let keyError: string | null = null;
+      for (;;) {
+        let key: string | undefined;
+        if (askKey) {
+          const typed = await askConfirmKey(profile.name, keyError);
+          if (typed === null) return;
+          key = typed;
+        }
+        const executionId = crypto.randomUUID();
+        patch(tabId, { running: { executionId, startedAt: performance.now() }, error: null });
+        try {
+          const result = await api.httpExecute(tab.noteId, tab.note.version, executionId, profile.id, key);
+          if (get().runs[tabId]) patch(tabId, { result, running: null });
+          return;
+        } catch (e) {
+          if (!get().runs[tabId]) return;
+          // Clave incorrecta, o el perfil la pide aunque los ajustes de la ventana no lo sabían: se vuelve a pedir.
+          if (e instanceof ApiError && (e.code === 'confirm_key_wrong' || e.code === 'confirm_key_required')) {
+            patch(tabId, { running: null });
+            askKey = true;
+            keyError = e.code === 'confirm_key_wrong' ? e.message : null;
+            continue;
+          }
+          if (e instanceof ApiError && e.code === 'profile_changed') void useHttpProfile.getState().load().catch(() => {});
+          const error = e instanceof ApiError ? { code: e.code, message: e.message } : { code: 'error', message: String(e) };
+          patch(tabId, { error, running: null });
+          return;
+        }
       }
     },
 

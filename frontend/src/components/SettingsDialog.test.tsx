@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { api, DEFAULT_CONFIG } from '../api';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { api, DEFAULT_CONFIG, type AppConfig } from '../api';
 import { SettingsDialog } from './SettingsDialog';
 import { DialogHost } from './DialogHost';
 import { useConnection } from '../stores/connectionStore';
@@ -21,9 +21,23 @@ vi.mock('../api', async (importOriginal) => {
       tree: vi.fn(),
       httpCredentials: vi.fn(),
       setHttpPassword: vi.fn(),
+      setConfirmKey: vi.fn(),
+      httpCa: vi.fn(),
+      importHttpCa: vi.fn(),
+      httpProfile: vi.fn(),
     },
   };
 });
+
+const PRE1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: 'pre-ana', requireKey: true };
+
+/** Ajustes con la casilla de preproducción marcada y un entorno PRE1. */
+const withPre: AppConfig = {
+  ...DEFAULT_CONFIG,
+  http: { ...DEFAULT_CONFIG.http, preproduction: true, profiles: [...DEFAULT_CONFIG.http.profiles, PRE1] },
+};
+
+const savedConfig = () => (mocked.putSettings.mock.calls.at(-1)![0] as { config: AppConfig }).config;
 
 const mocked = vi.mocked(api);
 
@@ -42,8 +56,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocked.putSettings.mockResolvedValue({});
   mocked.tree.mockResolvedValue([]);
-  mocked.httpCredentials.mockResolvedValue({ hasPassword: false });
-  mocked.setHttpPassword.mockResolvedValue({ hasPassword: true });
+  mocked.httpCredentials.mockResolvedValue({ passwords: { local: false }, hasConfirmKey: false });
+  mocked.setHttpPassword.mockResolvedValue({ passwords: { local: true }, hasConfirmKey: false });
+  mocked.setConfirmKey.mockResolvedValue({ hasConfirmKey: true });
+  mocked.httpCa.mockResolvedValue({ certificates: [] });
+  mocked.httpProfile.mockResolvedValue({ active: 'local' });
   useUi.setState({ config: DEFAULT_CONFIG, settingsOpen: true, notices: [] });
   useTabs.setState({ tabs: [], activeId: null });
   useDialogs.setState({ current: null });
@@ -117,7 +134,7 @@ describe('U-10 ajustes', () => {
 });
 
 describe('U-10 sección HTTP', () => {
-  it('H-10 H-15 H-20 H-22 H-31 H-35 guarda URL base, nota de login, usuario, cabeceras y límites', async () => {
+  it('H-10 H-15 H-20 H-22 H-31 H-35 H-61 guarda URL base y usuario de Local, nota de login, cabeceras y límites', async () => {
     useTree.setState({
       nodes: [
         { id: 'l1', parentId: null, position: 0, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
@@ -139,9 +156,9 @@ describe('U-10 sección HTTP', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
     });
     const http = {
-      baseUrl: 'http://127.0.0.1:8080/demo/',
+      preproduction: false,
+      profiles: [{ id: 'local', name: 'Local', baseUrl: 'http://127.0.0.1:8080/demo/', user: 'demo', requireKey: false }],
       loginNoteId: 'l1',
-      user: 'demo',
       timeoutSeconds: 45,
       maxResponseMb: 20,
       accept: null,
@@ -151,11 +168,12 @@ describe('U-10 sección HTTP', () => {
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expect.objectContaining({ http }) });
     expect(useUi.getState().config.http).toEqual(http);
     expect(mocked.setHttpPassword).not.toHaveBeenCalled();
+    expect(mocked.setConfirmKey).not.toHaveBeenCalled();
   });
 
   it('H-21 la contraseña solo se escribe: no se lee, se guarda aparte y se puede borrar', async () => {
-    mocked.httpCredentials.mockResolvedValue({ hasPassword: true });
-    mocked.setHttpPassword.mockResolvedValue({ hasPassword: false });
+    mocked.httpCredentials.mockResolvedValue({ passwords: { local: true }, hasConfirmKey: false });
+    mocked.setHttpPassword.mockResolvedValue({ passwords: { local: false }, hasConfirmKey: false });
     render(<SettingsDialog />);
     await act(async () => {});
     const password = screen.getByLabelText<HTMLInputElement>('Contraseña');
@@ -165,14 +183,117 @@ describe('U-10 sección HTTP', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
     });
-    expect(mocked.setHttpPassword).toHaveBeenCalledWith('');
+    expect(mocked.setHttpPassword).toHaveBeenCalledWith('local', '');
+    expect(screen.getByLabelText<HTMLInputElement>('Contraseña').placeholder).toBe('');
     fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'nueva' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
     });
-    expect(mocked.setHttpPassword).toHaveBeenLastCalledWith('nueva');
+    expect(mocked.setHttpPassword).toHaveBeenLastCalledWith('local', 'nueva');
     // La contraseña nunca viaja en config.json.
     expect(JSON.stringify(mocked.putSettings.mock.calls)).not.toContain('nueva');
+  });
+
+  it('H-60 H-62 sin la casilla solo está Local; con ella se añaden entornos que nacen pidiendo la clave', async () => {
+    render(<SettingsDialog />);
+    await act(async () => {});
+    expect(screen.getByRole('group', { name: 'Local' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Añadir entorno' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'CA corporativa' })).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Permitir entornos de preproducción'));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir entorno' }));
+    const added = screen.getByRole('group', { name: 'Entorno sin nombre' });
+    // Propuesta C de ADR-0028.
+    expect(within(added).getByLabelText<HTMLInputElement>('Pedir clave al enviar').checked).toBe(true);
+    expect(within(screen.getByRole('group', { name: 'Local' })).getByLabelText<HTMLInputElement>('Pedir clave al enviar').checked).toBe(false);
+    fireEvent.change(within(added).getByLabelText('Nombre'), { target: { value: 'PRE1' } });
+    const named = screen.getByRole('group', { name: 'PRE1' });
+    fireEvent.change(within(named).getByLabelText('URL base'), { target: { value: ' https://pre1.litedd-demo.test/demo/ ' } });
+    fireEvent.change(within(named).getByLabelText('Usuario'), { target: { value: 'pre-ana' } });
+    fireEvent.change(within(named).getByLabelText('Contraseña'), { target: { value: 'clave-pre' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+
+    const http = savedConfig().http;
+    expect(http.preproduction).toBe(true);
+    expect(http.profiles).toHaveLength(2);
+    const [, pre] = http.profiles;
+    expect(pre).toEqual({ id: expect.any(String), name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: 'pre-ana', requireKey: true });
+    // H-21: la contraseña va aparte, después de guardar el perfil.
+    expect(mocked.setHttpPassword).toHaveBeenCalledWith(pre.id, 'clave-pre');
+    expect(JSON.stringify(mocked.putSettings.mock.calls)).not.toContain('clave-pre');
+    // H-62: el servidor puede haber vuelto a Local.
+    expect(mocked.httpProfile).toHaveBeenCalled();
+  });
+
+  it('H-62 desmarcar la casilla oculta los entornos pero los conserva', async () => {
+    useUi.setState({ config: withPre });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    expect(screen.getByRole('group', { name: 'PRE1' })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Permitir entornos de preproducción'));
+    expect(screen.queryByRole('group', { name: 'PRE1' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    expect(savedConfig().http.preproduction).toBe(false);
+    expect(savedConfig().http.profiles.map((p) => p.id)).toEqual(['local', 'pre1']);
+  });
+
+  it('H-62 «Eliminar entorno» lo quita de los ajustes; el servidor borra su contraseña al guardar', async () => {
+    useUi.setState({ config: withPre });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole('group', { name: 'PRE1' })).getByRole('button', { name: 'Eliminar entorno' }));
+    expect(screen.queryByRole('group', { name: 'PRE1' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    expect(savedConfig().http.profiles.map((p) => p.id)).toEqual(['local']);
+  });
+
+  it('H-69 la clave de confirmación solo se escribe, se guarda aparte y se puede borrar', async () => {
+    mocked.httpCredentials.mockResolvedValue({ passwords: { local: false }, hasConfirmKey: true });
+    mocked.setConfirmKey.mockResolvedValue({ hasConfirmKey: false });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    const key = screen.getByLabelText<HTMLInputElement>('Clave de confirmación');
+    expect(key.type).toBe('password');
+    expect(key.value).toBe('');
+    expect(key.placeholder).toContain('Guardada');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Borrar' }));
+    });
+    expect(mocked.setConfirmKey).toHaveBeenCalledWith('');
+    expect(screen.getByLabelText<HTMLInputElement>('Clave de confirmación').placeholder).toBe('');
+    fireEvent.change(screen.getByLabelText('Clave de confirmación'), { target: { value: 'confirmo-el-envio' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar ajustes' }));
+    });
+    expect(mocked.setConfirmKey).toHaveBeenLastCalledWith('confirmo-el-envio');
+    expect(JSON.stringify(mocked.putSettings.mock.calls)).not.toContain('confirmo-el-envio');
+  });
+
+  it('H-66 importa la CA corporativa desde un PEM y muestra su sujeto y su caducidad', async () => {
+    useUi.setState({ config: withPre });
+    mocked.importHttpCa.mockResolvedValue({ certificates: [{ subject: 'CN=LiteDD Demo CA,O=litedd_demo', notAfter: '2027-10-21T10:00:00Z' }] });
+    render(<SettingsDialog />);
+    await act(async () => {});
+    const ca = screen.getByRole('group', { name: 'CA corporativa' });
+    expect(ca.textContent).toContain('Sin importar');
+    const pem = '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n';
+    const input = screen.getByLabelText<HTMLInputElement>('Fichero PEM de la CA corporativa');
+    Object.defineProperty(input, 'files', { value: [new File([pem], 'ca.pem', { type: 'application/x-pem-file' })], configurable: true });
+    await act(async () => {
+      fireEvent.change(input);
+    });
+    expect(mocked.importHttpCa).toHaveBeenCalledWith(pem);
+    expect(ca.textContent).toContain('CN=LiteDD Demo CA,O=litedd_demo');
+    expect(ca.textContent).toMatch(/caduca el 21\/10\/2027/);
+    expect(screen.getByRole('status').textContent).toContain('ca.pem');
   });
 });
 

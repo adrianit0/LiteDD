@@ -10,7 +10,10 @@ import { TabBar } from './components/TabBar';
 import { DialogHost } from './components/DialogHost';
 import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { ConnectionDialog } from './components/ConnectionDialog';
+import { HttpProfileSelect } from './components/HttpProfileSelect';
+import { ConfirmKeyDialog } from './components/ConfirmKeyDialog';
 import { useConnection } from './stores/connectionStore';
+import { useHttpProfile } from './stores/httpProfileStore';
 import { useSqlRuns } from './stores/sqlRunStore';
 import { useHttpRuns } from './stores/httpRunStore';
 import { QuickSearch } from './components/QuickSearch';
@@ -36,6 +39,11 @@ export function App() {
     );
     // C-02: el estado de la conexión no bloquea las notas.
     void useConnection.getState().load();
+    // H-63: el perfil activo lo guarda el servidor; sin respuesta, se queda en Local.
+    void useHttpProfile
+      .getState()
+      .load()
+      .catch(() => {});
     const stopPresence = startPresence();
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -117,6 +125,7 @@ export function App() {
       <header className="topbar">
         <span className="brand">LiteDD</span>
         <div className="topbar-end">
+          <HttpProfileSelect />
           <ConnectionStatusBar />
           <button type="button" className="icon-button" aria-label="Ajustes" title="Ajustes" onClick={() => useUi.getState().setSettingsOpen(true)}>
             ⚙
@@ -166,6 +175,7 @@ export function App() {
       {settingsOpen && <SettingsDialog />}
       {constantsOpen && <ConstantsDialog />}
       <DialogHost />
+      <ConfirmKeyDialog />
       {connectionDialog && <ConnectionDialog />}
       {quickSearch && <QuickSearch />}
       <div className="notices" aria-live="polite">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useTabs, type Tab } from '../../stores/tabsStore';
 import { useHttpRun, useHttpRuns } from '../../stores/httpRunStore';
+import { useActiveProfile } from '../../stores/httpProfileStore';
 import { useUi } from '../../stores/uiStore';
 import {
   COMMON_HEADERS,
@@ -39,6 +40,8 @@ export function HttpView({ tab }: { tab: Tab }) {
   const runs = useHttpRuns.getState();
   const run = useHttpRun(tab.id);
   const http = useUi((s) => s.config.http);
+  // H-10, H-63: la URL base es la del perfil activo.
+  const profile = useActiveProfile(http);
   const autosave = useUi((s) => s.config.autosave);
   const [section, setSection] = useState<Section>('params');
   const [jsonProblem, setJsonProblem] = useState<string | null>(null);
@@ -115,8 +118,8 @@ export function HttpView({ tab }: { tab: Tab }) {
           ))}
         </select>
         <div className="http-url">
-          <span className="http-base" title={http.baseUrl ?? undefined}>
-            {http.baseUrl ?? 'Sin URL base'}
+          <span className="http-base" title={profile.baseUrl ? `${profile.name}: ${profile.baseUrl}` : undefined}>
+            {profile.baseUrl ?? 'Sin URL base'}
           </span>
           <input
             aria-label="Endpoint"
@@ -161,9 +164,9 @@ export function HttpView({ tab }: { tab: Tab }) {
         </p>
       )}
 
-      {!http.baseUrl && (
+      {!profile.baseUrl && (
         <p className="sql-warning" role="status">
-          Falta la URL base del servidor.{' '}
+          Falta la URL base del perfil «{profile.name}».{' '}
           <button type="button" onClick={() => useUi.getState().setSettingsOpen(true)}>
             Abrir «Ajustes»
           </button>
@@ -200,7 +203,7 @@ export function HttpView({ tab }: { tab: Tab }) {
           <input
             value={content.user}
             disabled={loginOff}
-            placeholder={http.user || 'usuario'}
+            placeholder={profile.user || 'usuario'}
             aria-label="Usuario"
             onChange={(e) => update({ user: e.target.value })}
             onBlur={saveOnBlur}

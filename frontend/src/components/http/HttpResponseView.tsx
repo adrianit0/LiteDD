@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import hljs from 'highlight.js/lib/common';
-import type { HttpReceived, HttpResult } from '../../api';
+import { LOCAL_PROFILE_ID, type HttpReceived, type HttpResult } from '../../api';
 import { prettyBody, sizeText } from '../../http/content';
 import { copyText } from '../../clipboard';
 
@@ -73,6 +73,12 @@ export function HttpResponseView({ result }: { result: HttpResult }) {
       )}
       {result.request && (
         <p className="http-sent muted">
+          {result.profile && (
+            // H-33, propuesta B de ADR-0028: el perfil con el que se hizo.
+            <span className={result.profile.id === LOCAL_PROFILE_ID ? 'http-profile-tag' : 'http-profile-tag profile-preproduction'}>
+              {result.profile.name}
+            </span>
+          )}
           {result.request.method} {result.request.url}
         </p>
       )}

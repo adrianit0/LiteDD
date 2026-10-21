@@ -139,14 +139,29 @@ export interface AppConfig {
   autoShutdownMinutes: number | null;
   /** N-40, N-46: false = guardado manual. */
   autosave: boolean;
-  /** H-10, H-20, H-22, H-31, H-35. La contraseña no está aquí (H-21). */
+  /** H-10, H-20, H-22, H-31, H-35, H-60. Las contraseñas y la clave no están aquí (H-21, H-64). */
   http: HttpSettings;
 }
 
-export interface HttpSettings {
+/** H-60: el perfil fijo. */
+export const LOCAL_PROFILE_ID = 'local';
+
+/** H-61: destino de las notas HTTP. La contraseña se guarda aparte (H-21). */
+export interface HttpProfile {
+  id: string;
+  name: string;
   baseUrl: string | null;
-  loginNoteId: string | null;
   user: string;
+  /** H-69: pedir la clave de confirmación al enviar. */
+  requireKey: boolean;
+}
+
+export interface HttpSettings {
+  /** H-62: «Permitir entornos de preproducción». */
+  preproduction: boolean;
+  /** Local siempre el primero. */
+  profiles: HttpProfile[];
+  loginNoteId: string | null;
   timeoutSeconds: number;
   maxResponseMb: number;
   /** H-15, ADR-0022: valores por defecto de las cabeceras generadas fijas; null = el de serie. */
@@ -156,9 +171,9 @@ export interface HttpSettings {
 }
 
 export const DEFAULT_HTTP: HttpSettings = {
-  baseUrl: null,
+  preproduction: false,
+  profiles: [{ id: LOCAL_PROFILE_ID, name: 'Local', baseUrl: null, user: '', requireKey: false }],
   loginNoteId: null,
-  user: '',
   timeoutSeconds: 30,
   maxResponseMb: 10,
   accept: null,
@@ -213,6 +228,20 @@ export interface HttpResult {
   request?: { method: string; url: string; headers: HttpHeader[] };
   response?: HttpReceived;
   login?: { user: string; status: number; millis: number };
+  /** H-33: el perfil con el que se hizo. */
+  profile?: { id: string; name: string };
+}
+
+/** H-21, H-69, S-21: qué perfiles tienen contraseña y si hay clave; nunca sus valores. */
+export interface HttpCredentialsState {
+  passwords: Record<string, boolean>;
+  hasConfirmKey: boolean;
+}
+
+/** H-66: certificado de la CA corporativa importada. notAfter en ISO-8601. */
+export interface CaCertificate {
+  subject: string;
+  notAfter: string;
 }
 
 export type ImportMode = 'replace' | 'branch';
@@ -348,13 +377,22 @@ export const api = {
   execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
   count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
-  /** H-30 */
-  httpExecute: (noteId: string, version: number, executionId: string) =>
-    request<HttpResult>('POST', '/api/http/execute', { noteId, version, executionId }),
+  /** H-30, H-63: con el perfil que se muestra. H-69: la clave, si el perfil la pide. */
+  httpExecute: (noteId: string, version: number, executionId: string, profileId: string, confirmKey?: string) =>
+    request<HttpResult>('POST', '/api/http/execute', { noteId, version, executionId, profileId, confirmKey }),
   httpCancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/http/cancel', { executionId }),
-  /** H-21: solo se sabe si hay contraseña; nunca se lee. */
-  httpCredentials: () => request<{ hasPassword: boolean }>('GET', '/api/http/credentials'),
-  setHttpPassword: (password: string) => request<{ hasPassword: boolean }>('PUT', '/api/http/credentials', { password }),
+  /** H-63 */
+  httpProfile: () => request<{ active: string }>('GET', '/api/http/profile'),
+  setHttpProfile: (id: string) => request<{ active: string }>('PUT', '/api/http/profile', { id }),
+  /** H-21: solo se sabe qué perfiles tienen contraseña; nunca se lee. */
+  httpCredentials: () => request<HttpCredentialsState>('GET', '/api/http/credentials'),
+  setHttpPassword: (profileId: string, password: string) =>
+    request<HttpCredentialsState>('PUT', '/api/http/credentials', { profileId, password }),
+  /** H-69: vacía la borra. */
+  setConfirmKey: (key: string) => request<{ hasConfirmKey: boolean }>('PUT', '/api/http/confirm-key', { key }),
+  /** H-66 */
+  httpCa: () => request<{ certificates: CaCertificate[] }>('GET', '/api/http/ca'),
+  importHttpCa: (pem: string) => request<{ certificates: CaCertificate[] }>('PUT', '/api/http/ca', { pem }),
   getConnection: () => request<ConnectionView>('GET', '/api/connection'),
   saveConnection: (form: ConnectionForm) => request<ConnectionStatus>('PUT', '/api/connection', form),
   testConnection: (form: Omit<ConnectionForm, 'schema'>) => request<{ schemas: string[] }>('POST', '/api/connection/test', form),

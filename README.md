@@ -4,10 +4,10 @@ LiteDD es un gestor local de notas para un único usuario. Admite cuatro tipos d
 
 - **Markdown**, con vista renderizada, tablas, listas de tareas, código resaltado y diagramas Mermaid.
 - **SQL**, escritas con la sintaxis dinámica de MyBatis (`#{...}`, `<if>`, `<where>`, `<foreach>`…). Se ejecutan en modo de solo lectura contra una base de datos MySQL, con un formulario de variables, paginación, ordenación y cronómetro.
-- **HTTP**, llamadas a un servidor de pruebas en el propio equipo (127.0.0.1 o localhost): método, endpoint con variables de ruta, params, cabeceras y cuerpo, con un login Basic Auth previo opcional. La respuesta muestra estado, tiempos, cuerpo, cabeceras y cookies.
+- **HTTP**, llamadas a un servidor de pruebas en el propio equipo (127.0.0.1 o localhost) y, si se activan, a entornos de preproducción, solo por HTTPS validado contra una CA importada: método, endpoint con variables de ruta, params, cabeceras y cuerpo, con un login Basic Auth previo opcional. El destino se elige en la barra superior y cada perfil puede pedir una clave de confirmación antes de enviar. La respuesta muestra estado, tiempos, cuerpo, cabeceras y cookies.
 - **XML MyBatis**, un fichero mapper completo. Al guardarlo se genera una nota SQL de solo lectura por cada `<select>`, `<insert>`, `<update>` y `<delete>`, con los fragmentos `<sql>` ya incluidos; si cambia el mapper, cambian sus notas. Las sentencias que modifican datos nunca se ejecutan: se genera su SQL con los valores elegidos para copiarlo.
 
-Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet: solo se conecta a MySQL y al servidor local de las notas HTTP.
+Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet: solo se conecta a MySQL, al servidor local de las notas HTTP y, si se activan, a los entornos de preproducción configurados.
 
 ## Requisitos
 
@@ -55,7 +55,8 @@ LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los
 | Notas (SQLite) | `~/.local/share/litedd/litedd.db` |
 | Copias de seguridad | `~/.local/share/litedd/backups/` |
 | Ajustes y conexión | `~/.config/litedd/config.json` y `connection.json` |
-| Contraseña de las notas HTTP | `~/.config/litedd/http.json` (solo para tu usuario; no se exporta) |
+| Contraseñas de las notas HTTP y clave de confirmación | `~/.config/litedd/http.json` (solo para tu usuario; no se exporta ni entra en las copias) |
+| CA de los entornos de preproducción | `~/.config/litedd/http-ca.pem` |
 | Registro | `~/.local/state/litedd/litedd.log` (rota a 5 MB, 3 ficheros) |
 
 Cada día, al arrancar, se hace una copia `litedd-AAAAMMDD.db` y se conservan las 3 últimas. Antes de «Reemplazar todo» y antes de una migración se hace una copia adicional con sufijo propio, y se conservan las 2 últimas. Desde «Ajustes → Datos» se puede exportar a ZIP, importar, crear una copia al momento y abrir la carpeta de datos.
