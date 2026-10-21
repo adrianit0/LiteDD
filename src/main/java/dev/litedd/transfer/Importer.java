@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.ApiError;
 import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.AttachmentsApi;
+import dev.litedd.notes.BoardImage;
 import dev.litedd.notes.ContentMapper;
 import dev.litedd.notes.JavaConstantMapper;
 import dev.litedd.notes.NoteMapper;
@@ -58,7 +59,7 @@ public final class Importer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter ROOT_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final Set<String> TYPES = Set.of("md", "sql", "http", "xml");
+    private static final Set<String> TYPES = Set.of("md", "sql", "http", "xml", BoardImage.TYPE);
     private static final Set<String> STATEMENT_KINDS = Set.of("select", "insert", "update", "delete");
     private static final Pattern LINK = Pattern.compile("litedd://(note|attachment)/([0-9A-Za-z-]+)");
 
@@ -117,8 +118,11 @@ public final class Importer {
                     Manifest.Note n = kids.get(i);
                     String id = noteIds.get(n.id());
                     String parentId = n.parentId() == null ? rootId : noteIds.get(n.parentId());
-                    String text = new String(entries.get(n.file()), StandardCharsets.UTF_8);
-                    if (mode == Mode.BRANCH) {
+                    boolean board = BoardImage.TYPE.equals(n.type());
+                    // B-34: el .png de una pizarra vuelve a ser su URL data:.
+                    String text = board ? BoardImage.encode(entries.get(n.file()))
+                            : new String(entries.get(n.file()), StandardCharsets.UTF_8);
+                    if (mode == Mode.BRANCH && !board) {
                         text = relink(text, noteIds, attachmentIds);
                     }
                     notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
@@ -240,6 +244,13 @@ public final class Importer {
                 throw new ApiError(400, "invalid_manifest", "Una nota no tiene título: " + n.id());
             }
             requireFile(entries, n.file());
+            if (BoardImage.TYPE.equals(n.type())) {
+                try {
+                    BoardImage.encode(entries.get(n.file())); // B-34
+                } catch (ApiError e) {
+                    throw new ApiError(400, "invalid_manifest", "La pizarra «" + n.title() + "» no es válida: " + e.getMessage());
+                }
+            }
         }
         Map<String, String> parents = new HashMap<>();
         for (Manifest.Note n : manifest.notes()) {

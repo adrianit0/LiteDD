@@ -3,6 +3,7 @@ package dev.litedd.transfer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import dev.litedd.AppInfo;
+import dev.litedd.notes.BoardImage;
 import dev.litedd.notes.JavaConstantMapper;
 import dev.litedd.notes.JavaConstantMapper.ConstantRow;
 import dev.litedd.store.Store;
@@ -29,8 +30,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Exportación a un ZIP legible (X-01 a X-04, M-50): manifest.json, una nota por fichero .md, .sql, .http.json o .xml en
- * carpetas que reproducen el árbol, y los adjuntos. No incluye papelera, historial, pestañas,
+ * Exportación a un ZIP legible (X-01 a X-04, M-50, B-34): manifest.json, una nota por fichero .md, .sql, .http.json,
+ * .xml o .png en carpetas que reproducen el árbol, y los adjuntos. No incluye papelera, historial, pestañas,
  * valores, ajustes ni conexión.
  */
 public final class Exporter {
@@ -88,8 +89,9 @@ public final class Exporter {
         try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
             put(zip, "manifest.json", JSON.writeValueAsBytes(manifest));
             for (ExportNote n : data.notes()) {
-                // X-03: el contenido idéntico al de la nota, sin cabeceras.
-                put(zip, files.get(n.id()), n.content().getBytes(StandardCharsets.UTF_8));
+                // X-03: el contenido idéntico al de la nota, sin cabeceras; en una pizarra, los bytes del PNG (B-34).
+                put(zip, files.get(n.id()), BoardImage.TYPE.equals(n.type()) ? BoardImage.decode(n.content())
+                        : n.content().getBytes(StandardCharsets.UTF_8));
             }
             for (ExportAttachment a : data.attachments()) {
                 put(zip, attachmentFile(a.id(), a.mime()), a.data());
@@ -107,8 +109,13 @@ public final class Exporter {
         for (int i = 0; i < kids.size(); i++) {
             ExportNote n = kids.get(i);
             String base = String.format("%0" + width + "d", i + 1) + "-" + slug(n.title());
-            // H-50: las notas HTTP son JSON.
-            files.put(n.id(), folder + base + ("http".equals(n.type()) ? ".http.json" : "." + n.type()));
+            // H-50: las notas HTTP son JSON; B-34: las pizarras, PNG.
+            String extension = switch (n.type()) {
+                case "http" -> ".http.json";
+                case BoardImage.TYPE -> ".png";
+                default -> "." + n.type();
+            };
+            files.put(n.id(), folder + base + extension);
             assignFiles(children, n.id(), folder + base + "/", files);
         }
     }

@@ -162,6 +162,47 @@ class MigratorTest {
     }
 
     @Test
+    void b01_b33_v006_admits_boards_and_does_not_index_their_image() throws Exception {
+        try (Connection c = connect()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON");
+            }
+            new Migrator(Migrator.MIGRATIONS.subList(0, 5), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, description, created_at, updated_at)
+                        VALUES ('x', NULL, 0, 'xml', 'Mapper', '<mapper/>', 'resumen', 'now', 'now')""");
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at, statement_id, statement_kind)
+                        VALUES ('s', 'x', 0, 'sql', 'selectBooks', 'SELECT 1', 'now', 'now', 'selectBooks', 'select')""");
+                st.execute("INSERT INTO tab (id, note_id, position, active, mode) VALUES ('t1', 's', 0, 1, 'view')");
+            }
+            String ridBefore = scalar(c, "SELECT rid FROM note WHERE id = 's'");
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
+            assertThat(scalar(c, "SELECT rid FROM note WHERE id = 's'")).isEqualTo(ridBefore);
+            assertThat(scalar(c, "SELECT statement_kind FROM note WHERE id = 's'")).isEqualTo("select");
+            assertThat(scalar(c, "SELECT count(*) FROM tab")).isEqualTo("1");
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"selectbooks\"'")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('b', NULL, 1, 'board', 'Plano', 'data:image/png;base64,iVBORw0KGgo', 'now', 'now')""");
+                assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"plano\"'")).isEqualTo("1");
+                assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"ivborw0kggo\"'")).isEqualTo("0");
+                // Cambiar y borrar la pizarra no desajusta el índice.
+                st.execute("UPDATE note SET title = 'Esquema', content = 'data:image/png;base64,iVBORw0KGgoAAAA' WHERE id = 'b'");
+                st.execute("DELETE FROM note WHERE id = 'b'");
+                st.execute("INSERT INTO note_fts(note_fts, rank) VALUES ('integrity-check', 0)");
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"plano\" OR \"esquema\"'")).isEqualTo("0");
+            assertThat(scalar(c, "PRAGMA foreign_keys")).isEqualTo("1");
+        }
+    }
+
+    @Test
     void d02_keeps_only_two_premigration_backups() throws Exception {
         Files.createDirectories(dir);
         for (String name : List.of("litedd-20260101-000000-premigracion.db", "litedd-20260102-000000-premigracion.db",

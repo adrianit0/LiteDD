@@ -3,6 +3,7 @@ package dev.litedd.transfer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.ApiError;
+import dev.litedd.notes.BoardPngs;
 import dev.litedd.notes.JavaConstantValues;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.imageio.ImageIO;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -211,6 +213,50 @@ class TransferTest {
         importer.importZip(new ByteArrayInputStream(zip), Mode.REPLACE);
         assertThat(constants.values()).containsExactlyInAnyOrderEntriesOf(
                 Map.of("demo.DemoConstants@STATUS_ACTIVE", "5", "demo.DemoConstants@LABEL", "novel"));
+    }
+
+    @Test
+    void b34_boards_export_as_png_files_and_import_back() throws Exception {
+        byte[] png = BoardPngs.png(120, 80);
+        note(null, "board", "Esquema", BoardPngs.dataUrl(png));
+        note(null, "board", "Vacía", "");
+        byte[] zip = exporter.export();
+        Map<String, byte[]> files = unzip(zip);
+        assertThat(files.get("notes/01-esquema.png")).isEqualTo(png);
+        assertThat(files.get("notes/02-vacia.png")).isEmpty();
+        // Se abre con cualquier visor.
+        assertThat(ImageIO.read(new ByteArrayInputStream(files.get("notes/01-esquema.png"))).getWidth()).isEqualTo(120);
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        List<Note> imported = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId()))
+                .map(n -> notes.get(n.id())).toList();
+        assertThat(imported).extracting(Note::type).containsExactly("board", "board");
+        assertThat(imported).extracting(Note::content).containsExactly(BoardPngs.dataUrl(png), "");
+    }
+
+    @Test
+    void b34_import_rejects_a_board_that_is_not_a_png() throws Exception {
+        String manifest = """
+                {"formatVersion":1,"notes":[
+                  {"id":"b","parentId":null,"position":0,"type":"board","title":"Plano","tags":[],"file":"notes/b.png"}]}""";
+        note(null, "md", "Intacta", "x");
+        List<String> before = snapshot();
+        assertThatThrownBy(() -> importer.importZip(new ByteArrayInputStream(zip(Map.of("manifest.json", manifest,
+                "notes/b.png", "hola"))), Mode.REPLACE))
+                .isInstanceOf(ApiError.class).hasMessageContaining("«Plano»");
+        assertThat(snapshot()).isEqualTo(before);
+    }
+
+    @Test
+    void b44_add_as_branch_remaps_boards_shown_in_markdown() throws Exception {
+        Note board = note(null, "board", "Esquema", BoardPngs.dataUrl(BoardPngs.png(10, 10)));
+        note(null, "md", "Informe", "Antes\n\n![Esquema](litedd://note/" + board.id() + ")");
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(exporter.export()), Mode.BRANCH);
+
+        List<TreeNode> imported = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId())).toList();
+        String newBoard = imported.get(0).id();
+        assertThat(notes.get(imported.get(1).id()).content()).isEqualTo("Antes\n\n![Esquema](litedd://note/" + newBoard + ")");
     }
 
     @Test

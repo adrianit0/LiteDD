@@ -37,17 +37,18 @@ public interface ContentMapper {
 
     /**
      * Con match, búsqueda de texto completo con fragmento resaltado entre char(2) y char(3); sin él,
-     * solo filtros, por fecha de modificación. Nunca notas de la papelera (D-04).
+     * solo filtros, por fecha de modificación. Nunca notas de la papelera (D-04). Las pizarras no llevan fragmento:
+     * con contenido externo, FTS5 lo sacaría del base64 (B-33).
      */
     @Select("""
             <script>
             SELECT n.id, n.parent_id, n.type, n.title, n.favorite, n.updated_at,
             <choose>
               <when test="match != null">
-                snippet(note_fts, 1, char(2), char(3), '…', 16) AS fragment,
+                CASE WHEN n.type = 'board' THEN '' ELSE snippet(note_fts, 1, char(2), char(3), '…', 16) END AS fragment,
                 highlight(note_fts, 0, char(2), char(3)) AS title_marked
               </when>
-              <otherwise>substr(n.content, 1, 160) AS fragment, NULL AS title_marked</otherwise>
+              <otherwise>CASE WHEN n.type = 'board' THEN '' ELSE substr(n.content, 1, 160) END AS fragment, NULL AS title_marked</otherwise>
             </choose>
             FROM note n
             <if test="match != null">JOIN note_fts ON note_fts.rowid = n.rid</if>

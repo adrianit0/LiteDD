@@ -49,8 +49,9 @@ public final class HttpServer {
             config.jetty.host = HOST;
             config.jetty.port = port;
             config.startup.showJavalinBanner = false;
-            // N-92: imágenes de hasta 10 MB; el límite exacto se comprueba en AttachmentsApi.
-            config.http.maxRequestSize = 11L * 1024 * 1024;
+            // N-92, B-31: imágenes y pizarras de hasta 10 MB, que en base64 ocupan unos 13,4 MB. El límite exacto se
+            // comprueba en AttachmentsApi y en BoardImage.
+            config.http.maxRequestSize = 15L * 1024 * 1024;
             if (hasWeb) {
                 config.staticFiles.add(files -> {
                     files.hostedPath = "/";

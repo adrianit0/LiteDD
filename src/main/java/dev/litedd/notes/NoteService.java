@@ -33,7 +33,7 @@ public final class NoteService {
     /** N-07 */
     public static final int DESCRIPTION_MAX = 200;
     private static final String XML = "xml";
-    private static final Set<String> TYPES = Set.of("md", "sql", "http", XML);
+    private static final Set<String> TYPES = Set.of("md", "sql", "http", XML, BoardImage.TYPE);
 
     /** N-44 */
     static final int VERSIONS_KEPT = 20;
@@ -87,7 +87,7 @@ public final class NoteService {
     /** N-05, N-06: la nota nueva va al final de sus hermanas. */
     public Note create(String parentId, String type, String title) {
         if (type == null || !TYPES.contains(type)) {
-            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md», «sql», «http» o «xml»");
+            throw new ApiError(400, "invalid_type", "Tipo de nota no válido: debe ser «md», «sql», «http», «xml» o «board»");
         }
         String finalTitle = title == null || title.isBlank() ? DEFAULT_TITLE : title.strip();
         return store.write(s -> {
@@ -134,6 +134,9 @@ public final class NoteService {
         return store.write(s -> {
             Note current = load(s, id);
             rejectGenerated(current);
+            if (BoardImage.TYPE.equals(current.type())) {
+                BoardImage.validate(finalContent); // B-31
+            }
             String finalDescription = newDescription == null ? current.description() : newDescription;
             // Sin cambios no se toca la nota: así un snapshot al salir de edición no altera la versión.
             boolean unchanged = current.version() == baseVersion && current.title().equals(title.strip())

@@ -26,7 +26,8 @@ public final class Migrator {
     /** Orden de aplicación; user_version es el número de migraciones aplicadas. */
     public static final List<String> MIGRATIONS = List.of("db/migration/V001__initial.sql",
             "db/migration/V002__note_description.sql", "db/migration/V003__http_notes.sql",
-            "db/migration/V004__mybatis_notes.sql", "db/migration/V005__java_constants.sql");
+            "db/migration/V004__mybatis_notes.sql", "db/migration/V005__java_constants.sql",
+            "db/migration/V006__board_notes.sql");
 
     static final String BACKUP_SUFFIX = "-premigracion.db";
     private static final int BACKUPS_KEPT = 2;
