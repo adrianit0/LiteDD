@@ -136,6 +136,8 @@ Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window
 |---|---|
 | Ajustes | `~/.config/litedd/config.json` |
 | Conexión (permisos 600) | `~/.config/litedd/connection.json` |
+| Contraseñas de los perfiles HTTP y hash de la clave de confirmación (permisos 600) | `~/.config/litedd/http.json` |
+| CA corporativa de los perfiles de preproducción | `~/.config/litedd/http-ca.pem` |
 | Datos | `~/.local/share/litedd/litedd.db` |
 | Copias | `~/.local/share/litedd/backups/` |
 | Registro | `~/.local/state/litedd/litedd.log` |

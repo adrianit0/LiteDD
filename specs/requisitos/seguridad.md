@@ -25,14 +25,14 @@ LiteDD nunca modifica la base de datos consultada, aunque la conexión use un us
 | S-13 | Se valida Origin en las peticiones que modifican estado. No se emiten cabeceras CORS. |
 | S-14 | Cabecera CSP: `default-src 'self'`; imágenes `'self'` y `data:`. Ningún recurso se carga de internet: todo va empaquetado. |
 | S-15 | El HTML generado desde Markdown se sanea con DOMPurify. Mermaid se configura con `securityLevel: 'strict'`. |
-| S-16 | Sin telemetría ni llamadas a servicios externos. Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41). |
+| S-16 | Sin telemetría ni llamadas a servicios externos. Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41) y, si el usuario lo activa, a los perfiles de preproducción que configure, solo por HTTPS validado contra la CA importada (H-62 a H-68). |
 
 ## Credenciales y registro
 
 | ID | Requisito |
 |---|---|
-| S-20 | La contraseña de MySQL se guarda solo en connection.json y la de las notas HTTP solo en http.json, los dos con permisos 600. Nunca en SQLite, en la exportación ni en el registro. |
-| S-21 | La API no devuelve ninguna contraseña; solo indica si hay una guardada. |
+| S-20 | La contraseña de MySQL se guarda solo en connection.json y las de los perfiles de las notas HTTP solo en http.json, los dos con permisos 600. La clave de confirmación de las notas HTTP se guarda solo como hash en http.json (H-69). Nunca en SQLite, en las copias, en la exportación ni en el registro. |
+| S-21 | La API no devuelve ninguna contraseña ni la clave de confirmación; solo indica si hay una guardada. |
 | S-22 | El registro no contiene valores de variables ni filas de resultado. El SQL se registra solo en nivel de depuración. |
 
 ## Reglas del repositorio público

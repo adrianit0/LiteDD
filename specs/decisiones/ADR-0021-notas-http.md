@@ -1,6 +1,6 @@
 # ADR-0021: Notas HTTP contra el servidor local
 
-- Estado: aceptada (2026-10-06)
+- Estado: aceptada (2026-10-06); el destino solo local lo modifica ADR-0028
 - Requisitos: H-01 a H-50, constitución (principio 4), S-16, S-20, N-04, N-05, X-03, U-10
 
 ## Contexto
