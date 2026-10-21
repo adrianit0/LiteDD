@@ -76,7 +76,7 @@ public final class Variables {
 
     /**
      * H-18: params, cabeceras y cuerpo con los valores puestos tal cual. El endpoint no se toca: su
-     * sustitución codifica el valor (LocalUrls.compose).
+     * sustitución codifica el valor (HttpUrls.compose).
      */
     static HttpNoteContent fill(HttpNoteContent c, Map<String, String> values) {
         Map<String, Generated> generated = new LinkedHashMap<>();

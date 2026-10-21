@@ -42,6 +42,7 @@ class HttpNotesTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String PASSWORD = "secreto-de-prueba";
+    private static final String LOCAL = AppConfig.Profile.LOCAL_ID;
 
     @TempDir
     Path dir;
@@ -73,7 +74,7 @@ class HttpNotesTest {
         store = Store.open(dir.resolve("litedd.db"), dir.resolve("backups"));
         notes = new NoteService(store);
         credentials = new HttpCredentials(dir.resolve("config/http.json"));
-        credentials.setPassword(PASSWORD);
+        credentials.setPassword(LOCAL, PASSWORD);
         server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", ex -> {
             byte[] body = ex.getRequestBody().readAllBytes();
@@ -141,27 +142,31 @@ class HttpNotesTest {
     }
 
     private Result run(Note n) {
-        return runner.execute(n.id(), notes.get(n.id()).version(), "e-" + n.id());
+        return runner.execute(n.id(), notes.get(n.id()).version(), "e-" + n.id(), LOCAL, null);
     }
 
     private List<Received> to(String path) {
         return received.stream().filter(r -> r.uri().startsWith(path)).toList();
     }
 
+    private static AppConfig.Profile local(String base) {
+        return AppConfig.Profile.local(base, "");
+    }
+
     // --- Dirección (H-10 a H-14, H-40) ---
 
     @Test
     void h11_one_slash_between_base_and_endpoint() {
-        assertThat(LocalUrls.join("http://127.0.0.1:8080/demo/", "/user")).isEqualTo("http://127.0.0.1:8080/demo/user");
-        assertThat(LocalUrls.join("http://127.0.0.1:8080/demo", "user")).isEqualTo("http://127.0.0.1:8080/demo/user");
-        assertThat(LocalUrls.join("http://127.0.0.1:8080/demo/", "user")).isEqualTo("http://127.0.0.1:8080/demo/user");
-        assertThat(LocalUrls.join("http://127.0.0.1:8080/demo", "/user")).isEqualTo("http://127.0.0.1:8080/demo/user");
-        assertThat(LocalUrls.join("http://127.0.0.1:8080/demo/", "")).isEqualTo("http://127.0.0.1:8080/demo/");
+        assertThat(HttpUrls.join("http://127.0.0.1:8080/demo/", "/user")).isEqualTo("http://127.0.0.1:8080/demo/user");
+        assertThat(HttpUrls.join("http://127.0.0.1:8080/demo", "user")).isEqualTo("http://127.0.0.1:8080/demo/user");
+        assertThat(HttpUrls.join("http://127.0.0.1:8080/demo/", "user")).isEqualTo("http://127.0.0.1:8080/demo/user");
+        assertThat(HttpUrls.join("http://127.0.0.1:8080/demo", "/user")).isEqualTo("http://127.0.0.1:8080/demo/user");
+        assertThat(HttpUrls.join("http://127.0.0.1:8080/demo/", "")).isEqualTo("http://127.0.0.1:8080/demo/");
     }
 
     @Test
     void h12_h14_endpoint_variables_and_params_are_encoded() {
-        String url = LocalUrls.compose("http://127.0.0.1:8080/demo/", "/user/#{id}/tasks/#{ name }",
+        String url = HttpUrls.compose(local("http://127.0.0.1:8080/demo/"), "/user/#{id}/tasks/#{ name }",
                 Map.of("id", "5", "name", "a b/ñ"),
                 List.of(new Row("q", "x&y=1", true), new Row("off", "1", false), new Row("page", "2", null))).toString();
         assertThat(url).isEqualTo("http://127.0.0.1:8080/demo/user/5/tasks/a%20b%2F%C3%B1?q=x%26y%3D1&page=2");
@@ -238,15 +243,15 @@ class HttpNotesTest {
     @Test
     void h40_only_local_addresses_are_accepted() {
         for (String base : List.of("http://127.0.0.1:8080/demo/", "http://localhost:8080", "http://[::1]:8080/x/", "https://127.0.0.1/")) {
-            assertThat(LocalUrls.validateBase(base)).as(base).isNotNull();
+            assertThat(HttpUrls.validateBase(local(base))).as(base).isNotNull();
         }
         for (String base : List.of("http://example.org/", "http://10.0.0.5:8080/", "http://127.0.0.2/", "ftp://127.0.0.1/",
                 "http://usuario@127.0.0.1/", "file:///etc/passwd", "http://127.0.0.1.example.org/", "http://127.0.0.1:8080/?a=1")) {
-            assertThatThrownBy(() -> LocalUrls.validateBase(base)).as(base).isInstanceOf(ApiError.class);
+            assertThatThrownBy(() -> HttpUrls.validateBase(local(base))).as(base).isInstanceOf(ApiError.class);
         }
         // La URL final no puede cambiar de host ni de puerto aunque el endpoint lo intente.
         for (String endpoint : List.of("@example.org/x", "//example.org/x", "/../../x")) {
-            assertThat(LocalUrls.compose("http://127.0.0.1:8080/demo/", endpoint, Map.of(), List.of()).getHost())
+            assertThat(HttpUrls.compose(local("http://127.0.0.1:8080/demo/"), endpoint, Map.of(), List.of()).getHost())
                     .as(endpoint).isEqualTo("127.0.0.1");
         }
         // Los ajustes no admiten una URL base que no sea local.
@@ -363,9 +368,9 @@ class HttpNotesTest {
 
     @Test
     void h21_h26_missing_password_or_user_stop_before_calling() {
-        credentials.setPassword(null);
+        credentials.setPassword(LOCAL, null);
         assertThat(run(http("A", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_password");
-        credentials.setPassword(PASSWORD);
+        credentials.setPassword(LOCAL, PASSWORD);
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
                 new AppConfig.Http("http://127.0.0.1:" + port + "/demo/", loginNote.id(), "", 30, 10, null, null, null)));
         assertThat(run(http("B", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_user");
@@ -417,7 +422,7 @@ class HttpNotesTest {
 
         configure("http://127.0.0.1:" + port + "/demo/", 30, 10);
         AtomicReference<Result> result = new AtomicReference<>();
-        Thread t = Thread.ofVirtual().start(() -> result.set(runner.execute(slow.id(), notes.get(slow.id()).version(), "lenta")));
+        Thread t = Thread.ofVirtual().start(() -> result.set(runner.execute(slow.id(), notes.get(slow.id()).version(), "lenta", LOCAL, null)));
         Thread.sleep(300);
         assertThat(runner.cancel("lenta")).isTrue();
         t.join(5000);
@@ -491,10 +496,10 @@ class HttpNotesTest {
     @Test
     void a04_a05_runs_the_saved_version_of_an_http_note() {
         Note n = http("Tareas", "{\"endpoint\":\"/user/5/tasks\",\"login\":\"none\"}");
-        assertThatThrownBy(() -> runner.execute(n.id(), n.version() - 1, "x")).isInstanceOf(ApiError.class)
+        assertThatThrownBy(() -> runner.execute(n.id(), n.version() - 1, "x", LOCAL, null)).isInstanceOf(ApiError.class)
                 .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(409));
         Note md = notes.create(null, "md", "Texto");
-        assertThatThrownBy(() -> runner.execute(md.id(), md.version(), "x")).isInstanceOf(ApiError.class)
+        assertThatThrownBy(() -> runner.execute(md.id(), md.version(), "x", LOCAL, null)).isInstanceOf(ApiError.class)
                 .hasMessageContaining("no es una nota HTTP");
         Note broken = http("Rota", "{no es json");
         assertThatThrownBy(() -> run(broken)).isInstanceOf(ApiError.class).hasMessageContaining("no es válido");
@@ -517,8 +522,8 @@ class HttpNotesTest {
             }
         }
         store = Store.open(dir.resolve("litedd.db"), dir.resolve("backups"));
-        credentials.setPassword("");
-        assertThat(credentials.password()).isEmpty();
+        credentials.setPassword(LOCAL, "");
+        assertThat(credentials.password(LOCAL)).isEmpty();
         assertThat(file).doesNotExist();
     }
 
@@ -529,7 +534,8 @@ class HttpNotesTest {
         try (ServerSocket s = new ServerSocket(0)) {
             apiPort = s.getLocalPort();
         }
-        dev.litedd.http.HttpServer api = new dev.litedd.http.HttpServer(apiPort, token, List.of(new HttpApi(runner, credentials))).start();
+        HttpApi httpApi = new HttpApi(runner, credentials, new CorporateCa(dir.resolve("config/http-ca.pem")), config::get);
+        dev.litedd.http.HttpServer api = new dev.litedd.http.HttpServer(apiPort, token, List.of(httpApi)).start();
         try {
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.util.function.BiFunction<String, String, java.net.http.HttpResponse<String>> call = (path, body) -> {
@@ -543,13 +549,15 @@ class HttpNotesTest {
                     throw new IllegalStateException(e);
                 }
             };
-            assertThat(call.apply("/api/http/credentials", null).body()).isEqualTo("{\"hasPassword\":true}");
-            assertThat(call.apply("/api/http/credentials", "{\"password\":\"nueva-clave\"}").body()).doesNotContain("nueva-clave");
-            assertThat(credentials.password()).contains("nueva-clave");
+            assertThat(call.apply("/api/http/credentials", null).body()).isEqualTo("{\"passwords\":{\"local\":true},\"hasConfirmKey\":false}");
+            assertThat(call.apply("/api/http/credentials", "{\"profileId\":\"local\",\"password\":\"nueva-clave\"}").body())
+                    .doesNotContain("nueva-clave");
+            assertThat(credentials.password(LOCAL)).contains("nueva-clave");
 
-            credentials.setPassword(PASSWORD);
+            credentials.setPassword(LOCAL, PASSWORD);
             Note n = http("Tareas", "{\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
-            var r = call.apply("/api/http/execute", "{\"noteId\":\"" + n.id() + "\",\"version\":" + n.version() + ",\"executionId\":\"x1\"}");
+            var r = call.apply("/api/http/execute", "{\"noteId\":\"" + n.id() + "\",\"version\":" + n.version()
+                    + ",\"executionId\":\"x1\",\"profileId\":\"local\"}");
             assertThat(r.statusCode()).isEqualTo(200);
             assertThat(JSON.readTree(r.body()).get("response").get("status").asInt()).isEqualTo(200);
             assertThat(r.body()).doesNotContain(PASSWORD);

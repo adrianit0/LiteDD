@@ -12,6 +12,7 @@ import io.javalin.config.RoutesConfig;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
@@ -26,14 +27,22 @@ public final class SettingsApi implements ApiRoutes {
 
     private final Store store;
     private final AppSettings settings;
+    private final Consumer<AppConfig> onConfigSaved;
 
     public SettingsApi(Store store) {
         this(store, new AppSettings(null));
     }
 
     public SettingsApi(Store store, AppSettings settings) {
+        this(store, settings, config -> {
+        });
+    }
+
+    /** onConfigSaved: lo que depende de los ajustes ya guardados, como borrar las contraseñas de perfiles quitados (H-62). */
+    public SettingsApi(Store store, AppSettings settings, Consumer<AppConfig> onConfigSaved) {
         this.store = store;
         this.settings = settings;
+        this.onConfigSaved = onConfigSaved;
     }
 
     @Override
@@ -49,7 +58,7 @@ public final class SettingsApi implements ApiRoutes {
                 }
             }
             if (config != null) {
-                settings.update(JSON.treeToValue(config, AppConfig.class));
+                onConfigSaved.accept(settings.update(JSON.treeToValue(config, AppConfig.class)));
             }
             store.write(s -> {
                 SettingMapper m = s.getMapper(SettingMapper.class);

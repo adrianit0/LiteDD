@@ -2,6 +2,7 @@ package dev.litedd.httpnotes;
 
 import dev.litedd.http.ApiError;
 import dev.litedd.httpnotes.HttpNoteContent.Row;
+import dev.litedd.settings.AppConfig.Profile;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -15,21 +16,23 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Direcciones de las notas HTTP: solo el propio equipo (H-40) y la URL final a partir de la base, el
- * endpoint, las variables de ruta y los params (H-10 a H-12, H-14).
+ * Direcciones de las notas HTTP: solo el propio equipo con el perfil Local (H-40) o, con un perfil de preproducción,
+ * https y un nombre de host (H-65). La URL final sale de la base del perfil, el endpoint, las variables de ruta y los
+ * params (H-10 a H-12, H-14).
  */
-public final class LocalUrls {
+public final class HttpUrls {
 
     /** H-40: nombres admitidos; además deben resolver a una dirección local. */
     private static final Set<String> LOCAL_HOSTS = Set.of("127.0.0.1", "localhost", "[::1]", "::1");
 
-    private LocalUrls() {
+    private HttpUrls() {
     }
 
-    /** H-10, H-40: la URL base de Ajustes. */
-    public static URI validateBase(String base) {
+    /** H-10, H-40, H-65: la URL base del perfil. */
+    public static URI validateBase(Profile profile) {
+        String base = profile.baseUrl();
         if (base == null || base.isBlank()) {
-            throw new ApiError(400, "invalid_base_url", "Falta la URL base de las notas HTTP en «Ajustes»");
+            throw new ApiError(400, "invalid_base_url", "Falta la URL base del perfil «" + profile.name() + "» en «Ajustes»");
         }
         URI uri;
         try {
@@ -37,7 +40,7 @@ public final class LocalUrls {
         } catch (URISyntaxException e) {
             throw new ApiError(400, "invalid_base_url", "La URL base no es válida: " + base.strip());
         }
-        checkLocalName(uri);
+        checkAllowed(uri, profile);
         if (uri.getRawQuery() != null || uri.getRawFragment() != null) {
             throw new ApiError(400, "invalid_base_url", "La URL base no puede llevar «?» ni «#»");
         }
@@ -58,11 +61,11 @@ public final class LocalUrls {
     }
 
     /**
-     * H-10 a H-14, H-18, H-40: URL final, comprobada de nuevo; nunca sale del host y puerto de la base. Las
-     * variables #{nombre} del endpoint se codifican como segmento de ruta; params ya llega sustituido.
+     * H-10 a H-14, H-18, H-40, H-65: URL final, comprobada de nuevo; nunca sale del host y puerto de la base del perfil.
+     * Las variables #{nombre} del endpoint se codifican como segmento de ruta; params ya llega sustituido.
      */
-    public static URI compose(String base, String endpoint, Map<String, String> values, List<Row> params) {
-        URI baseUri = validateBase(base);
+    public static URI compose(Profile profile, String endpoint, Map<String, String> values, List<Row> params) {
+        URI baseUri = validateBase(profile);
         String path = Variables.fill(endpoint, values, v -> encodeSegment(v.strip()));
         StringBuilder url = new StringBuilder(join(baseUri.toString(), path));
         String separator = url.indexOf("?") >= 0 ? "&" : "?";
@@ -79,9 +82,10 @@ public final class LocalUrls {
         } catch (URISyntaxException e) {
             throw new ApiError(400, "invalid_url", "La dirección no es válida: " + e.getInput());
         }
-        checkLocalName(uri);
+        checkAllowed(uri, profile);
         if (!uri.getHost().equalsIgnoreCase(baseUri.getHost()) || port(uri) != port(baseUri)) {
-            throw new ApiError(400, "not_local", "La dirección sale del servidor de la URL base: " + uri.getHost());
+            throw new ApiError(400, profile.isLocal() ? "not_local" : "not_allowed",
+                    "La dirección sale del servidor de la URL base: " + uri.getHost());
         }
         return uri;
     }
@@ -99,6 +103,14 @@ public final class LocalUrls {
         }
     }
 
+    private static void checkAllowed(URI uri, Profile profile) {
+        if (profile.isLocal()) {
+            checkLocalName(uri);
+        } else {
+            checkPreproductionName(uri);
+        }
+    }
+
     private static void checkLocalName(URI uri) {
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
@@ -108,6 +120,33 @@ public final class LocalUrls {
                 || !LOCAL_HOSTS.contains(uri.getHost().toLowerCase(Locale.ROOT))) {
             throw notLocal(uri.getHost() == null ? uri.toString() : uri.getHost());
         }
+    }
+
+    /** H-65: https, sin usuario en la URL y con un nombre de host, nunca una IP: así el nombre del certificado se comprueba. */
+    private static void checkPreproductionName(URI uri) {
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("https")) {
+            throw new ApiError(400, "not_allowed", "Un entorno de preproducción solo admite direcciones https");
+        }
+        if (uri.getRawUserInfo() != null) {
+            throw new ApiError(400, "not_allowed", "La dirección no puede llevar usuario ni contraseña");
+        }
+        if (uri.getHost() == null) {
+            throw new ApiError(400, "not_allowed", "La dirección no tiene un nombre de host válido: " + uri);
+        }
+        if (!isHostName(uri.getHost())) {
+            throw new ApiError(400, "not_allowed",
+                    "Un entorno de preproducción se indica con un nombre de host, no con una dirección IP: " + uri.getHost());
+        }
+    }
+
+    /** Un nombre de host termina en una etiqueta que empieza por letra; una IPv4, en cualquiera de sus formas, no. */
+    static boolean isHostName(String host) {
+        if (host.startsWith("[")) {
+            return false;
+        }
+        String last = host.substring(host.lastIndexOf('.') + 1);
+        return !last.isEmpty() && Character.isLetter(last.charAt(0));
     }
 
     private static ApiError notLocal(String host) {

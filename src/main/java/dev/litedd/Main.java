@@ -1,6 +1,7 @@
 package dev.litedd;
 
 import dev.litedd.http.HttpServer;
+import dev.litedd.httpnotes.CorporateCa;
 import dev.litedd.httpnotes.HttpApi;
 import dev.litedd.httpnotes.HttpCaller;
 import dev.litedd.httpnotes.HttpCredentials;
@@ -118,6 +119,7 @@ public final class Main {
 
         ConnectionFile connectionFile = new ConnectionFile(DataPaths.connectionFile());
         HttpCredentials httpCredentials = new HttpCredentials(DataPaths.httpCredentialsFile());
+        CorporateCa corporateCa = new CorporateCa(DataPaths.httpCaFile());
         MySqlGateway gateway = new MySqlGateway();
         String token = sessionToken();
         AtomicBoolean stopped = new AtomicBoolean();
@@ -148,14 +150,16 @@ public final class Main {
             server.value = new HttpServer(port, token, List.of(
                     new NotesApi(notes),
                     new AttachmentsApi(store),
-                    new SettingsApi(store, settings),
+                    // H-62: al quitar un perfil se borra su contraseña.
+                    new SettingsApi(store, settings, config -> httpCredentials.retainProfiles(config.http().profileIds())),
                     new SessionApi(store),
                     new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, settings::get, constants::values),
                     new ConstantsApi(constants),
                     new ConnectionApi(connectionFile, gateway),
                     new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                             DataPaths.dataDir(), Desktop::openFolder, clock),
-                    new HttpApi(new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller()), httpCredentials),
+                    new HttpApi(new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller(corporateCa)), httpCredentials,
+                            corporateCa, settings::get),
                     new LifecycleApi(presence.value, exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());

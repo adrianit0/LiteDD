@@ -1,5 +1,9 @@
 package dev.litedd.httpnotes;
 
+import dev.litedd.http.ApiError;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
@@ -10,6 +14,9 @@ import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.security.cert.CertPathBuilderException;
+import java.security.cert.CertPathValidatorException;
+import java.security.cert.CertificateExpiredException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,13 +27,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Una llamada HTTP al servidor local (H-30 a H-35, H-41): sin proxy, sin redirecciones y sin almacén de
- * cookies, con tiempo máximo, tope de tamaño y cancelación por executionId.
+ * Una llamada HTTP al servidor local o a un entorno de preproducción (H-30 a H-35, H-41, H-66 a H-68): sin proxy, sin
+ * redirecciones y sin almacén de cookies, con tiempo máximo, tope de tamaño y cancelación por executionId.
  */
 public final class HttpCaller {
 
-    /** Lo que se envía; las cabeceras ya montadas (RequestHeaders). */
-    public record Call(String method, URI uri, List<Map.Entry<String, String>> headers, byte[] body) {
+    /** Lo que se envía; las cabeceras ya montadas (RequestHeaders). preproduction: va por el cliente de la CA corporativa. */
+    public record Call(String method, URI uri, List<Map.Entry<String, String>> headers, byte[] body, boolean preproduction) {
     }
 
     public record Cookie(String name, String value, String domain, String path, Long maxAge, boolean httpOnly, boolean secure) {
@@ -56,21 +63,55 @@ public final class HttpCaller {
     }
 
     private final HttpClient client;
+    private final CorporateCa ca;
+    private SSLContext preproductionContext;
+    private HttpClient preproductionClient;
     private final Map<String, CompletableFuture<?>> running = new ConcurrentHashMap<>();
     private final Map<String, InputStream> reading = new ConcurrentHashMap<>();
 
+    /** Solo el perfil Local: sin CA corporativa, toda llamada de preproducción se rechaza (H-67). */
     public HttpCaller() {
-        // H-41: sin proxy (NO_PROXY), sin redirecciones y sin CookieHandler. HTTP/1.1: sin intentos de h2c.
-        this.client = HttpClient.newBuilder()
+        this(null);
+    }
+
+    public HttpCaller(CorporateCa ca) {
+        this.client = builder().build();
+        this.ca = ca;
+    }
+
+    /** H-41, H-68: sin proxy (NO_PROXY), sin redirecciones y sin CookieHandler. HTTP/1.1: sin intentos de h2c. */
+    private static HttpClient.Builder builder() {
+        return HttpClient.newBuilder()
                 .proxy(HttpClient.Builder.NO_PROXY)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+                .connectTimeout(Duration.ofSeconds(10));
+    }
+
+    /**
+     * H-66, H-67: el cliente de preproducción solo confía en la CA importada y comprueba el nombre del certificado (lo
+     * hace HttpClient con https). Se rehace si cambia la CA.
+     */
+    private synchronized HttpClient preproductionClient() {
+        SSLContext context = ca == null ? null : ca.sslContext().orElse(null);
+        if (context == null) {
+            throw new ApiError(400, "no_ca", "Importa la CA corporativa en «Ajustes» antes de llamar a un entorno de preproducción");
+        }
+        if (context != preproductionContext) {
+            preproductionClient = builder().sslContext(context).build();
+            preproductionContext = context;
+        }
+        return preproductionClient;
     }
 
     public Exchange send(Call call, String executionId, int timeoutSeconds, long maxBytes) throws CallFailed {
-        LocalUrls.checkResolvesLocally(call.uri());
+        HttpClient http;
+        if (call.preproduction()) {
+            http = preproductionClient();
+        } else {
+            HttpUrls.checkResolvesLocally(call.uri());
+            http = client;
+        }
         HttpRequest.Builder b = HttpRequest.newBuilder(call.uri())
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .method(call.method(), call.body() == null || call.body().length == 0
@@ -80,7 +121,7 @@ public final class HttpCaller {
             b.header(h.getKey(), h.getValue());
         }
         long start = System.nanoTime();
-        CompletableFuture<HttpResponse<InputStream>> future = client.sendAsync(b.build(), HttpResponse.BodyHandlers.ofInputStream());
+        CompletableFuture<HttpResponse<InputStream>> future = http.sendAsync(b.build(), HttpResponse.BodyHandlers.ofInputStream());
         running.put(executionId, future);
         try {
             HttpResponse<InputStream> response = future.get();
@@ -161,6 +202,9 @@ public final class HttpCaller {
         if (cause instanceof HttpConnectTimeoutException || cause instanceof HttpTimeoutException) {
             return new CallFailed("timeout", "Tiempo agotado: el servidor no respondió en " + timeoutSeconds + " s");
         }
+        if (find(cause, SSLException.class) != null) {
+            return new CallFailed("tls", "Error: " + tlsProblem(cause, hostOf(uri)));
+        }
         Throwable root = cause;
         while (root.getCause() != null && !(root instanceof ConnectException)) {
             root = root.getCause();
@@ -172,11 +216,40 @@ public final class HttpCaller {
         return new CallFailed("network", "Error: " + detail);
     }
 
-    static String hostPort(URI uri) {
-        String host = uri.getHost();
-        if (host.startsWith("[")) {
-            host = host.substring(1, host.length() - 1);
+    /** H-67: por qué no se aceptó el certificado, en palabras del usuario. */
+    private static String tlsProblem(Throwable cause, String host) {
+        CertPathValidatorException invalid = find(cause, CertPathValidatorException.class);
+        if (find(cause, CertificateExpiredException.class) != null
+                || invalid != null && invalid.getReason() == CertPathValidatorException.BasicReason.EXPIRED) {
+            return "el certificado de " + host + " ha caducado";
         }
-        return host + ":" + LocalUrls.port(uri);
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            String message = t.getMessage() == null ? "" : t.getMessage();
+            if (message.startsWith("No subject alternative") || message.startsWith("No name matching")) {
+                return "el certificado del servidor no es para " + host;
+            }
+        }
+        if (invalid != null || find(cause, CertPathBuilderException.class) != null) {
+            return "el certificado de " + host + " no está firmado por la CA importada";
+        }
+        return "no se pudo establecer la conexión segura con " + host + ": " + cause.getMessage();
+    }
+
+    private static <T extends Throwable> T find(Throwable t, Class<T> type) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (type.isInstance(c)) {
+                return type.cast(c);
+            }
+        }
+        return null;
+    }
+
+    private static String hostOf(URI uri) {
+        String host = uri.getHost();
+        return host.startsWith("[") ? host.substring(1, host.length() - 1) : host;
+    }
+
+    static String hostPort(URI uri) {
+        return hostOf(uri) + ":" + HttpUrls.port(uri);
     }
 }

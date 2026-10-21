@@ -7,6 +7,7 @@ import dev.litedd.httpnotes.HttpCaller.Exchange;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.settings.AppConfig;
+import dev.litedd.settings.AppConfig.Profile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +28,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-/** Ejecuta una nota HTTP con su login (H-20 a H-27, H-30 a H-36). */
+/** Ejecuta una nota HTTP con su login contra el perfil activo (H-20 a H-27, H-30 a H-36, H-63, H-69). */
 public final class HttpRunner {
 
     /** H-23: lo que debe traer un login correcto. */
@@ -53,12 +54,28 @@ public final class HttpRunner {
     public record Failure(String code, String message) {
     }
 
+    /** H-33, propuesta B de ADR-0028: el perfil con el que se hizo la llamada. */
+    public record ProfileSummary(String id, String name) {
+    }
+
     /**
      * phase: «login» si el error o la respuesta son del login (H-26), «request» si son de la llamada.
      * response: la respuesta recibida, si la hubo. login: resumen del login hecho antes, si lo hubo.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Result(String phase, Failure error, Sent request, Received response, LoginSummary login) {
+    public record Result(String phase, Failure error, Sent request, Received response, LoginSummary login, ProfileSummary profile) {
+
+        Result(String phase, Failure error, Sent request, Received response, LoginSummary login) {
+            this(phase, error, request, response, login, null);
+        }
+
+        Result withProfile(Profile p) {
+            return new Result(phase, error, request, response, login, new ProfileSummary(p.id(), p.name()));
+        }
+    }
+
+    /** H-25, H-63: el login reutilizable es del perfil con el que se hizo. */
+    private record Reusable(String profileId, LoginSession session) {
     }
 
     private static final Logger log = LoggerFactory.getLogger(HttpRunner.class);
@@ -67,7 +84,9 @@ public final class HttpRunner {
     private final Supplier<AppConfig> config;
     private final HttpCredentials credentials;
     private final HttpCaller caller;
-    private final AtomicReference<LoginSession> lastLogin = new AtomicReference<>();
+    private final AtomicReference<Reusable> lastLogin = new AtomicReference<>();
+    /** H-63: vive solo en memoria y cada arranque empieza en Local. */
+    private final AtomicReference<String> active = new AtomicReference<>(Profile.LOCAL_ID);
 
     public HttpRunner(NoteService notes, Supplier<AppConfig> config, HttpCredentials credentials, HttpCaller caller) {
         this.notes = notes;
@@ -80,8 +99,33 @@ public final class HttpRunner {
         return caller.cancel(executionId) | caller.cancel(loginExecution(executionId));
     }
 
-    /** A-04, A-05: siempre el contenido guardado, en la versión que tiene la pestaña. */
-    public Result execute(String noteId, long version, String executionId) {
+    /** H-62, H-63: el perfil activo; si ya no existe o se desmarcó la casilla de preproducción, vuelve a Local. */
+    public Profile activeProfile() {
+        AppConfig.Http settings = config.get().http();
+        String id = active.get();
+        return settings.usable(id).orElseGet(() -> {
+            if (active.compareAndSet(id, Profile.LOCAL_ID)) {
+                lastLogin.set(null);
+            }
+            return settings.local();
+        });
+    }
+
+    /** H-63: cambiar de perfil descarta el login reutilizable. */
+    public Profile selectProfile(String id) {
+        Profile profile = config.get().http().usable(id).orElseThrow(() -> new ApiError(400, "unknown_profile",
+                "El perfil no existe o los entornos de preproducción están desactivados en «Ajustes»"));
+        if (!profile.id().equals(active.getAndSet(profile.id()))) {
+            lastLogin.set(null);
+        }
+        return profile;
+    }
+
+    /**
+     * A-04, A-05: siempre el contenido guardado, en la versión que tiene la pestaña. H-63: profileId es el perfil que
+     * muestra la interfaz y debe ser el activo. H-69: la clave se comprueba antes de abrir ninguna conexión.
+     */
+    public Result execute(String noteId, long version, String executionId, String profileId, String confirmKey) {
         Note note = notes.get(noteId);
         if (!"http".equals(note.type())) {
             throw new ApiError(400, "not_http", "La nota no es una nota HTTP");
@@ -89,14 +133,39 @@ public final class HttpRunner {
         if (note.version() != version) {
             throw new ApiError(409, "stale_version", "La nota ha cambiado desde que se abrió. Pulsa «Actualizar».");
         }
+        Profile profile = activeProfile();
+        if (!profile.id().equals(profileId)) {
+            throw new ApiError(409, "profile_changed",
+                    "El perfil activo es «" + profile.name() + "». Revisa el destino y vuelve a enviar.");
+        }
+        if (profile.requireKey()) {
+            checkConfirmKey(profile, confirmKey);
+        }
+        return run(note, profile, executionId).withProfile(profile);
+    }
+
+    private void checkConfirmKey(Profile profile, String confirmKey) {
+        if (!credentials.hasConfirmKey()) {
+            throw new ApiError(400, "confirm_key_missing",
+                    "El perfil «" + profile.name() + "» pide la clave de confirmación, pero no hay ninguna definida en «Ajustes»");
+        }
+        if (confirmKey == null || confirmKey.isEmpty()) {
+            throw new ApiError(400, "confirm_key_required", "El perfil «" + profile.name() + "» pide la clave de confirmación");
+        }
+        if (!credentials.confirmKeyMatches(confirmKey)) {
+            throw new ApiError(403, "confirm_key_wrong", "La clave de confirmación no es correcta");
+        }
+    }
+
+    private Result run(Note note, Profile profile, String executionId) {
         AppConfig.Http settings = config.get().http();
         HttpNoteContent content = HttpNoteContent.parse(note.content());
         String id = executionId == null ? UUID.randomUUID().toString() : executionId;
 
         // H-27: la propia nota de login hace el login y lo deja para reutilizar.
         if (note.id().equals(settings.loginNoteId())) {
-            String user = userOf(content, settings);
-            return login(content, user, settings, id, true);
+            String user = userOf(content, profile);
+            return login(content, user, profile, settings, id, true);
         }
         LoginSession session = null;
         LoginSummary summary = null;
@@ -104,24 +173,25 @@ public final class HttpRunner {
             case HttpNoteContent.LOGIN_NONE -> {
             }
             case HttpNoteContent.LOGIN_REUSE -> {
-                session = lastLogin.get();
-                if (session == null) {
+                Reusable reusable = lastLogin.get();
+                if (reusable == null || !reusable.profileId().equals(profile.id())) {
                     // H-25
                     return new Result("login", new Failure("no_login",
                             "No hay un login anterior para reutilizar. Haz antes una llamada con login."), null, null, null);
                 }
+                session = reusable.session();
             }
             default -> {
-                Result login = login(loginContent(settings), userOf(content, settings), settings, loginExecution(id), false);
+                Result login = login(loginContent(settings), userOf(content, profile), profile, settings, loginExecution(id), false);
                 if (login.error() != null) {
                     // H-26: sin login correcto no hay llamada.
                     return login;
                 }
-                session = lastLogin.get();
+                session = lastLogin.get().session();
                 summary = login.login();
             }
         }
-        Prepared p = prepare(content, content.pathValues(), session, null, settings);
+        Prepared p = prepare(content, content.pathValues(), session, null, profile, settings);
         try {
             Exchange ex = caller.send(p.call(), id, settings.timeoutSeconds(), maxBytes(settings));
             log.debug("Llamada HTTP {} {} en {} ms", content.method(), ex.status(), ex.millis());
@@ -131,19 +201,21 @@ public final class HttpRunner {
         }
     }
 
-    /** H-20 a H-23: login con Basic Auth; si es correcto queda como último login (H-25). */
-    private Result login(HttpNoteContent loginNote, String user, AppConfig.Http settings, String executionId, boolean asRequest) {
+    /** H-20 a H-23: login con Basic Auth y la contraseña del perfil; si es correcto queda como último login (H-25). */
+    private Result login(HttpNoteContent loginNote, String user, Profile profile, AppConfig.Http settings, String executionId,
+                         boolean asRequest) {
         if (user.isEmpty()) {
             return new Result("login", new Failure("no_user", "Falta el usuario: escríbelo en la nota o en «Ajustes»"), null, null, null);
         }
-        String password = credentials.password().orElse(null);
+        String password = credentials.password(profile.id()).orElse(null);
         if (password == null) {
-            return new Result("login", new Failure("no_password", "Falta la contraseña de las notas HTTP en «Ajustes»"), null, null, null);
+            return new Result("login", new Failure("no_password",
+                    "Falta la contraseña del perfil «" + profile.name() + "» en «Ajustes»"), null, null, null);
         }
         Map<String, String> values = new HashMap<>(loginNote.pathValues());
         values.put(USER_NAME, user);
         String basic = "Basic " + Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
-        Prepared p = prepare(loginNote, values, null, basic, settings);
+        Prepared p = prepare(loginNote, values, null, basic, profile, settings);
         String phase = asRequest ? "request" : "login";
         Exchange ex;
         try {
@@ -168,7 +240,7 @@ public final class HttpRunner {
             // H-26: se muestra la respuesta del login.
             return new Result("login", new Failure("login_failed", problem), p.sent(), received(ex), summary);
         }
-        lastLogin.set(new LoginSession(user, userId, cookies.get(CSRF_COOKIE), cookies));
+        lastLogin.set(new Reusable(profile.id(), new LoginSession(user, userId, cookies.get(CSRF_COOKIE), cookies)));
         return new Result(asRequest ? "request" : "login", null, p.sent(), received(ex), summary);
     }
 
@@ -192,11 +264,11 @@ public final class HttpRunner {
     }
 
     private Prepared prepare(HttpNoteContent content, Map<String, String> pathValues, LoginSession session, String authorization,
-                             AppConfig.Http settings) {
+                             Profile profile, AppConfig.Http settings) {
         // H-12, H-18: todas las variables con valor; luego se sustituyen en cada sitio.
         Variables.requireAll(content, pathValues);
         HttpNoteContent filled = Variables.fill(content, pathValues);
-        URI uri = LocalUrls.compose(settings.baseUrl(), content.endpoint(), pathValues, filled.params());
+        URI uri = HttpUrls.compose(profile, content.endpoint(), pathValues, filled.params());
         String boundary = "LiteDD" + UUID.randomUUID().toString().replace("-", "");
         List<Map.Entry<String, String>> headers = RequestHeaders.build(filled,
                 RequestHeaders.contentTypeFor(filled.body(), boundary), session, authorization, settings);
@@ -204,7 +276,7 @@ public final class HttpRunner {
         List<Header> shown = headers.stream()
                 .map(h -> new Header(h.getKey(), h.getKey().equalsIgnoreCase(RequestHeaders.AUTHORIZATION) ? "Basic ••••••" : h.getValue()))
                 .toList();
-        return new Prepared(new HttpCaller.Call(content.method(), uri, headers, body),
+        return new Prepared(new HttpCaller.Call(content.method(), uri, headers, body, !profile.isLocal()),
                 new Sent(content.method(), uri.toString(), shown));
     }
 
@@ -229,8 +301,9 @@ public final class HttpRunner {
         };
     }
 
-    private static String userOf(HttpNoteContent content, AppConfig.Http settings) {
-        return content.user().isEmpty() ? settings.user() : content.user();
+    /** H-22: el usuario de la nota o, si está vacío, el del perfil. */
+    private static String userOf(HttpNoteContent content, Profile profile) {
+        return content.user().isEmpty() ? profile.user() : content.user();
     }
 
     private static long maxBytes(AppConfig.Http settings) {

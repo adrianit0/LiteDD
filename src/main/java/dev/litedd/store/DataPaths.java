@@ -36,9 +36,14 @@ public final class DataPaths {
     }
 
     /** U-10 */
-    /** H-21: contraseña de las notas HTTP, con permisos 600. */
+    /** H-21, H-69: contraseñas de los perfiles HTTP y hash de la clave de confirmación, con permisos 600. */
     public static Path httpCredentialsFile() {
         return configDir().resolve("http.json");
+    }
+
+    /** H-66: CA corporativa de los perfiles de preproducción. */
+    public static Path httpCaFile() {
+        return configDir().resolve("http-ca.pem");
     }
 
     public static Path configFile() {
