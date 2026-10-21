@@ -560,6 +560,9 @@ export function BoardEditor({ tabId, title, content, initialScroll, onScroll, on
   const t = text.current;
   const m = marquee.current;
   const p = preview.current;
+  // B-14: el cuadro mide lo que medirá el texto dibujado, con sitio para el cursor.
+  const c = t ? ctx() : null;
+  const textBox = t && c ? textArea(c, t, settings.fontSize) : null;
 
   return (
     <div className="board-editor">
@@ -611,7 +614,14 @@ export function BoardEditor({ tabId, title, content, initialScroll, onScroll, on
               autoFocus
               rows={1}
               value={t.value}
-              style={{ left: t.x, top: t.y, color: settings.color, fontSize: settings.fontSize }}
+              style={{
+                left: t.x,
+                top: t.y,
+                width: textBox ? textBox.width + settings.fontSize : undefined,
+                height: textBox?.height,
+                color: settings.color,
+                fontSize: settings.fontSize,
+              }}
               onPointerDown={(e) => e.stopPropagation()}
               onChange={(e) => {
                 t.value = e.target.value;

@@ -2451,7 +2451,6 @@ mark {
   white-space: pre;
   overflow: hidden;
   resize: none;
-  field-sizing: content;
 }
 
 .board-handle {
