@@ -24,6 +24,7 @@ vi.mock('./api', async (importOriginal) => {
       analyze: vi.fn(),
       tags: vi.fn(),
       httpCredentials: vi.fn().mockResolvedValue({ passwords: { local: false }, hasConfirmKey: false }),
+      getConnection: vi.fn().mockResolvedValue({ configured: false, host: '127.0.0.1', port: 3306, user: '', schema: '', extraParams: '', hasPassword: false }),
       httpProfile: vi.fn(),
       setHttpProfile: vi.fn(),
       duplicateNote: vi.fn(),
@@ -76,16 +77,16 @@ describe('U-12 selector de perfil de las notas HTTP', () => {
     expect(screen.queryByRole('combobox', { name: 'Destino de las notas HTTP' })).toBeNull();
   });
 
-  it('U-12 H-63 aparece a la izquierda de la conexión, elige el perfil activo y avisa fuera de Local', async () => {
-    const pre1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: '', requireKey: true };
+  it('U-12 H-63 aparece a la izquierda de «Ajustes», elige el perfil activo y avisa fuera de Local', async () => {
+    const pre1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: '', requireKey: true, requireCa: true };
     const http = { ...DEFAULT_CONFIG.http, preproduction: true, profiles: [...DEFAULT_CONFIG.http.profiles, pre1] };
     mocked.getSettings.mockResolvedValue({ config: { ...DEFAULT_CONFIG, http } });
     mocked.setHttpProfile.mockResolvedValue({ active: 'pre1' });
     render(<App />);
     const select = await screen.findByRole<HTMLSelectElement>('combobox', { name: 'Destino de las notas HTTP' });
     expect([...select.options].map((o) => o.textContent)).toEqual(['Local', 'PRE1']);
-    const connection = await screen.findByRole('button', { name: /Sin conexión configurada/ });
-    expect(select.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const settings = screen.getByRole('button', { name: 'Ajustes' });
+    expect(select.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(select.value).toBe('local');
     expect(select.className).not.toContain('profile-preproduction');
 
@@ -105,8 +106,9 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'LiteDD' })).toBeTruthy();
     expect(screen.getByText('No hay ninguna nota abierta.')).toBeTruthy();
     expect(screen.getByRole('complementary', { name: 'Panel de notas' })).toBeTruthy();
-    // C-02: sin conexión configurada, aviso que no bloquea.
-    expect(await screen.findByRole('button', { name: /Sin conexión configurada/ })).toBeTruthy();
+    // C-09, ADR-0030: la barra superior no muestra la conexión; está en «Ajustes → Conexión».
+    await act(async () => {});
+    expect(screen.queryByText(/Sin conexión configurada/)).toBeNull();
   });
 
   it('N-05 B-01 el botón «+ Nuevo» abre un menú flotante con los cinco tipos de nota', async () => {

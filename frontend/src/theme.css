@@ -1005,6 +1005,7 @@ input {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  margin: 8px 0 0;
 }
 
 .connection-indicator {
@@ -1012,8 +1013,6 @@ input {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  border-color: transparent;
-  background: transparent;
   color: var(--text-muted);
 }
 
@@ -1038,10 +1037,6 @@ input {
 .state-disconnected .connection-dot,
 .state-schema_unavailable .connection-dot {
   color: var(--error);
-}
-
-.connection-dialog {
-  width: min(560px, 92vw);
 }
 
 .form-grid {
@@ -1731,10 +1726,90 @@ mark {
   line-height: 1;
 }
 
+/* U-13, ADR-0030: ancha y de alto fijo; categorías a la izquierda y solo se desplaza la elegida. */
 .settings-dialog {
-  width: min(600px, 92vw);
-  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 96vw);
+  height: min(680px, 92vh);
+  overflow: hidden;
+}
+
+.settings-form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings-body {
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  min-height: 0;
+  margin-top: 8px;
+}
+
+.settings-nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  width: 160px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav [role='tab'] {
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.settings-nav [role='tab']:hover {
+  background: var(--selection);
+  color: var(--text);
+}
+
+.settings-nav [role='tab'][aria-selected='true'] {
+  background: var(--selection);
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.settings-panel {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
   overflow-y: auto;
+}
+
+.settings-panel-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-footer p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-footer .dialog-actions {
+  flex: none;
+  margin-top: 0;
 }
 
 .settings-hint {
@@ -1742,15 +1817,8 @@ mark {
   font-size: 12px;
 }
 
-.settings-section {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.settings-section h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
+.settings-hint + .settings-hint {
+  margin-top: 6px;
 }
 
 .settings-row {

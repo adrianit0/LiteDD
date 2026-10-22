@@ -34,7 +34,7 @@ export function SqlErrors({ analysisErrors, error, onRefresh }: Props) {
             </button>
           )}
           {runError.code === 'not_configured' && (
-            <button type="button" onClick={() => useConnection.getState().openDialog()}>
+            <button type="button" onClick={() => useUi.getState().setSettingsOpen(true, 'connection')}>
               Configurar la conexión
             </button>
           )}

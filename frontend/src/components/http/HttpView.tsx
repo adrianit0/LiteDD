@@ -167,7 +167,7 @@ export function HttpView({ tab }: { tab: Tab }) {
       {!profile.baseUrl && (
         <p className="sql-warning" role="status">
           Falta la URL base del perfil «{profile.name}».{' '}
-          <button type="button" onClick={() => useUi.getState().setSettingsOpen(true)}>
+          <button type="button" onClick={() => useUi.getState().setSettingsOpen(true, 'environments')}>
             Abrir «Ajustes»
           </button>
         </p>

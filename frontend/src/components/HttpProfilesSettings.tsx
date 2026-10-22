@@ -9,11 +9,20 @@ export interface ProfileForm {
   baseUrl: string;
   user: string;
   requireKey: boolean;
+  requireCa: boolean;
   password: string;
 }
 
 export function toProfileForms(profiles: HttpProfile[]): ProfileForm[] {
-  return profiles.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl ?? '', user: p.user, requireKey: p.requireKey, password: '' }));
+  return profiles.map((p) => ({
+    id: p.id,
+    name: p.name,
+    baseUrl: p.baseUrl ?? '',
+    user: p.user,
+    requireKey: p.requireKey,
+    requireCa: p.requireCa,
+    password: '',
+  }));
 }
 
 export function fromProfileForms(forms: ProfileForm[]): HttpProfile[] {
@@ -23,6 +32,7 @@ export function fromProfileForms(forms: ProfileForm[]): HttpProfile[] {
     baseUrl: p.baseUrl.trim() === '' ? null : p.baseUrl.trim(),
     user: p.user.trim(),
     requireKey: p.requireKey,
+    requireCa: p.requireCa,
   }));
 }
 
@@ -37,17 +47,30 @@ interface Props {
   onClearPassword: (id: string) => void;
 }
 
-/** H-60 a H-62, H-69: Local fijo y los entornos de preproducción, cada uno con su URL base, usuario, contraseña y clave. */
+/**
+ * H-60 a H-62, H-69 a H-71: Local fijo y primero, y los entornos de preproducción en su orden, cada uno con su URL base,
+ * usuario, contraseña, clave y CA.
+ */
 export function HttpProfilesSettings({ profiles, preproduction, saved, busy, onChange, onClearPassword }: Props) {
   const change = (id: string, changes: Partial<ProfileForm>) => onChange(profiles.map((p) => (p.id === id ? { ...p, ...changes } : p)));
   const visible = profiles.filter((p) => p.id === LOCAL_PROFILE_ID || preproduction);
-  // Propuesta C de ADR-0028: un entorno nuevo nace pidiendo la clave.
-  const add = () => onChange([...profiles, { id: crypto.randomUUID(), name: '', baseUrl: '', user: '', requireKey: true, password: '' }]);
+  // Propuesta C de ADR-0028 y H-71: un entorno nuevo nace pidiendo la clave y la CA corporativa.
+  const add = () =>
+    onChange([...profiles, { id: crypto.randomUUID(), name: '', baseUrl: '', user: '', requireKey: true, requireCa: true, password: '' }]);
+  // H-70: Local se queda en la posición 0; los demás se intercambian con su vecino.
+  const move = (index: number, delta: -1 | 1) => {
+    const target = index + delta;
+    if (target < 1 || target >= profiles.length) return;
+    const next = [...profiles];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
 
   return (
     <>
       {visible.map((p) => {
         const local = p.id === LOCAL_PROFILE_ID;
+        const index = profiles.indexOf(p);
         const id = (field: string) => `st-http-${p.id}-${field}`;
         return (
           <fieldset key={p.id} className="settings-profile">
@@ -91,11 +114,28 @@ export function HttpProfilesSettings({ profiles, preproduction, saved, busy, onC
               <span>
                 <input id={id('key')} type="checkbox" checked={p.requireKey} onChange={(e) => change(p.id, { requireKey: e.target.checked })} />
               </span>
+
+              {!local && (
+                <>
+                  <label htmlFor={id('ca')}>Pedir CA corporativa</label>
+                  <span>
+                    <input id={id('ca')} type="checkbox" checked={p.requireCa} onChange={(e) => change(p.id, { requireCa: e.target.checked })} />
+                  </span>
+                </>
+              )}
             </div>
             {!local && (
-              <button type="button" onClick={() => onChange(profiles.filter((o) => o.id !== p.id))}>
-                Eliminar entorno
-              </button>
+              <div className="settings-row">
+                <button type="button" disabled={index <= 1} onClick={() => move(index, -1)}>
+                  <span aria-hidden="true">↑</span> Subir
+                </button>
+                <button type="button" disabled={index >= profiles.length - 1} onClick={() => move(index, 1)}>
+                  <span aria-hidden="true">↓</span> Bajar
+                </button>
+                <button type="button" onClick={() => onChange(profiles.filter((o) => o.id !== p.id))}>
+                  Eliminar entorno
+                </button>
+              </div>
             )}
           </fieldset>
         );
@@ -143,7 +183,7 @@ export function CorporateCaSettings({ onMessage }: { onMessage: (message: { kind
           ))}
         </ul>
       ) : (
-        <span className="muted">{certificates ? 'Sin importar: no se puede llamar a ningún entorno de preproducción' : 'Cargando…'}</span>
+        <span className="muted">{certificates ? 'Sin importar: no se puede llamar a los entornos con «Pedir CA corporativa»' : 'Cargando…'}</span>
       )}
       <button type="button" onClick={() => fileInput.current?.click()}>
         Importar CA (PEM)…

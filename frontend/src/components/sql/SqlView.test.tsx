@@ -4,6 +4,7 @@ import { SqlView } from './SqlView';
 import { useTabs } from '../../stores/tabsStore';
 import { useSqlRuns } from '../../stores/sqlRunStore';
 import { useConnection } from '../../stores/connectionStore';
+import { useUi } from '../../stores/uiStore';
 import type { Note } from '../../types';
 import type { Analysis, ExecuteResponse } from '../../sql/types';
 
@@ -251,6 +252,15 @@ describe('ejecución', () => {
     expect(screen.getByRole('alert').textContent).toContain('Connection refused');
     await click(screen.getByRole('button', { name: 'Reconectar' }));
     expect(useConnection.getState().status?.state).toBe('connected');
+  });
+
+  it('C-02 U-13 sin conexión configurada, «Configurar la conexión» abre «Ajustes» en «Conexión»', async () => {
+    mocked.execute.mockRejectedValue(new ApiError(503, 'not_configured', 'No hay ninguna conexión configurada', null));
+    useUi.setState({ settingsOpen: false, settingsCategory: 'general' });
+    await mount();
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    await click(screen.getByRole('button', { name: 'Configurar la conexión' }));
+    expect(useUi.getState()).toMatchObject({ settingsOpen: true, settingsCategory: 'connection' });
   });
 
   it('Q-90 Q-94 Q-96 Q-97 los errores se muestran con su mensaje', async () => {

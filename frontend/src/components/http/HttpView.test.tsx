@@ -91,7 +91,7 @@ beforeEach(() => {
       ...DEFAULT_CONFIG,
       http: {
         ...DEFAULT_CONFIG.http,
-        profiles: [{ id: 'local', name: 'Local', baseUrl: 'http://127.0.0.1:8080/demo/', user: 'demo', requireKey: false }],
+        profiles: [{ id: 'local', name: 'Local', baseUrl: 'http://127.0.0.1:8080/demo/', user: 'demo', requireKey: false, requireCa: false }],
         loginNoteId: 'login',
       },
     },
@@ -129,12 +129,12 @@ describe('nota HTTP', () => {
     expect(useTabs.getState().tabs[0]).toMatchObject({ status: 'pending', preview: false });
   });
 
-  it('H-10 sin URL base avisa y lleva a «Ajustes»', async () => {
+  it('H-10 U-13 sin URL base avisa y lleva a «Ajustes → Entornos»', async () => {
     useUi.setState({ config: DEFAULT_CONFIG });
     await mount();
     expect(screen.getByText('Sin URL base')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir «Ajustes»' }));
-    expect(useUi.getState().settingsOpen).toBe(true);
+    expect(useUi.getState()).toMatchObject({ settingsOpen: true, settingsCategory: 'environments' });
   });
 
   it('H-12 H-18 variables en params, cabeceras y cuerpo comparten campo; la forma antigua se avisa', async () => {
@@ -377,7 +377,7 @@ describe('nota HTTP', () => {
 });
 
 describe('entornos de preproducción (ADR-0028)', () => {
-  const PRE1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: 'pre-ana', requireKey: true };
+  const PRE1 = { id: 'pre1', name: 'PRE1', baseUrl: 'https://pre1.litedd-demo.test/demo/', user: 'pre-ana', requireKey: true, requireCa: true };
 
   /** Elige PRE1 como perfil activo, con o sin «Pedir clave al enviar». */
   function choosePre(requireKey = true) {

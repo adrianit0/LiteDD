@@ -15,6 +15,9 @@ export interface Notice {
 
 export type SidebarView = 'tree' | 'trash';
 
+/** U-10: categorías de «Ajustes», en su orden. */
+export type SettingsCategory = 'general' | 'connection' | 'sql' | 'http' | 'environments' | 'data';
+
 interface UiState {
   /** ADR-0009: el panel izquierdo muestra el árbol o la papelera. */
   sidebarView: SidebarView;
@@ -33,7 +36,9 @@ interface UiState {
   config: AppConfig;
   setConfig: (config: AppConfig) => void;
   settingsOpen: boolean;
-  setSettingsOpen: (open: boolean) => void;
+  /** U-13: la categoría con la que se abre «Ajustes». */
+  settingsCategory: SettingsCategory;
+  setSettingsOpen: (open: boolean, category?: SettingsCategory) => void;
   /** M-65 */
   constantsOpen: boolean;
   setConstantsOpen: (open: boolean) => void;
@@ -97,7 +102,8 @@ export const useUi = create<UiState>((set, get) => ({
   config: DEFAULT_CONFIG,
   setConfig: (config) => set({ config }),
   settingsOpen: false,
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  settingsCategory: 'general',
+  setSettingsOpen: (open, category = 'general') => set({ settingsOpen: open, settingsCategory: category }),
   constantsOpen: false,
   setConstantsOpen: (open) => set({ constantsOpen: open }),
   constantsVersion: 0,

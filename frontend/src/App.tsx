@@ -8,8 +8,6 @@ import { Sidebar } from './components/Sidebar';
 import { NotePane } from './components/NotePane';
 import { TabBar } from './components/TabBar';
 import { DialogHost } from './components/DialogHost';
-import { ConnectionStatusBar } from './components/ConnectionStatusBar';
-import { ConnectionDialog } from './components/ConnectionDialog';
 import { HttpProfileSelect } from './components/HttpProfileSelect';
 import { ConfirmKeyDialog } from './components/ConfirmKeyDialog';
 import { useConnection } from './stores/connectionStore';
@@ -26,7 +24,6 @@ export function App() {
   const sidebarVisible = useUi((s) => s.sidebarVisible);
   const notices = useUi((s) => s.notices);
   const activeTab = useActiveTab();
-  const connectionDialog = useConnection((s) => s.dialogOpen);
   const quickSearch = useUi((s) => s.quickSearchOpen);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const constantsOpen = useUi((s) => s.constantsOpen);
@@ -126,7 +123,6 @@ export function App() {
         <span className="brand">LiteDD</span>
         <div className="topbar-end">
           <HttpProfileSelect />
-          <ConnectionStatusBar />
           <button type="button" className="icon-button" aria-label="Ajustes" title="Ajustes" onClick={() => useUi.getState().setSettingsOpen(true)}>
             ⚙
           </button>
@@ -176,7 +172,6 @@ export function App() {
       {constantsOpen && <ConstantsDialog />}
       <DialogHost />
       <ConfirmKeyDialog />
-      {connectionDialog && <ConnectionDialog />}
       {quickSearch && <QuickSearch />}
       <div className="notices" aria-live="polite">
         {notices.map((n) => (

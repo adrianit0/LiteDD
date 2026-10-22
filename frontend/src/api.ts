@@ -154,12 +154,14 @@ export interface HttpProfile {
   user: string;
   /** H-69: pedir la clave de confirmación al enviar. */
   requireKey: boolean;
+  /** H-71: exigir la CA corporativa; sin ella, las CA de confianza de Java. Local, siempre false. */
+  requireCa: boolean;
 }
 
 export interface HttpSettings {
   /** H-62: «Permitir entornos de preproducción». */
   preproduction: boolean;
-  /** Local siempre el primero. */
+  /** Local siempre el primero; los entornos, en el orden de «Ajustes» (H-70). */
   profiles: HttpProfile[];
   loginNoteId: string | null;
   timeoutSeconds: number;
@@ -172,7 +174,7 @@ export interface HttpSettings {
 
 export const DEFAULT_HTTP: HttpSettings = {
   preproduction: false,
-  profiles: [{ id: LOCAL_PROFILE_ID, name: 'Local', baseUrl: null, user: '', requireKey: false }],
+  profiles: [{ id: LOCAL_PROFILE_ID, name: 'Local', baseUrl: null, user: '', requireKey: false, requireCa: false }],
   loginNoteId: null,
   timeoutSeconds: 30,
   maxResponseMb: 10,
