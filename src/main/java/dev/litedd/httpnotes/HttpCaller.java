@@ -32,8 +32,12 @@ import java.util.concurrent.ExecutionException;
  */
 public final class HttpCaller {
 
-    /** Lo que se envía; las cabeceras ya montadas (RequestHeaders). preproduction: va por el cliente de la CA corporativa. */
-    public record Call(String method, URI uri, List<Map.Entry<String, String>> headers, byte[] body, boolean preproduction) {
+    /**
+     * Lo que se envía; las cabeceras ya montadas (RequestHeaders). preproduction: sin la comprobación de dirección local
+     * (H-40). corporateCa: va por el cliente de la CA corporativa; si no, por el de Java (H-71).
+     */
+    public record Call(String method, URI uri, List<Map.Entry<String, String>> headers, byte[] body, boolean preproduction,
+                       boolean corporateCa) {
     }
 
     public record Cookie(String name, String value, String domain, String path, Long maxAge, boolean httpOnly, boolean secure) {
@@ -69,7 +73,7 @@ public final class HttpCaller {
     private final Map<String, CompletableFuture<?>> running = new ConcurrentHashMap<>();
     private final Map<String, InputStream> reading = new ConcurrentHashMap<>();
 
-    /** Solo el perfil Local: sin CA corporativa, toda llamada de preproducción se rechaza (H-67). */
+    /** Sin CA corporativa: las llamadas a un entorno que la pide se rechazan (H-67, H-71). */
     public HttpCaller() {
         this(null);
     }
@@ -106,11 +110,12 @@ public final class HttpCaller {
 
     public Exchange send(Call call, String executionId, int timeoutSeconds, long maxBytes) throws CallFailed {
         HttpClient http;
-        if (call.preproduction()) {
-            http = preproductionClient();
-        } else {
+        if (!call.preproduction()) {
             HttpUrls.checkResolvesLocally(call.uri());
             http = client;
+        } else {
+            // H-71: sin «Pedir CA corporativa», el cliente por defecto valida contra las CA de confianza de Java.
+            http = call.corporateCa() ? preproductionClient() : client;
         }
         HttpRequest.Builder b = HttpRequest.newBuilder(call.uri())
                 .timeout(Duration.ofSeconds(timeoutSeconds))
@@ -145,12 +150,12 @@ public final class HttpCaller {
             Thread.currentThread().interrupt();
             throw cancelled();
         } catch (ExecutionException e) {
-            throw failure(e.getCause(), call.uri(), timeoutSeconds);
+            throw failure(e.getCause(), call, timeoutSeconds);
         } catch (IOException e) {
             if (future.isCancelled()) {
                 throw cancelled();
             }
-            throw failure(e, call.uri(), timeoutSeconds);
+            throw failure(e, call, timeoutSeconds);
         } finally {
             running.remove(executionId);
             reading.remove(executionId);
@@ -195,7 +200,8 @@ public final class HttpCaller {
     }
 
     /** H-32: el mismo texto que Postman cuando el servidor no escucha. */
-    private static CallFailed failure(Throwable cause, URI uri, int timeoutSeconds) {
+    private static CallFailed failure(Throwable cause, Call call, int timeoutSeconds) {
+        URI uri = call.uri();
         if (cause instanceof CancellationException) {
             return cancelled();
         }
@@ -203,7 +209,7 @@ public final class HttpCaller {
             return new CallFailed("timeout", "Tiempo agotado: el servidor no respondió en " + timeoutSeconds + " s");
         }
         if (find(cause, SSLException.class) != null) {
-            return new CallFailed("tls", "Error: " + tlsProblem(cause, hostOf(uri)));
+            return new CallFailed("tls", "Error: " + tlsProblem(cause, hostOf(uri), call.corporateCa()));
         }
         Throwable root = cause;
         while (root.getCause() != null && !(root instanceof ConnectException)) {
@@ -216,8 +222,8 @@ public final class HttpCaller {
         return new CallFailed("network", "Error: " + detail);
     }
 
-    /** H-67: por qué no se aceptó el certificado, en palabras del usuario. */
-    private static String tlsProblem(Throwable cause, String host) {
+    /** H-67, H-71: por qué no se aceptó el certificado, en palabras del usuario. */
+    private static String tlsProblem(Throwable cause, String host, boolean corporateCa) {
         CertPathValidatorException invalid = find(cause, CertPathValidatorException.class);
         if (find(cause, CertificateExpiredException.class) != null
                 || invalid != null && invalid.getReason() == CertPathValidatorException.BasicReason.EXPIRED) {
@@ -230,7 +236,7 @@ public final class HttpCaller {
             }
         }
         if (invalid != null || find(cause, CertPathBuilderException.class) != null) {
-            return "el certificado de " + host + " no está firmado por la CA importada";
+            return "el certificado de " + host + " no está firmado por " + (corporateCa ? "la CA importada" : "una CA de confianza de Java");
         }
         return "no se pudo establecer la conexión segura con " + host + ": " + cause.getMessage();
     }

@@ -276,7 +276,7 @@ public final class HttpRunner {
         List<Header> shown = headers.stream()
                 .map(h -> new Header(h.getKey(), h.getKey().equalsIgnoreCase(RequestHeaders.AUTHORIZATION) ? "Basic ••••••" : h.getValue()))
                 .toList();
-        return new Prepared(new HttpCaller.Call(content.method(), uri, headers, body, !profile.isLocal()),
+        return new Prepared(new HttpCaller.Call(content.method(), uri, headers, body, !profile.isLocal(), profile.requireCa()),
                 new Sent(content.method(), uri.toString(), shown));
     }
 

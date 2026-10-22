@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -164,11 +165,15 @@ class HttpProfilesTest {
         }
     }
 
-    /** Local por http y PRE1 por https a localhost, cada uno con su usuario. */
+    /** Local por http y PRE1 por https a localhost, cada uno con su usuario; PRE1 pide la CA corporativa. */
     private void configure(boolean preproduction, boolean localKey, boolean preKey) {
+        configure(preproduction, localKey, preKey, true);
+    }
+
+    private void configure(boolean preproduction, boolean localKey, boolean preKey, boolean preCa) {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http(preproduction, List.of(
-                new Profile(LOCAL, "Local", "http://127.0.0.1:" + local.getAddress().getPort() + "/demo/", "ana", localKey),
-                new Profile("pre1", "PRE1", "https://localhost:" + pre.getAddress().getPort() + "/demo/", "pre-ana", preKey)),
+                new Profile(LOCAL, "Local", "http://127.0.0.1:" + local.getAddress().getPort() + "/demo/", "ana", localKey, false),
+                new Profile("pre1", "PRE1", "https://localhost:" + pre.getAddress().getPort() + "/demo/", "pre-ana", preKey, preCa)),
                 loginNote.id(), 30, 10, null, null, null)));
     }
 
@@ -192,7 +197,7 @@ class HttpProfilesTest {
     }
 
     private static Profile pre(String base) {
-        return new Profile("pre1", "PRE1", base, "", true);
+        return new Profile("pre1", "PRE1", base, "", true, true);
     }
 
     // --- Perfiles y ajustes (H-60 a H-62, H-65) ---
@@ -210,7 +215,7 @@ class HttpProfilesTest {
         AppSettings settings = new AppSettings(configFile);
         AppConfig.Http http = settings.get().http();
         assertThat(http.preproduction()).isFalse();
-        assertThat(http.profiles()).containsExactly(new Profile(LOCAL, "Local", "http://127.0.0.1:8080/demo/", "ana", false));
+        assertThat(http.profiles()).containsExactly(new Profile(LOCAL, "Local", "http://127.0.0.1:8080/demo/", "ana", false, false));
         assertThat(http.timeoutSeconds()).isEqualTo(45);
         assertThat(new HttpCredentials(httpFile).password(LOCAL)).contains(LOCAL_PASSWORD);
 
@@ -284,6 +289,26 @@ class HttpProfilesTest {
         assertThat(credentials.password("pre1")).contains(PRE_PASSWORD);
         assertThat(credentials.password(LOCAL)).contains(LOCAL_PASSWORD);
         assertThat(credentials.profilesWithPassword()).containsExactlyInAnyOrder(LOCAL, "pre1");
+    }
+
+    @Test
+    void h70_h71_the_order_and_the_ca_box_are_kept_in_config_json() throws Exception {
+        Path configFile = dir.resolve("orden/config.json");
+        Files.createDirectories(configFile.getParent());
+        // Local va siempre primero; los entornos, en el orden recibido.
+        AppConfig.Http http = JSON.readValue("""
+                {"preproduction":true,"profiles":[{"id":"pre2","name":"PRE2","requireCa":false},
+                 {"id":"local","name":"Local","requireCa":true},{"id":"pre1","name":"PRE1"}]}""", AppConfig.Http.class);
+        assertThat(http.profiles()).extracting(Profile::id).containsExactly(LOCAL, "pre2", "pre1");
+        // Sin el campo, un entorno pide la CA, como antes de existir la casilla; Local nunca.
+        assertThat(http.profiles()).extracting(Profile::requireCa).containsExactly(false, false, true);
+
+        AppSettings settings = new AppSettings(configFile);
+        settings.update(new AppConfig(20, 10_000, 30, 47600, null, true, http));
+        List<String> saved = new ArrayList<>();
+        JSON.readTree(configFile.toFile()).get("http").get("profiles").forEach(p -> saved.add(p.get("id").asText()));
+        assertThat(saved).containsExactly(LOCAL, "pre2", "pre1");
+        assertThat(new AppSettings(configFile).get().http().profiles()).isEqualTo(http.profiles());
     }
 
     // --- Perfil activo (H-25, H-33, H-61, H-63) ---
@@ -378,6 +403,40 @@ class HttpProfilesTest {
         assertThat(otherName.error().code()).isEqualTo("tls");
         assertThat(otherName.error().message()).isEqualTo("Login: Error: el certificado del servidor no es para localhost");
         assertThat(received).isEmpty();
+    }
+
+    @Test
+    void h71_without_the_box_the_certificate_is_validated_against_the_java_trusted_cas() throws Exception {
+        configure(true, false, false, false);
+        runner.selectProfile("pre1");
+        // Sin CA importada la llamada se intenta; el certificado de prueba no es de ninguna CA de Java.
+        assertThat(ca.certificates()).isEmpty();
+        Result untrusted = run(tasks);
+        assertThat(untrusted.error().code()).isEqualTo("tls");
+        assertThat(untrusted.error().message())
+                .isEqualTo("Login: Error: el certificado de localhost no está firmado por una CA de confianza de Java");
+        // La CA importada solo vale para los entornos que la piden.
+        ca.importPem(certificates.caPem());
+        assertThat(run(tasks).error().code()).isEqualTo("tls");
+        assertThat(received).isEmpty();
+
+        // Con la CA de prueba entre las de Java, la llamada se hace y el nombre del certificado se sigue comprobando.
+        SSLContext previous = SSLContext.getDefault();
+        SSLContext.setDefault(certificates.client());
+        try {
+            runner = new HttpRunner(notes, config::get, credentials, new HttpCaller(ca));
+            runner.selectProfile("pre1");
+            assertThat(run(tasks).error()).isNull();
+            assertThat(received).contains("pre GET /demo/user/5/tasks");
+
+            startPre(TestCertificates.OTHER_NAME);
+            configure(true, false, false, false);
+            received.clear();
+            assertThat(run(tasks).error().message()).isEqualTo("Login: Error: el certificado del servidor no es para localhost");
+            assertThat(received).isEmpty();
+        } finally {
+            SSLContext.setDefault(previous);
+        }
     }
 
     @Test

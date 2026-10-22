@@ -154,9 +154,10 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
      * @param baseUrl    H-10, H-40, H-65; null sin configurar
      * @param user       H-22: usuario por defecto
      * @param requireKey H-69: pedir la clave de confirmación al enviar
+     * @param requireCa  H-71: exigir la CA corporativa; sin ella, las CA de confianza de Java. Local, siempre false
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Profile(String id, String name, String baseUrl, String user, boolean requireKey) {
+    public record Profile(String id, String name, String baseUrl, String user, boolean requireKey, boolean requireCa) {
 
         public static final String LOCAL_ID = "local";
         public static final String LOCAL_NAME = "Local";
@@ -166,18 +167,23 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
             name = LOCAL_ID.equals(id) ? LOCAL_NAME : name == null ? "" : name.strip();
             baseUrl = baseUrl == null || baseUrl.isBlank() ? null : baseUrl.strip();
             user = user == null ? "" : user.strip();
+            requireCa = requireCa && !LOCAL_ID.equals(id);
         }
 
-        /** Propuesta C de ADR-0028: sin el campo, Local no pide la clave y un entorno de preproducción sí. */
+        /**
+         * Propuesta C de ADR-0028: sin el campo, Local no pide la clave y un entorno de preproducción sí. H-71: sin el
+         * campo, un entorno exige la CA corporativa, como antes de existir la casilla.
+         */
         @JsonCreator
         static Profile fromJson(@JsonProperty("id") String id, @JsonProperty("name") String name, @JsonProperty("baseUrl") String baseUrl,
-                                @JsonProperty("user") String user, @JsonProperty("requireKey") Boolean requireKey) {
+                                @JsonProperty("user") String user, @JsonProperty("requireKey") Boolean requireKey,
+                                @JsonProperty("requireCa") Boolean requireCa) {
             boolean local = id != null && LOCAL_ID.equals(id.strip());
-            return new Profile(id, name, baseUrl, user, requireKey == null ? !local : requireKey);
+            return new Profile(id, name, baseUrl, user, requireKey == null ? !local : requireKey, requireCa == null || requireCa);
         }
 
         public static Profile local(String baseUrl, String user) {
-            return new Profile(LOCAL_ID, LOCAL_NAME, baseUrl, user, false);
+            return new Profile(LOCAL_ID, LOCAL_NAME, baseUrl, user, false, false);
         }
 
         @JsonIgnore

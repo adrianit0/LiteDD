@@ -2,6 +2,7 @@ package dev.litedd.httpnotes;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -69,6 +70,18 @@ final class TestCertificates {
         kmf.init(one, password);
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(kmf.getKeyManagers(), null, null);
+        return context;
+    }
+
+    /** Contexto TLS de un cliente que solo confía en la CA de prueba: hace de «CA de confianza de Java» (H-71). */
+    SSLContext client() throws Exception {
+        KeyStore trusted = KeyStore.getInstance("PKCS12");
+        trusted.load(null, null);
+        trusted.setCertificateEntry("ca", store.getCertificate("ca"));
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trusted);
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(null, tmf.getTrustManagers(), null);
         return context;
     }
 
