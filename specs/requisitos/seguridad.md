@@ -25,7 +25,7 @@ LiteDD nunca modifica la base de datos consultada, aunque la conexión use un us
 | S-13 | Se valida Origin en las peticiones que modifican estado. No se emiten cabeceras CORS. |
 | S-14 | Cabecera CSP: `default-src 'self'`; imágenes `'self'` y `data:`. Ningún recurso se carga de internet: todo va empaquetado. |
 | S-15 | El HTML generado desde Markdown se sanea con DOMPurify. Mermaid se configura con `securityLevel: 'strict'`. |
-| S-16 | Sin telemetría ni llamadas a servicios externos. Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41) y, si el usuario lo activa, a los perfiles de preproducción que configure, solo por HTTPS validado contra la CA importada (H-62 a H-68). |
+| S-16 | Sin telemetría ni llamadas a servicios externos. Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41) y, si el usuario lo activa, a los perfiles de preproducción que configure, solo por HTTPS validado contra la CA importada o, si se desmarca «Pedir CA corporativa» en un entorno, contra las CA de confianza de Java (H-62 a H-68, H-71). |
 
 ## Credenciales y registro
 
