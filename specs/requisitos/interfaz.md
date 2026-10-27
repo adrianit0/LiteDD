@@ -21,7 +21,7 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 | ID | Requisito |
 |---|---|
 | U-01 | El panel izquierdo se redimensiona arrastrando su borde y se oculta con Alt+B. El ancho se recuerda. |
-| U-02 | Tema oscuro único, definido con variables CSS: fondo, superficie, borde, texto, texto atenuado, acento, error, aviso, verde (icono de las notas HTTP), violeta (icono de las notas XML MyBatis) y naranja (icono de las pizarras). Contraste mínimo AA. |
+| U-02 | Tema oscuro único, definido con variables CSS: fondo, superficie, borde, texto, texto atenuado, acento, error, aviso, verde (icono de las notas HTTP), violeta (icono de las notas XML MyBatis), naranja (icono de las pizarras) y cian (icono de los workflows). Contraste mínimo AA. |
 | U-03 | Toda la interfaz está en español. Fechas como dd/MM/yyyy HH:mm; coma decimal en tiempos y tamaños. |
 | U-04 | Tipografía del sistema para la interfaz; monoespaciada para editores, SQL y celdas de resultado. |
 | U-05 | Cabecera de nota: ruta, título, favorita, etiquetas y los botones Editar o Ver, Actualizar, Historial y Eliminar. |

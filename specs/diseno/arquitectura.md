@@ -4,7 +4,7 @@
 
 ## Producto y alcance
 
-LiteDD es un gestor local de notas con cinco tipos de nota: Markdown, SQL, HTTP, XML MyBatis y pizarra. Las notas SQL se escriben con la sintaxis dinámica de MyBatis y se ejecutan en modo de solo lectura contra una base de datos MySQL local. Una nota XML MyBatis contiene un mapper completo y genera una nota SQL de solo lectura por sentencia (ADR-0023). Una pizarra es un dibujo de mapa de bits que una nota Markdown puede mostrar (ADR-0029).
+LiteDD es un gestor local de notas con seis tipos de nota: Markdown, SQL, HTTP, XML MyBatis, pizarra y workflow. Las notas SQL se escriben con la sintaxis dinámica de MyBatis y se ejecutan en modo de solo lectura contra una base de datos MySQL local. Una nota XML MyBatis contiene un mapper completo y genera una nota SQL de solo lectura por sentencia (ADR-0023). Una pizarra es un dibujo de mapa de bits que una nota Markdown puede mostrar (ADR-0029). Un workflow encadena notas HTTP y SQL, esperas y valores de entrada, y pasa los resultados de cada paso a los siguientes (ADR-0031).
 
 Contexto de uso: un único usuario, una única máquina con Ubuntu 22.04 y sesiones de varias horas sin cerrar la aplicación.
 
@@ -76,6 +76,8 @@ La interfaz solo habla con el servidor HTTP. El módulo sqlengine genera el SQL 
 | notes | Notas, árbol, papelera, historial, etiquetas, búsqueda |
 | sqlengine | Análisis de variables, renderizado con MyBatis, clasificación y paginación |
 | mysql | Pool de conexiones de solo lectura, ejecución, cancelación |
+| httpnotes | Llamadas de las notas HTTP con su login, perfiles y validación de destinos |
+| workflow | Contenido de los workflows, referencias `$Nombre.ruta` y ejecución nodo a nodo con httpnotes y mysql |
 | store | Acceso a SQLite y migraciones |
 | transfer | Exportación, importación y copias |
 | session | Pestañas abiertas y su estado |

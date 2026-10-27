@@ -2,7 +2,7 @@
 
 > Extraído de `specs/ESPECIFICACION.md`. Si este fichero y aquel difieren tras un cambio aprobado, manda este y se registra un ADR.
 
-Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis o pizarra), título, contenido y un lugar en el árbol. Estos requisitos valen para los dos tipos; lo específico de SQL está en su sección.
+Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), título, contenido y un lugar en el árbol. Estos requisitos valen para los dos tipos; lo específico de SQL está en su sección.
 
 ## Árbol
 
@@ -11,8 +11,8 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis o pizarra), título, conte
 | N-01 | El panel izquierdo muestra todas las notas activas en árbol. Cada nodo tiene icono de tipo, título y control de plegado si tiene hijas. El plegado se recuerda. |
 | N-02 | Cualquier nota puede tener hijas de cualquier tipo, sin límite de profundidad. Excepción: la nota XML MyBatis solo tiene sus hijas generadas, y estas no tienen hijas (M-20, M-22). |
 | N-03 | Clic abre la nota; clic central la abre en pestaña nueva (ver Pestañas). |
-| N-04 | Menú contextual: «Nuevo», renombrar, duplicar, favorita, etiquetas, mover a…, eliminar. «Nuevo» despliega a su derecha un submenú con «Nota Markdown», «Nota SQL», «Nota HTTP», «Nota MyBatis» y «Nota Pizarra», que crean la nota como hija (ADR-0026, B-01). En una nota XML MyBatis no aparece «Nuevo»; en una hija generada solo aparecen duplicar, favorita y etiquetas (M-20, M-22). |
-| N-05 | El botón «+ Nuevo» del panel abre un menú flotante con «Nota Markdown», «Nota SQL», «Nota HTTP», «Nota MyBatis» y «Nota Pizarra», que crean la nota en la raíz, al final (ADR-0026, B-01). |
+| N-04 | Menú contextual: «Nuevo», renombrar, duplicar, favorita, etiquetas, mover a…, eliminar. «Nuevo» despliega a su derecha un submenú con «Nota Markdown», «Nota SQL», «Nota HTTP», «Nota MyBatis», «Nota Pizarra» y «Nota Workflow», que crean la nota como hija (ADR-0026, B-01, W-01). En una nota XML MyBatis no aparece «Nuevo»; en una hija generada solo aparecen duplicar, favorita y etiquetas (M-20, M-22). |
+| N-05 | El botón «+ Nuevo» del panel abre un menú flotante con «Nota Markdown», «Nota SQL», «Nota HTTP», «Nota MyBatis», «Nota Pizarra» y «Nota Workflow», que crean la nota en la raíz, al final (ADR-0026, B-01, W-01). |
 | N-06 | Una nota nueva se llama «Sin título» y se abre en modo edición con el título seleccionado. |
 | N-07 | Cada nota tiene una descripción opcional de hasta 200 caracteres. En edición se escribe entre el título y las etiquetas; en consulta se ve bajo el título. En el árbol aparece bajo el nombre, en gris y más pequeña, en una línea que se corta con «…» donde acaba el panel (ADR-0020). |
 | N-08 | «Duplicar» crea una copia de la nota, sin sus hijas, justo debajo de la original: mismo tipo, contenido, descripción, etiquetas y favorita. El título lleva « (2)», o el siguiente número libre entre las hermanas: «Informe (3)», «Informe (4)»… Un «(n)» final solo cuenta como número de copia si hay una hermana con el nombre sin él. La copia se abre en una pestaña. Las notas XML MyBatis y sus hijas siguen M-31. |

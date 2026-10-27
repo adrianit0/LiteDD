@@ -47,6 +47,9 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | GET, PUT | /api/http/credentials | Indicar qué perfiles tienen contraseña y guardar la de uno; nunca la devuelve (H-21) |
 | PUT | /api/http/confirm-key | Definir o borrar la clave de confirmación; nunca la devuelve (H-69) |
 | GET, PUT | /api/http/ca | Ver e importar la CA corporativa de los perfiles de preproducción (H-66) |
+| POST | /api/workflow/analyze | Tipo, título, estado, variables y valores iniciales de las notas de los nodos y, con workflowId, los últimos valores ejecutados (W-23, W-24, W-51) |
+| POST | /api/workflow/execute | Ejecutar un workflow con los valores de la pestaña; responde en streaming con un evento JSON por línea (W-60 a W-72) |
+| POST | /api/workflow/cancel | Cancelar por executionId |
 | GET | /api/connection | Configuración sin contraseña |
 | PUT | /api/connection | Guardar configuración |
 | POST | /api/connection/test | Probar y listar esquemas |
@@ -63,7 +66,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/presence/bye | Aviso de cierre de ventana |
 | POST | /api/shutdown | Apagado ordenado |
 
-El 409 de `PUT /api/notes/{id}` lleva en `details` la nota guardada (ADR-0007). `GET` y `PUT /api/settings` guardan además el estado de interfaz en la tabla `setting` (ADR-0005). `POST /api/sql/execute` guarda los últimos valores de la nota y `POST /api/sql/analyze` con `noteId` los devuelve en `lastValues` (ADR-0014).
+El 409 de `PUT /api/notes/{id}` lleva en `details` la nota guardada (ADR-0007). `GET` y `PUT /api/settings` guardan además el estado de interfaz en la tabla `setting` (ADR-0005). `POST /api/sql/execute` guarda los últimos valores de la nota y `POST /api/sql/analyze` con `noteId` los devuelve en `lastValues` (ADR-0014). `PUT /api/notes/{id}` valida la estructura de un workflow (W-81). `POST /api/workflow/execute` comprueba la cadena, la versión, el perfil y la clave antes de responder la primera línea; esos errores siguen A-02 (ADR-0031).
 
 Petición y respuesta de `POST /api/sql/execute`:
 
