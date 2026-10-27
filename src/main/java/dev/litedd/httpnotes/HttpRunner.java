@@ -141,10 +141,22 @@ public final class HttpRunner {
         if (profile.requireKey()) {
             checkConfirmKey(profile, confirmKey);
         }
-        return run(note, profile, executionId).withProfile(profile);
+        return run(note, HttpNoteContent.parse(note.content()), profile, executionId).withProfile(profile);
     }
 
-    private void checkConfirmKey(Profile profile, String confirmKey) {
+    /**
+     * W-62: la nota guardada con los valores de un nodo de workflow, con su login. El workflow ya comprobó el perfil
+     * y la clave al empezar (W-63).
+     */
+    public Result executeWith(Note note, Map<String, String> values, Profile profile, String executionId) {
+        if (!"http".equals(note.type())) {
+            throw new ApiError(400, "not_http", "La nota no es una nota HTTP");
+        }
+        return run(note, HttpNoteContent.parse(note.content()).withValues(values), profile, executionId).withProfile(profile);
+    }
+
+    /** H-69: con la casilla «Pedir clave al enviar», la clave definida en «Ajustes»; se comprueba antes de conectar. */
+    public void checkConfirmKey(Profile profile, String confirmKey) {
         if (!credentials.hasConfirmKey()) {
             throw new ApiError(400, "confirm_key_missing",
                     "El perfil «" + profile.name() + "» pide la clave de confirmación, pero no hay ninguna definida en «Ajustes»");
@@ -157,9 +169,8 @@ public final class HttpRunner {
         }
     }
 
-    private Result run(Note note, Profile profile, String executionId) {
+    private Result run(Note note, HttpNoteContent content, Profile profile, String executionId) {
         AppConfig.Http settings = config.get().http();
-        HttpNoteContent content = HttpNoteContent.parse(note.content());
         String id = executionId == null ? UUID.randomUUID().toString() : executionId;
 
         // H-27: la propia nota de login hace el login y lo deja para reutilizar.

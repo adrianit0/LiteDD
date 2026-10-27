@@ -248,6 +248,40 @@ class TransferTest {
     }
 
     @Test
+    void w82_workflows_export_as_json_and_a_branch_points_to_the_imported_notes() throws Exception {
+        Note http = note(null, "http", "Tareas", "{\"endpoint\":\"/user/#{id}/tasks\"}");
+        String content = "{\"nodes\":[{\"id\":\"start\",\"kind\":\"start\"},"
+                + "{\"id\":\"n1\",\"kind\":\"http\",\"name\":\"Conn1\",\"noteId\":\"" + http.id() + "\",\"values\":{\"id\":\"5\"}},"
+                + "{\"id\":\"n2\",\"kind\":\"http\",\"name\":\"Conn2\",\"noteId\":\"fuera-del-archivo\"},"
+                + "{\"id\":\"finish\",\"kind\":\"finish\"}],"
+                + "\"edges\":[{\"from\":\"start\",\"to\":\"n1\"},{\"from\":\"n1\",\"to\":\"finish\"}]}";
+        note(null, "workflow", "Alta de cliente", content);
+        byte[] zip = exporter.export();
+        assertThat(new String(unzip(zip).get("notes/02-alta-de-cliente.workflow.json"), StandardCharsets.UTF_8)).isEqualTo(content);
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        List<Note> imported = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId()))
+                .map(n -> notes.get(n.id())).toList();
+        assertThat(imported).extracting(Note::type).containsExactly("http", "workflow");
+        JsonNode nodes = JSON.readTree(imported.get(1).content()).get("nodes");
+        assertThat(nodes.get(1).get("noteId").asText()).isEqualTo(imported.getFirst().id());
+        assertThat(nodes.get(1).get("values").get("id").asText()).isEqualTo("5");
+        assertThat(nodes.get(2).get("noteId").asText()).isEqualTo("fuera-del-archivo");
+    }
+
+    @Test
+    void w81_w82_import_rejects_an_invalid_workflow() throws Exception {
+        String manifest = """
+                {"formatVersion":1,"notes":[
+                  {"id":"w","parentId":null,"position":0,"type":"workflow","title":"Alta","tags":[],"file":"notes/w.workflow.json"}]}""";
+        List<String> before = snapshot();
+        assertThatThrownBy(() -> importer.importZip(new ByteArrayInputStream(zip(Map.of("manifest.json", manifest,
+                "notes/w.workflow.json", "{\"nodes\":[]}"))), Mode.REPLACE))
+                .isInstanceOf(ApiError.class).hasMessageContaining("«Alta»");
+        assertThat(snapshot()).isEqualTo(before);
+    }
+
+    @Test
     void b44_add_as_branch_remaps_boards_shown_in_markdown() throws Exception {
         Note board = note(null, "board", "Esquema", BoardPngs.dataUrl(BoardPngs.png(10, 10)));
         note(null, "md", "Informe", "Antes\n\n![Esquema](litedd://note/" + board.id() + ")");

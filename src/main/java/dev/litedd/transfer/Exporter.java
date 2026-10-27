@@ -10,6 +10,7 @@ import dev.litedd.store.Store;
 import dev.litedd.transfer.TransferMapper.ExportAttachment;
 import dev.litedd.transfer.TransferMapper.ExportNote;
 import dev.litedd.transfer.TransferMapper.NoteTagRow;
+import dev.litedd.workflow.WorkflowContent;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -109,10 +110,11 @@ public final class Exporter {
         for (int i = 0; i < kids.size(); i++) {
             ExportNote n = kids.get(i);
             String base = String.format("%0" + width + "d", i + 1) + "-" + slug(n.title());
-            // H-50: las notas HTTP son JSON; B-34: las pizarras, PNG.
+            // H-50: las notas HTTP son JSON; B-34: las pizarras, PNG; W-82: los workflows, JSON.
             String extension = switch (n.type()) {
                 case "http" -> ".http.json";
                 case BoardImage.TYPE -> ".png";
+                case WorkflowContent.TYPE -> ".workflow.json";
                 default -> "." + n.type();
             };
             files.put(n.id(), folder + base + extension);

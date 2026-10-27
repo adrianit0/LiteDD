@@ -5,6 +5,7 @@ import dev.litedd.http.ApiError;
 import dev.litedd.notes.AttachmentMapper;
 import dev.litedd.notes.AttachmentsApi;
 import dev.litedd.notes.BoardImage;
+import dev.litedd.workflow.WorkflowContent;
 import dev.litedd.notes.ContentMapper;
 import dev.litedd.notes.JavaConstantMapper;
 import dev.litedd.notes.NoteMapper;
@@ -59,7 +60,7 @@ public final class Importer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter ROOT_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final Set<String> TYPES = Set.of("md", "sql", "http", "xml", BoardImage.TYPE);
+    private static final Set<String> TYPES = Set.of("md", "sql", "http", "xml", BoardImage.TYPE, WorkflowContent.TYPE);
     private static final Set<String> STATEMENT_KINDS = Set.of("select", "insert", "update", "delete");
     private static final Pattern LINK = Pattern.compile("litedd://(note|attachment)/([0-9A-Za-z-]+)");
 
@@ -124,6 +125,9 @@ public final class Importer {
                             : new String(entries.get(n.file()), StandardCharsets.UTF_8);
                     if (mode == Mode.BRANCH && !board) {
                         text = relink(text, noteIds, attachmentIds);
+                        if (WorkflowContent.TYPE.equals(n.type())) {
+                            text = WorkflowContent.remapNotes(text, noteIds); // W-82
+                        }
                     }
                     notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
                             orNow(n.createdAt(), now), orNow(n.updatedAt(), now), n.statementId(), n.statementKind()));
@@ -249,6 +253,13 @@ public final class Importer {
                     BoardImage.encode(entries.get(n.file())); // B-34
                 } catch (ApiError e) {
                     throw new ApiError(400, "invalid_manifest", "La pizarra «" + n.title() + "» no es válida: " + e.getMessage());
+                }
+            }
+            if (WorkflowContent.TYPE.equals(n.type())) {
+                try {
+                    WorkflowContent.validate(new String(entries.get(n.file()), StandardCharsets.UTF_8)); // W-81, W-82
+                } catch (ApiError e) {
+                    throw new ApiError(400, "invalid_manifest", "El workflow «" + n.title() + "» no es válido: " + e.getMessage());
                 }
             }
         }

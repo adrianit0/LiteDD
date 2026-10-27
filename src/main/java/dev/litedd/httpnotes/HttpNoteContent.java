@@ -94,4 +94,9 @@ public record HttpNoteContent(String method, String endpoint, Map<String, String
         }
         return c;
     }
+
+    /** W-62: la misma llamada con los valores de un nodo de workflow en lugar de los guardados en la nota. */
+    public HttpNoteContent withValues(Map<String, String> values) {
+        return new HttpNoteContent(method, endpoint, values, params, headers, generated, body, login, user, hideGenerated);
+    }
 }

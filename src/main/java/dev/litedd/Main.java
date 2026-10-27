@@ -16,6 +16,7 @@ import dev.litedd.mysql.ConnectionApi;
 import dev.litedd.mysql.ConnectionFile;
 import dev.litedd.mysql.MySqlGateway;
 import dev.litedd.mysql.SqlApi;
+import dev.litedd.mysql.SqlRunner;
 import dev.litedd.notes.AttachmentsApi;
 import dev.litedd.notes.ConstantsApi;
 import dev.litedd.notes.JavaConstantValues;
@@ -32,6 +33,8 @@ import dev.litedd.transfer.Backups;
 import dev.litedd.transfer.DataApi;
 import dev.litedd.transfer.Exporter;
 import dev.litedd.transfer.Importer;
+import dev.litedd.workflow.WorkflowApi;
+import dev.litedd.workflow.WorkflowRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,6 +149,11 @@ public final class Main {
             return minutes == null ? null : Duration.ofMinutes(minutes);
         });
 
+        SqlEngine sqlEngine = new SqlEngine();
+        VariableValues variableValues = new VariableValues(store);
+        HttpRunner httpRunner = new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller(corporateCa));
+        WorkflowRunner workflowRunner = new WorkflowRunner(notes, httpRunner,
+                new SqlRunner(sqlEngine, gateway, settings::get, constants::values), sqlEngine, constants::values);
         try {
             server.value = new HttpServer(port, token, List.of(
                     new NotesApi(notes),
@@ -153,13 +161,13 @@ public final class Main {
                     // H-62: al quitar un perfil se borra su contraseña.
                     new SettingsApi(store, settings, config -> httpCredentials.retainProfiles(config.http().profileIds())),
                     new SessionApi(store),
-                    new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, settings::get, constants::values),
+                    new SqlApi(notes, variableValues, sqlEngine, gateway, settings::get, constants::values),
                     new ConstantsApi(constants),
                     new ConnectionApi(connectionFile, gateway),
                     new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                             DataPaths.dataDir(), Desktop::openFolder, clock),
-                    new HttpApi(new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller(corporateCa)), httpCredentials,
-                            corporateCa, settings::get),
+                    new HttpApi(httpRunner, httpCredentials, corporateCa, settings::get),
+                    new WorkflowApi(workflowRunner, variableValues, notes),
                     new LifecycleApi(presence.value, exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());

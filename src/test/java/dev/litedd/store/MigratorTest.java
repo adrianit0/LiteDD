@@ -203,6 +203,51 @@ class MigratorTest {
     }
 
     @Test
+    void w01_v007_admits_workflows_and_keeps_boards_out_of_the_index() throws Exception {
+        try (Connection c = connect()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON");
+            }
+            new Migrator(Migrator.MIGRATIONS.subList(0, 6), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, description, created_at, updated_at)
+                        VALUES ('b', NULL, 0, 'board', 'Plano', 'data:image/png;base64,iVBORw0KGgo', 'resumen', 'now', 'now'),
+                               ('s', 'b', 0, 'sql', 'Consulta', 'SELECT 1', '', 'now', 'now')""");
+                st.execute("INSERT INTO variable_value (note_id, name, value) VALUES ('s', 'id', '5')");
+                st.execute("INSERT INTO tab (id, note_id, position, active, mode) VALUES ('t1', 's', 0, 1, 'view')");
+            }
+            String ridBefore = scalar(c, "SELECT rid FROM note WHERE id = 'b'");
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
+            assertThat(scalar(c, "SELECT rid FROM note WHERE id = 'b'")).isEqualTo(ridBefore);
+            assertThat(scalar(c, "SELECT parent_id FROM note WHERE id = 's'")).isEqualTo("b");
+            for (String table : List.of("variable_value", "tab")) {
+                assertThat(scalar(c, "SELECT count(*) FROM " + table)).as(table).isEqualTo("1");
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"plano\"'")).isEqualTo("1");
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"ivborw0kggo\"'")).isEqualTo("0");
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('w', NULL, 1, 'workflow', 'Alta de cliente', '{"nodes":[{"name":"Conn1"}]}', 'now', 'now')""");
+                st.execute("INSERT INTO variable_value (note_id, name, value) VALUES ('w', 'n1/id', '54')");
+            }
+            // W-80: el JSON de un workflow se busca como el de una nota HTTP.
+            assertThat(scalar(c, "SELECT count(*) FROM note_fts WHERE note_fts MATCH '\"conn1\"'")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("DELETE FROM note WHERE id = 'w'");
+                st.execute("INSERT INTO note_fts(note_fts, rank) VALUES ('integrity-check', 0)");
+            }
+            // W-83: los últimos valores se borran con la nota.
+            assertThat(scalar(c, "SELECT count(*) FROM variable_value WHERE note_id = 'w'")).isEqualTo("0");
+            assertThat(scalar(c, "PRAGMA foreign_keys")).isEqualTo("1");
+        }
+    }
+
+    @Test
     void d02_keeps_only_two_premigration_backups() throws Exception {
         Files.createDirectories(dir);
         for (String name : List.of("litedd-20260101-000000-premigracion.db", "litedd-20260102-000000-premigracion.db",
