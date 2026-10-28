@@ -105,6 +105,8 @@ export function WorkflowCanvas(props: Props) {
   };
 
   const onNodeKey = (e: KeyboardEvent, n: WfNode) => {
+    // Los atajos globales, como Ctrl+Intro (W-60) o Ctrl+E, siguen funcionando con el foco en un nodo.
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === 'Enter' || e.key === ' ') {
       props.onSelectNode(n.id);
     } else if (editable && (e.key === 'Delete' || e.key === 'Backspace') && isNamed(n)) {

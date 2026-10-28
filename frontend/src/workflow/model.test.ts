@@ -60,6 +60,8 @@ describe('W-13, W-14 añadir y borrar mantienen la cadena', () => {
     expect(wait.x).toBeGreaterThan(http.x);
     expect(finish.x).toBeGreaterThan(wait.x);
     expect(http.y).toBe(start.y);
+    // Solo lo justo: el hueco hasta Finish es el mismo que entre los demás nodos.
+    expect(finish.x - wait.x).toBe(wait.x - http.x);
   });
 
   it('W-14 con un nodo seleccionado, se inserta tras él; con Finish seleccionado, antes de Finish', () => {

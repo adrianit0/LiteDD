@@ -81,7 +81,7 @@ export function NodePanel({ workflow, node, editMode, notes, fields, values, run
     return (
       <div key={name} className="sql-field wf-field">
         <label htmlFor={id}>
-          <span className="sql-field-name">{name}</span>
+          <span className="sql-field-name">{node.kind === 'wait' ? 'Segundos' : name}</span>
           {type && <span className="sql-field-type">{type}</span>}
         </label>
         <input id={id} value={value} readOnly={readOnly} onChange={(e) => onInput(e.target.value)} />

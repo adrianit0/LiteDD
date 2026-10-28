@@ -229,6 +229,25 @@ describe('notas workflow', () => {
     expect(panel.getByText('77')).toBeTruthy();
   });
 
+  it('W-60 W-17 con el foco en un nodo, Ctrl+Intro sigue llegando a los atajos globales', async () => {
+    await mount(LINEAR);
+    const seen: string[] = [];
+    const listener = (e: KeyboardEvent) => seen.push(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
+    window.addEventListener('keydown', listener);
+    try {
+      fireEvent.keyDown(screen.getByRole('button', { name: 'HTTP Conn1' }), { key: 'Enter', ctrlKey: true });
+      expect(seen).toEqual(['Ctrl+Enter']);
+    } finally {
+      window.removeEventListener('keydown', listener);
+    }
+  });
+
+  it('W-27 el campo de la espera se llama «Segundos»', async () => {
+    await mount(LINEAR, 'edit');
+    fireEvent.click(screen.getByRole('button', { name: 'Espera Espera1' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Segundos').value).toBe('1');
+  });
+
   it('W-61 los motivos de no ejecutar se listan', async () => {
     const { ApiError } = await vi.importActual<typeof import('../../api')>('../../api');
     mocked.workflowExecute.mockRejectedValue(new ApiError(400, 'workflow_invalid', 'No se puede ejecutar', ['«Conn1» no tiene nota']));

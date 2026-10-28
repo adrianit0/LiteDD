@@ -196,10 +196,12 @@ export function insertNode(w: Workflow, kind: NodeKind, selectedId: string | nul
   if (kind === 'input') node.rows = [];
   if (kind === 'http' || kind === 'sql') node.values = {};
   const next = nextOf(w, after.id);
-  // Los que siguen en la cadena se desplazan a la derecha.
+  // Los que siguen en la cadena se desplazan a la derecha lo justo para dejarle sitio.
   const following = new Set<string>();
   for (let cur = next; cur && !following.has(cur); cur = nextOf(w, cur)) following.add(cur);
-  const nodes = w.nodes.map((n) => (following.has(n.id) ? { ...n, x: n.x + STEP_X } : n));
+  const nextX = w.nodes.find((n) => n.id === next)?.x ?? Infinity;
+  const shift = Math.max(0, node.x + STEP_X - nextX);
+  const nodes = w.nodes.map((n) => (following.has(n.id) ? { ...n, x: n.x + shift } : n));
   const edges = w.edges.filter((e) => e.from !== after.id);
   edges.push({ from: after.id, to: id });
   if (next) edges.push({ from: id, to: next });
