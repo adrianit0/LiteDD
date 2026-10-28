@@ -116,3 +116,28 @@ Recorridos con la aplicación arrancada (`exec:java`, puerto 47650), datos aisla
 - **El campo de la espera** se llama «Segundos» en el panel. En el contenido sigue siendo `seconds`.
 - **Resultados al cambiar de modo:** se conservan en la pestaña al pasar a edición y volver, como los de SQL. Se pierden al cerrarla (W-73).
 - **Búsqueda:** los fragmentos de un workflow son trozos de su JSON, como en las notas HTTP (consecuencia prevista en ADR-0031).
+
+### Cambios posteriores: Login, nodos sueltos y ejecuciones (ADR-0032)
+
+Fecha: 2026-10-28.
+
+- **Nodo Login (W-29, W-69):**
+  - Hace el login de la nota de «Ajustes» con el usuario elegido, que admite referencias.
+  - Los nodos HTTP siguientes usan su sesión sin hacer su propio login. Las notas con «No necesita login» siguen sin login. Otro Login sustituye la sesión, y un Login fallido bloquea los nodos que lo usarían.
+  - El login vale solo para la ejecución: `HttpRunner.loginAs` no toca el login reutilizable (H-25).
+- **Nodos sueltos (W-14):** sin selección, el nodo nuevo queda debajo de los demás, sin flechas.
+- **Ejecuciones (W-74 a W-78):**
+  - Cada pestaña guarda las 20 últimas, que se eligen en el desplegable «Ejecución».
+  - El panel muestra lo escrito y lo que entró en cada campo, con las referencias que no existían marcadas. Sin nodo seleccionado, resume la ejecución.
+  - El evento de cada nodo lleva `raw`, `values` y `missing`.
+- **Pruebas:** 406 de backend (1 omitida en Windows) y 393 de interfaz. `./mvnw verify` en verde.
+
+Recorrido con la aplicación arrancada, datos aislados y un servidor de pruebas con login en 127.0.0.1:8099:
+
+1. **Un solo login:** Input1 (`user = ana`) → Login1 (`$Input1.user`) → «Quién soy» → «Eco abierto».
+   - El servidor recibe un único login como `ana`.
+   - «Quién soy» llega con la sesión `usr-ana` aunque su nota tiene el usuario `bloqueado`.
+   - «Eco abierto», sin login, llega sin sesión y con `who = ana`, que sale de `$Login1.user`.
+2. **Login fallido:** con `user = bloqueado`, el Login falla con 401 y «Quién soy» no se envía («El login de «Login1» falló: no se envía»). El resumen marca `$Login1.user no existe → null`.
+3. **Historial:** el desplegable lista las dos ejecuciones. Elegir la primera devuelve sus estados al lienzo, y un clic en el resumen abre QuienSoy con su respuesta de entonces (`usr-ana`).
+4. **Nodo suelto:** en edición, sin selección, «+ Espera» deja el nodo suelto debajo de los demás y la cadena no cambia.
