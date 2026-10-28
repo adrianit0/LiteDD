@@ -6,9 +6,10 @@ const LABELS: Record<NoteType, [string, string]> = {
   http: ['HTTP', 'HTTP'],
   xml: ['XML', 'XML MyBatis'],
   board: ['PIZ', 'Pizarra'],
+  workflow: ['WF', 'Workflow'],
 };
 
-/** Icono de tipo de nota (N-01, P-01, H-01, M-01, B-01). */
+/** Icono de tipo de nota (N-01, P-01, H-01, M-01, B-01, W-84). */
 export function TypeIcon({ type }: { type: NoteType }) {
   const [text, label] = LABELS[type];
   return (

@@ -1,6 +1,6 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 import type { MapperAnalysis } from './mapper';
-import type { Analysis, ExecuteResponse, Sort } from './sql/types';
+import type { Analysis, Column, ExecuteResponse, Sort } from './sql/types';
 import type { SearchHit } from './search';
 
 /** Error de la API con el cuerpo de A-02. status 0 = sin contacto con el servidor. */
@@ -279,13 +279,122 @@ export interface SqlTabState {
   page: number;
 }
 
+/** W-51: valores de consulta de un workflow en una pestaña, por nodo y campo. */
+export interface WorkflowTabState {
+  values: Record<string, Record<string, string>>;
+}
+
 export interface SessionTab {
   id: string;
   noteId: string;
   mode: Mode;
   active: boolean;
   /** P-14: preview = pestaña provisional, en cursiva. */
-  state: { scroll?: number; sql?: SqlTabState | null; preview?: boolean } | null;
+  state: { scroll?: number; sql?: SqlTabState | null; workflow?: WorkflowTabState | null; preview?: boolean } | null;
+}
+
+/** W-23 a W-26: la nota de un nodo de workflow. state: active, trash o missing. */
+export interface WorkflowNoteInfo {
+  id: string;
+  state: 'active' | 'trash' | 'missing';
+  type?: NoteType;
+  title?: string;
+  method?: string;
+  endpoint?: string;
+  /** SQL: si es una consulta que se puede ejecutar (Q-45). */
+  executable?: boolean;
+  fields?: { name: string; type?: string }[];
+  /** Valores iniciales: los guardados en la nota HTTP o los últimos ejecutados de la SQL. */
+  values?: Record<string, string | null>;
+  error?: string;
+}
+
+export interface WorkflowAnalysis {
+  notes: WorkflowNoteInfo[];
+  /** W-51: solo si se pidió con workflowId. */
+  lastValues?: Record<string, Record<string, string | null>>;
+}
+
+/** W-64: todas las filas de un nodo SQL, hasta el tope. */
+export interface WorkflowRows {
+  columns: Column[];
+  rows: (string | null)[][];
+  capReached: boolean;
+  serverMillis: number;
+}
+
+export type NodeStatus = 'running' | 'ok' | 'error' | 'cancelled';
+
+/** W-70 a W-72: un evento por línea de la ejecución en streaming (ADR-0031). */
+export type WorkflowEvent =
+  | { type: 'start'; chain: string[] }
+  | {
+      type: 'node';
+      nodeId: string;
+      status: NodeStatus;
+      millis?: number;
+      values?: Record<string, string | null>;
+      error?: { code: string; message: string };
+      http?: HttpResult;
+      sql?: WorkflowRows;
+    }
+  | { type: 'end'; status: 'finished' | 'stopped' | 'cancelled'; errors: number; millis: number; message: string }
+  | { type: 'tick' };
+
+export interface WorkflowExecuteRequest {
+  noteId: string;
+  version: number;
+  executionId: string;
+  profileId: string;
+  confirmKey?: string;
+  values: Record<string, Record<string, string>>;
+}
+
+/**
+ * W-60: la respuesta llega en JSON por líneas; cada evento se entrega en cuanto llega. Los errores previos (W-61,
+ * A-05, H-63, H-69) responden como un error normal (A-02).
+ */
+async function workflowExecute(req: WorkflowExecuteRequest, onEvent: (e: WorkflowEvent) => void, signal?: AbortSignal): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch('/api/workflow/execute', {
+      method: 'POST',
+      headers: { 'X-LiteDD-Token': sessionToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal,
+    });
+  } catch {
+    if (signal?.aborted) return;
+    throw networkError();
+  }
+  if (!res.ok || !res.body) {
+    const err = ((await res.json().catch(() => null)) ?? {}) as { code?: string; message?: string; details?: unknown };
+    throw new ApiError(res.status, err.code ?? 'error', err.message ?? `Error ${res.status}`, err.details ?? null);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = (all: boolean) => {
+    let nl = buffer.indexOf('\n');
+    while (nl >= 0 || (all && buffer.trim() !== '')) {
+      const line = nl >= 0 ? buffer.slice(0, nl) : buffer;
+      buffer = nl >= 0 ? buffer.slice(nl + 1) : '';
+      if (line.trim() !== '') onEvent(JSON.parse(line) as WorkflowEvent);
+      nl = buffer.indexOf('\n');
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      flush(false);
+    }
+  } catch {
+    if (signal?.aborted) return;
+    throw networkError();
+  }
+  flush(true);
 }
 
 export interface ExecuteRequest {
@@ -383,6 +492,12 @@ export const api = {
   httpExecute: (noteId: string, version: number, executionId: string, profileId: string, confirmKey?: string) =>
     request<HttpResult>('POST', '/api/http/execute', { noteId, version, executionId, profileId, confirmKey }),
   httpCancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/http/cancel', { executionId }),
+  /** W-23 a W-26, W-51 */
+  workflowAnalyze: (noteIds: string[], workflowId?: string) =>
+    request<WorkflowAnalysis>('POST', '/api/workflow/analyze', { noteIds, workflowId }),
+  /** W-60 a W-72 */
+  workflowExecute,
+  workflowCancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/workflow/cancel', { executionId }),
   /** H-63 */
   httpProfile: () => request<{ active: string }>('GET', '/api/http/profile'),
   setHttpProfile: (id: string) => request<{ active: string }>('PUT', '/api/http/profile', { id }),

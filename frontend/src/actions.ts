@@ -43,6 +43,7 @@ export function newNoteItems(parentId: string | null): MenuItem[] {
     { label: 'Nota HTTP', onSelect: () => void createAndOpen(parentId, 'http') },
     { label: 'Nota MyBatis', onSelect: () => void createAndOpen(parentId, 'xml') },
     { label: 'Nota Pizarra', onSelect: () => void createAndOpen(parentId, 'board') },
+    { label: 'Nota Workflow', onSelect: () => void createAndOpen(parentId, 'workflow') },
   ];
 }
 

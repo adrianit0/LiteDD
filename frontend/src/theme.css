@@ -20,6 +20,8 @@
   --violet: #d2a8ff;
   /* B-01: icono de las pizarras. */
   --orange: #ffa657;
+  /* W-84: icono de los workflows. */
+  --cyan: #56d4dd;
   --accent-text: #0d1117;
 
   /* U-04 */
@@ -281,6 +283,10 @@ input {
 
 .type-board {
   color: var(--orange);
+}
+
+.type-workflow {
+  color: var(--cyan);
 }
 
 /* M-24: marca de las sentencias de escritura generadas desde un mapper. */
@@ -2643,4 +2649,386 @@ mark {
   padding: 12px 20px;
   border: 1px dashed var(--border);
   color: var(--text-muted);
+}
+
+/* W-01 a W-73: workflow. Lienzo propio con nodos en HTML y flechas en SVG (propuesta A de ADR-0031). */
+.note-body.mode-workflow {
+  overflow: hidden;
+}
+
+.wf-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 10px 20px 0;
+}
+
+.wf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.wf-add {
+  display: flex;
+  gap: 6px;
+}
+
+.wf-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+}
+
+.wf-inputs {
+  flex: none;
+}
+
+.wf-input-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 4px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.wf-input-group legend {
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cyan);
+}
+
+.wf-end {
+  font-size: 13px;
+}
+
+.wf-end.finished {
+  color: var(--green);
+}
+
+.wf-end.stopped {
+  color: var(--error);
+}
+
+.wf-end.cancelled {
+  color: var(--warning);
+}
+
+.wf-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.wf-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.wf-canvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.wf-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.wf-edge {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 2;
+}
+
+.wf-edge.loose {
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+
+.wf-edge.selected {
+  stroke: var(--accent);
+}
+
+.wf-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.wf-edge-hit:focus-visible {
+  stroke: var(--selection);
+  outline: none;
+}
+
+.wf-arrow-head {
+  fill: var(--text-muted);
+}
+
+.wf-arrow-head.selected {
+  fill: var(--accent);
+}
+
+.wf-node {
+  position: absolute;
+  user-select: none;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.wf-canvas.editable .wf-node {
+  cursor: grab;
+}
+
+.wf-node.box {
+  width: 176px;
+  min-height: 56px;
+  padding: 6px 10px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.wf-node.circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+
+.wf-node.wf-kind-start {
+  background: var(--green);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.wf-node.wf-kind-finish {
+  background: var(--surface-raised);
+  border: 4px solid var(--text);
+  font-weight: 600;
+}
+
+.wf-node.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wf-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wf-node.loose {
+  opacity: 0.55;
+}
+
+.wf-node.state-running {
+  border-color: var(--accent);
+}
+
+.wf-node.state-ok.box {
+  border-color: var(--green);
+}
+
+.wf-node.state-error.box,
+.wf-node.state-cancelled.box {
+  border-color: var(--error);
+}
+
+.wf-node.state-skipped {
+  opacity: 0.45;
+}
+
+.wf-node-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wf-node-kind {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.wf-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.wf-state {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-mono);
+}
+
+.wf-state.ok {
+  color: var(--green);
+}
+
+.wf-state.error,
+.wf-state.cancelled {
+  color: var(--error);
+}
+
+.wf-node-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node-problem {
+  color: var(--error);
+}
+
+.wf-node-fields {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wf-node-fields li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-field-name {
+  color: var(--text);
+}
+
+.wf-port {
+  position: absolute;
+  top: 22px;
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  border-radius: 50%;
+}
+
+.wf-port.in {
+  left: -7px;
+}
+
+.wf-port.out {
+  right: -7px;
+}
+
+.wf-canvas.editable .wf-port.out {
+  cursor: crosshair;
+}
+
+.wf-canvas.editable .wf-port.out:hover {
+  border-color: var(--accent);
+}
+
+.wf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 340px;
+  flex: none;
+  padding: 12px 14px 24px;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.wf-panel .results {
+  max-height: 360px;
+}
+
+.wf-panel-head {
+  font-size: 14px;
+}
+
+.wf-field input,
+.wf-field select {
+  width: 100%;
+}
+
+.wf-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.wf-endpoint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wf-problem {
+  margin: 0;
+  color: var(--error);
+}
+
+.wf-warning {
+  font-size: 12px;
+  color: var(--warning);
+}
+
+.wf-used {
+  font-size: 12px;
+}
+
+.wf-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wf-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto auto;
+  gap: 4px;
+}
+
+.wf-row .sql-field-error,
+.wf-row .wf-warning {
+  grid-column: 1 / -1;
+}
+
+.wf-row input {
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.wf-remove {
+  align-self: flex-start;
+  color: var(--error);
+}
+
+.wf-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

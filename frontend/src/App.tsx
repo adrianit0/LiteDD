@@ -14,6 +14,7 @@ import { useConnection } from './stores/connectionStore';
 import { useHttpProfile } from './stores/httpProfileStore';
 import { useSqlRuns } from './stores/sqlRunStore';
 import { useHttpRuns } from './stores/httpRunStore';
+import { useWorkflowRuns } from './stores/workflowRunStore';
 import { QuickSearch } from './components/QuickSearch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ConstantsDialog } from './components/ConstantsDialog';
@@ -74,6 +75,16 @@ export function App() {
           // H-30: Ctrl+Intro envía la llamada de una nota HTTP.
           if (tab?.note?.type === 'http') {
             void useHttpRuns.getState().execute(tab.id);
+            break;
+          }
+          // W-60: Ctrl+Intro ejecuta el workflow con los valores de la pestaña; desde edición, pasa antes a consulta.
+          if (tab?.note?.type === 'workflow') {
+            const runWorkflow = async () => {
+              if (tab.mode === 'edit') await tabs.toggleMode(tab.id);
+              const current = useTabs.getState().tabs.find((t) => t.id === tab.id);
+              await useWorkflowRuns.getState().execute(tab.id, current?.workflow?.values ?? {});
+            };
+            void runWorkflow();
             break;
           }
           if (!tab?.note || tab.note.type !== 'sql') break;

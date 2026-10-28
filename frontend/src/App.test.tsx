@@ -111,7 +111,7 @@ describe('App', () => {
     expect(screen.queryByText(/Sin conexión configurada/)).toBeNull();
   });
 
-  it('N-05 B-01 el botón «+ Nuevo» abre un menú flotante con los cinco tipos de nota', async () => {
+  it('N-05 B-01 W-01 el botón «+ Nuevo» abre un menú flotante con los seis tipos de nota', async () => {
     render(<App />);
     await act(async () => {});
     const button = screen.getByRole('button', { name: '+ Nuevo' });
@@ -123,6 +123,7 @@ describe('App', () => {
       'Nota HTTP',
       'Nota MyBatis',
       'Nota Pizarra',
+      'Nota Workflow',
     ]);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
@@ -385,7 +386,7 @@ describe('App', () => {
     nuevo.focus();
     fireEvent.keyDown(nuevo, { key: 'ArrowRight' });
     const submenu = screen.getByRole('menu', { name: 'Nuevo' });
-    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis', 'Nota Pizarra']);
+    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis', 'Nota Pizarra', 'Nota Workflow']);
     fireEvent.keyDown(within(submenu).getAllByRole('menuitem')[0], { key: 'ArrowLeft' });
     expect(screen.queryByRole('menu', { name: 'Nuevo' })).toBeNull();
     expect(screen.getByRole('menu')).toBeTruthy();

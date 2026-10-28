@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, ApiError, type SessionTab, type SqlTabState } from '../api';
+import { api, ApiError, type SessionTab, type SqlTabState, type WorkflowTabState } from '../api';
 import type { Mode, Note } from '../types';
 import { useTree } from './treeStore';
 import { useUi } from './uiStore';
@@ -33,6 +33,8 @@ export interface Tab {
   focusTitle: boolean;
   /** P-06: valores, tamaño de página, orden y página de una nota SQL; null hasta que se analiza. */
   sql: SqlTabState | null;
+  /** W-51: valores de consulta de un workflow; null hasta que se analizan sus notas. */
+  workflow: WorkflowTabState | null;
   /** P-14: pestaña provisional (en cursiva) que se sustituye al abrir otra nota. */
   preview: boolean;
 }
@@ -82,6 +84,8 @@ interface TabsState {
   resolveConflict: (id: string, choice: 'reload' | 'overwrite') => Promise<void>;
   setScroll: (id: string, scroll: number) => void;
   setSql: (id: string, changes: Partial<SqlTabState>) => void;
+  /** W-51 */
+  setWorkflow: (id: string, state: WorkflowTabState) => void;
   flushOnUnload: () => void;
   /** U-11: al recuperar el contacto se guarda lo que quedó pendiente. */
   savePending: () => Promise<void>;
@@ -127,6 +131,7 @@ function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = fa
     conflict: null,
     focusTitle,
     sql: null,
+    workflow: null,
     preview,
   };
 }
@@ -302,6 +307,7 @@ export const useTabs = create<TabsState>((set, get) => {
           id: s.id,
           scroll: s.state?.scroll ?? 0,
           sql: s.state?.sql ?? null,
+          workflow: s.state?.workflow ?? null,
           preview: s.state?.preview === true,
         }));
         // Lo que se haya abierto mientras se restauraba se conserva detrás.
@@ -506,6 +512,10 @@ export const useTabs = create<TabsState>((set, get) => {
       if (t) patch(id, { sql: { ...(t.sql ?? defaultSqlState()), ...changes } });
     },
 
+    setWorkflow(id, state) {
+      if (tab(id)) patch(id, { workflow: state });
+    },
+
     setScroll(id, scroll) {
       if (tab(id) && tab(id)!.scroll !== scroll) patch(id, { scroll });
     },
@@ -543,7 +553,7 @@ export function sessionSnapshot(tabs: Tab[], activeId: string | null): SessionTa
     noteId: t.noteId,
     mode: t.mode,
     active: t.id === activeId,
-    state: { scroll: t.scroll, sql: t.sql, preview: t.preview },
+    state: { scroll: t.scroll, sql: t.sql, workflow: t.workflow, preview: t.preview },
   }));
 }
 

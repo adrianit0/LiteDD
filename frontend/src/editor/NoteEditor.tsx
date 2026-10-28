@@ -13,8 +13,8 @@ import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
 import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
 
-/** La pizarra no usa este editor (B-03). */
-type EditorType = Exclude<NoteType, 'board'> | 'plain';
+/** La pizarra (B-03) y el workflow (W-10) no usan este editor. */
+type EditorType = Exclude<NoteType, 'board' | 'workflow'> | 'plain';
 
 const PLACEHOLDERS: Record<EditorType, string> = {
   md: 'Escribe en Markdown…',

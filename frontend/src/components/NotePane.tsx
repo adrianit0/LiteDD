@@ -13,6 +13,7 @@ import { isGenerated, writeMark } from '../mapper';
 import { MarkdownView } from './MarkdownView';
 import { BoardEditor } from './board/BoardEditor';
 import { BoardView } from './board/BoardView';
+import { WorkflowView } from './workflow/WorkflowView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote } from '../actions';
 import { TypeIcon } from './TypeIcon';
@@ -44,6 +45,8 @@ export function NotePane({ tab }: { tab: Tab }) {
   const isHttp = tab.note?.type === 'http';
   // B-02, B-03: la pizarra es una imagen en consulta y un lienzo en edición.
   const isBoard = tab.note?.type === 'board';
+  // W-02: el workflow se diseña en edición y se ejecuta en consulta, siempre en su lienzo.
+  const isWorkflow = tab.note?.type === 'workflow';
   // M-20: las hijas generadas de una nota XML son de solo lectura.
   const generated = isGenerated(tab.note);
   const editMode = mode === 'edit' && !generated;
@@ -224,12 +227,14 @@ export function NotePane({ tab }: { tab: Tab }) {
       {editMode && (note.type === 'sql' || note.type === 'xml') && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}
 
       <div
-        className={`note-body mode-${isHttp ? 'http' : editMode ? (isBoard ? 'board' : 'edit') : 'view'}`}
+        className={`note-body mode-${isHttp ? 'http' : isWorkflow ? 'workflow' : editMode ? (isBoard ? 'board' : 'edit') : 'view'}`}
         ref={body}
-        onScroll={!editMode && !isHttp ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
+        onScroll={!editMode && !isHttp && !isWorkflow ? (e) => rememberScroll(e.currentTarget.scrollTop) : undefined}
       >
         {isHttp ? (
           <HttpView tab={tab} />
+        ) : note.type === 'workflow' ? (
+          <WorkflowView key={tab.id} tab={tab} editMode={editMode} />
         ) : note.type === 'board' ? (
           editMode ? (
             <BoardEditor
