@@ -1,6 +1,6 @@
 # ADR-0031: Notas workflow
 
-- Estado: aceptada (2026-10-28)
+- Estado: aceptada (2026-10-28); el nodo Login, los nodos sueltos (cambia la propuesta B) y el historial de ejecuciones los añade ADR-0032
 - Requisitos: W-01 a W-84, N-04, N-05, X-03, X-05, U-02 y la API
 
 ## Contexto
