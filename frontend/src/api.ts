@@ -333,7 +333,11 @@ export type WorkflowEvent =
       nodeId: string;
       status: NodeStatus;
       millis?: number;
+      /** W-78: lo escrito en cada campo, con sus referencias. */
+      raw?: Record<string, string>;
       values?: Record<string, string | null>;
+      /** W-78: referencias que no existían. */
+      missing?: string[];
       error?: { code: string; message: string };
       http?: HttpResult;
       sql?: WorkflowRows;

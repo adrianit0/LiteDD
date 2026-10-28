@@ -28,10 +28,14 @@ import {
   type Workflow,
 } from './model';
 
+/** Start → Input1 → Http1 → Espera1 → Finish, añadiendo cada nodo tras el anterior seleccionado. */
 function build(): Workflow {
   let w = initialWorkflow();
+  let selected = 'start';
   for (const kind of ['input', 'http', 'wait'] as const) {
-    w = insertNode(w, kind, null)!.workflow;
+    const result = insertNode(w, kind, selected)!;
+    w = result.workflow;
+    selected = result.id;
   }
   return w;
 }
@@ -51,7 +55,17 @@ describe('W-02, W-40 contenido', () => {
 });
 
 describe('W-13, W-14 añadir y borrar mantienen la cadena', () => {
-  it('W-14 sin selección, el nodo nuevo va justo antes de Finish y desplaza a los siguientes', () => {
+  it('W-14 sin selección, el nodo nuevo queda suelto, sin flechas y debajo de los demás', () => {
+    const w = build();
+    const { workflow, id } = insertNode(w, 'login', null)!;
+    const node = workflow.nodes.find((n) => n.id === id)!;
+    expect(node).toMatchObject({ kind: 'login', name: 'Login1', values: { user: '' } });
+    expect(workflow.edges).toEqual(w.edges);
+    expect(chain(workflow).some((n) => n.id === id)).toBe(false);
+    expect(node.y).toBeGreaterThan(Math.max(...w.nodes.map((n) => n.y)));
+  });
+
+  it('W-14 al insertar tras el seleccionado, los siguientes se desplazan lo justo', () => {
     const w = build();
     expect(chain(w).map((n) => n.name ?? n.kind)).toEqual(['start', 'Input1', 'Http1', 'Espera1', 'finish']);
     const [start, input, http, wait, finish] = chain(w);
@@ -72,6 +86,10 @@ describe('W-13, W-14 añadir y borrar mantienen la cadena', () => {
     expect(chain(workflow)[2].id).toBe(id);
     const atFinish = insertNode(w, 'input', 'finish')!.workflow;
     expect(chain(atFinish).map((n) => n.name ?? n.kind).slice(-2)).toEqual(['Input2', 'finish']);
+    // W-29: un Login seleccionado también admite un nodo tras él.
+    const withLogin = insertNode(w, 'login', input.id)!;
+    expect(chain(insertNode(withLogin.workflow, 'http', withLogin.id)!.workflow).map((n) => n.name ?? n.kind).slice(0, 4))
+      .toEqual(['start', 'Input1', 'Login1', 'Http2']);
   });
 
   it('W-13 borrar un nodo intermedio une a sus vecinos; Start y Finish no se borran', () => {
@@ -166,7 +184,7 @@ describe('W-30, W-36 referencias', () => {
 describe('W-41 mismos inputs, mismo valor', () => {
   function twoCalls(sameInputs: boolean) {
     let w = build();
-    w = insertNode(w, 'sql', null)!.workflow;
+    w = insertNode(w, 'sql', chain(w)[3].id)!.workflow;
     w = { ...w, options: { ...w.options, sameInputs } };
     const [, , http, , sql] = chain(w);
     return { w, http, sql, fields: { [http.id]: ['id', 'name'], [sql.id]: ['id'] } };

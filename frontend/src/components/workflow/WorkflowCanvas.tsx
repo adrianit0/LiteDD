@@ -244,6 +244,8 @@ export function WorkflowCanvas(props: Props) {
                   {n.kind === 'sql' && info?.title}
                   {n.kind === 'wait' && `${n.seconds || '?'} s`}
                   {n.kind === 'input' && `${(n.rows ?? []).length} valores`}
+                  {/* W-29 */}
+                  {n.kind === 'login' && `Usuario: ${values[n.id]?.user || 'el del perfil'}`}
                 </div>
                 {problem && <div className="wf-node-problem">{problem}</div>}
                 {(n.kind === 'http' || n.kind === 'sql' || n.kind === 'input') && shown.length > 0 && (

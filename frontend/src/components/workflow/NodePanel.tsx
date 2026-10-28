@@ -29,6 +29,7 @@ import { HttpResponseView } from '../http/HttpResponseView';
 import { ResultsTable } from '../sql/ResultsTable';
 import { NotePicker } from './NotePicker';
 import { noteProblem } from './WorkflowCanvas';
+import { EnteredValue } from './ExecutionSummary';
 
 interface Props {
   workflow: Workflow;
@@ -73,24 +74,30 @@ export function NodePanel({ workflow, node, editMode, notes, fields, values, run
   const fieldNames = node.kind === 'http' || node.kind === 'sql' ? (info?.fields ?? []) : [];
   const editableInView = isEditableInView(workflow, node);
 
-  /** Un campo con sus avisos de referencias (W-36) y, en consulta, el valor usado (W-72). */
+  /** Un campo con sus avisos de referencias (W-36) y, en consulta, lo que entró en la ejecución elegida (W-76). */
   const field = (name: string, value: string, onInput: (v: string) => void, type?: string, readOnly = false) => {
     const warnings = editMode ? referenceWarnings(workflow, node.id, value) : [];
-    const used = run?.values?.[name];
     const id = `wf-${node.id}-field-${name}`;
+    const text = node.kind === 'wait' ? 'Segundos' : node.kind === 'login' ? 'Usuario' : name;
     return (
       <div key={name} className="sql-field wf-field">
         <label htmlFor={id}>
-          <span className="sql-field-name">{node.kind === 'wait' ? 'Segundos' : name}</span>
+          <span className="sql-field-name">{text}</span>
           {type && <span className="sql-field-type">{type}</span>}
         </label>
-        <input id={id} value={value} readOnly={readOnly} onChange={(e) => onInput(e.target.value)} />
+        <input
+          id={id}
+          value={value}
+          readOnly={readOnly}
+          placeholder={node.kind === 'login' ? 'Vacío: el usuario del perfil' : undefined}
+          onChange={(e) => onInput(e.target.value)}
+        />
         {warnings.map((w) => (
           <span key={w} className="wf-warning">{w}</span>
         ))}
         {!editMode && run?.values && name in run.values && (
           <span className="wf-used muted">
-            Usado: <code>{used === null ? 'null' : used}</code>
+            Entró: <EnteredValue raw={run.raw?.[name] ?? ''} value={run.values[name]} missing={run.missing} />
           </span>
         )}
       </div>
@@ -138,17 +145,24 @@ export function NodePanel({ workflow, node, editMode, notes, fields, values, run
         </div>
       )}
 
+      {node.kind === 'login' && (
+        // W-29
+        <p className="muted wf-note">Hace el login con la nota de login de «Ajustes». Los nodos HTTP siguientes usan su sesión.</p>
+      )}
+
       {editMode ? (
         <>
           {fieldNames.map((f) =>
             field(f.name, node.values?.[f.name] ?? '', (v) => onChange(setFieldValue(workflow, fields, node.id, f.name, v)), f.type),
           )}
+          {node.kind === 'login' && field('user', node.values?.user ?? '', (v) => update({ values: { ...node.values, user: v } }))}
           {node.kind === 'wait' && field('seconds', node.seconds ?? '', (v) => update({ seconds: v }))}
           {node.kind === 'input' && <RowsEditor workflow={workflow} nodeId={node.id} rows={node.rows ?? []} onRows={(rows) => update({ rows })} />}
         </>
       ) : (
         <>
           {fieldNames.map((f) => field(f.name, values[node.id]?.[f.name] ?? '', (v) => onValue(node.id, f.name, v), f.type, !editableInView))}
+          {node.kind === 'login' && field('user', values[node.id]?.user ?? '', (v) => onValue(node.id, 'user', v), undefined, !editableInView)}
           {node.kind === 'wait' && field('seconds', values[node.id]?.seconds ?? '', (v) => onValue(node.id, 'seconds', v), undefined, !editableInView)}
           {node.kind === 'input' &&
             (node.rows ?? []).map((r) => field(r.name, values[node.id]?.[r.name] ?? '', (v) => onValue(node.id, r.name, v)))}

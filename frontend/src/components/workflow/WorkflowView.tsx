@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTabs, type Tab } from '../../stores/tabsStore';
-import { useWorkflowRun, useWorkflowRuns } from '../../stores/workflowRunStore';
+import { useWorkflowRun, useWorkflowRuns, viewedExecution } from '../../stores/workflowRunStore';
 import { useUi } from '../../stores/uiStore';
 import { elapsedText } from '../../sql/results';
 import {
@@ -30,8 +30,10 @@ import {
 import { useWorkflowAnalysis } from '../../workflow/useAnalysis';
 import { NodePanel } from './NodePanel';
 import { WorkflowCanvas, type NodeState } from './WorkflowCanvas';
+import { ExecutionSummary, executionTime } from './ExecutionSummary';
 
 const ADD: [NodeKind, string][] = [
+  ['login', '+ Login'],
   ['http', '+ HTTP'],
   ['sql', '+ SQL'],
   ['wait', '+ Espera'],
@@ -45,7 +47,7 @@ const OPTIONS: [keyof WfOptions, string][] = [
   ['lockValues', 'Fijar valores de input'],
 ];
 
-/** W-01 a W-73: un workflow en edición (diseño) o en consulta (valores, ejecución y resultados). */
+/** W-01 a W-78: un workflow en edición (diseño) o en consulta (valores, ejecución, resultados y ejecuciones). */
 export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean }) {
   const store = useTabs.getState();
   const workflow = useMemo(() => parseWorkflow(tab.content), [tab.content]);
@@ -138,22 +140,27 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
 
   const execute = () => void useWorkflowRuns.getState().execute(tab.id, values);
 
-  /** W-70: estado de cada nodo de la cadena en la última ejecución. */
+  /** W-75: la ejecución que se ve y si es la que está en curso. */
+  const viewed = viewedExecution(run);
+  const live = run.running !== null && viewed?.id === run.running.executionId;
+
+  /** W-70: estado de cada nodo de la cadena en la ejecución que se ve. */
   const states = useMemo(() => {
     const out: Record<string, { state: NodeState; millis?: number; startedAt?: number }> = {};
-    if (editMode) return out;
-    for (const id of run.chain) {
-      const r = run.nodes[id];
+    if (editMode || !viewed) return out;
+    for (const id of viewed.chain) {
+      const r = viewed.nodes[id];
       if (r) out[id] = { state: r.status, millis: r.millis, startedAt: r.startedAt };
-      else if (run.running) out[id] = { state: 'pending' };
-      else if (run.end) out[id] = { state: 'skipped' };
+      else if (live) out[id] = { state: 'pending' };
+      else out[id] = { state: 'skipped' };
     }
     return out;
-  }, [editMode, run]);
+  }, [editMode, viewed, live]);
 
-  const named = run.chain.filter((id) => workflow.nodes.some((n) => n.id === id && isNamed(n)));
-  const current = named.findIndex((id) => run.nodes[id]?.status === 'running');
-  const done = named.filter((id) => run.nodes[id] && run.nodes[id].status !== 'running').length;
+  const chainIds = viewed?.chain ?? [];
+  const named = chainIds.filter((id) => workflow.nodes.some((n) => n.id === id && isNamed(n)));
+  const current = named.findIndex((id) => viewed?.nodes[id]?.status === 'running');
+  const done = named.filter((id) => viewed?.nodes[id] && viewed.nodes[id].status !== 'running').length;
   const inputs = chain(workflow).filter((n) => n.kind === 'input' && (n.rows ?? []).length > 0);
   const node = selected ? workflow.nodes.find((n) => n.id === selected) : undefined;
 
@@ -206,7 +213,7 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
               ))}
             </div>
           )}
-          <div className="sql-runbar wf-runbar" role="toolbar" aria-label="Ejecución">
+          <div className="sql-runbar wf-runbar" role="toolbar" aria-label="Barra de ejecución">
             <button
               type="button"
               className="primary"
@@ -222,22 +229,38 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
                 Cancelar
               </button>
             )}
-            {(run.running || run.end) && (
+            {(live || viewed?.end) && (
               <span className="sql-chrono" role="timer" aria-live="off">
-                {run.running ? elapsedText(performance.now() - run.running.startedAt) : elapsedText(run.end!.millis)}
+                {live ? elapsedText(performance.now() - run.running!.startedAt) : elapsedText(viewed!.end!.millis)}
               </span>
             )}
-            {run.running && named.length > 0 && (
+            {live && named.length > 0 && (
               <span className="muted">
                 Nodo {Math.min(named.length, current >= 0 ? current + 1 : done + 1)} de {named.length}
               </span>
             )}
-            {run.end && (
-              <span className={`wf-end ${run.end.status}`} role="status">
-                {run.end.message}
+            {viewed?.end && (
+              <span className={`wf-end ${viewed.end.status}`} role="status">
+                {viewed.end.message}
               </span>
             )}
             <span className="sql-runbar-spacer" />
+            {run.executions.length > 0 && (
+              // W-75
+              <label className="wf-executions">
+                <span className="muted">Ejecución</span>
+                <select
+                  value={viewed?.id ?? ''}
+                  onChange={(e) => useWorkflowRuns.getState().view(tab.id, e.target.value === run.executions[0]?.id ? null : e.target.value)}
+                >
+                  {run.executions.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {executionTime(x)} · {x.end ? `${x.end.message} · ${elapsedText(x.end.millis)}` : x.id === run.running?.executionId ? 'En curso' : 'Interrumpida'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!workflow.options.lockValues || inputs.length > 0 ? (
               <button
                 type="button"
@@ -302,11 +325,15 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
             notes={analysis.notes}
             fields={fields}
             values={values}
-            run={editMode ? undefined : run.nodes[node.id]}
+            run={editMode ? undefined : viewed?.nodes[node.id]}
             onChange={change}
             onValue={setValue}
             onRemove={remove}
           />
+        )}
+        {!node && !editMode && viewed && (
+          // W-77
+          <ExecutionSummary workflow={workflow} execution={viewed} live={live} onSelect={setSelected} />
         )}
       </div>
     </div>

@@ -3,7 +3,7 @@
  * guarda y valida el servidor (W-80, W-81).
  */
 
-export type NodeKind = 'start' | 'finish' | 'http' | 'sql' | 'wait' | 'input';
+export type NodeKind = 'start' | 'finish' | 'login' | 'http' | 'sql' | 'wait' | 'input';
 
 export interface WfRow {
   name: string;
@@ -61,6 +61,7 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   sql: 'SQL',
   wait: 'Espera',
   input: 'Input',
+  login: 'Login',
 };
 
 /** W-40: un workflow nuevo solo tiene marcada «Parar si error». */
@@ -163,7 +164,7 @@ export function nameFromTitle(title: string): string {
 /** W-22: el nombre propuesto, libre en el workflow sin distinguir mayúsculas. */
 export function proposeName(w: Workflow, kind: NodeKind, title = '', exceptId?: string): string {
   const used = new Set(w.nodes.filter((n) => n.id !== exceptId && n.name).map((n) => n.name!.toLowerCase()));
-  const fallback = kind === 'http' ? 'Http1' : kind === 'sql' ? 'Sql1' : kind === 'wait' ? 'Espera1' : 'Input1';
+  const fallback = kind === 'http' ? 'Http1' : kind === 'sql' ? 'Sql1' : kind === 'wait' ? 'Espera1' : kind === 'login' ? 'Login1' : 'Input1';
   const base = (kind === 'http' || kind === 'sql') && title ? nameFromTitle(title) || fallback : fallback;
   if (!used.has(base.toLowerCase())) return base;
   const stem = base.replace(/\d+$/, '').slice(0, 36);
@@ -177,24 +178,33 @@ function snap(v: number): number {
   return Math.max(0, Math.round(v / GRID) * GRID);
 }
 
+/** W-14: distancia vertical de un nodo suelto respecto al nodo más bajo. */
+const STEP_Y = 128;
+
 /**
- * W-14: inserta un nodo tras el seleccionado (que no sea Finish) o, sin selección, justo antes de Finish. Se coloca a
- * la derecha de su predecesor y los nodos que lo siguen en la cadena se desplazan para dejarle sitio.
+ * W-14: con un nodo seleccionado, inserta el nuevo tras él (con Finish, justo antes de Finish): se coloca a la derecha
+ * de su predecesor y los que lo siguen en la cadena se desplazan lo justo. Sin selección, el nodo queda suelto, sin
+ * flechas, debajo de los demás (ADR-0032).
  */
 export function insertNode(w: Workflow, kind: NodeKind, selectedId: string | null): { workflow: Workflow; id: string } | null {
   if (w.nodes.length >= MAX_NODES || kind === 'start' || kind === 'finish') return null;
-  const finish = w.nodes.find((n) => n.kind === 'finish');
-  let afterId: string | undefined;
-  const selected = selectedId ? w.nodes.find((n) => n.id === selectedId) : undefined;
-  if (selected && selected.kind !== 'finish') afterId = selected.id;
-  else afterId = finish ? previousOf(w, finish.id) : undefined;
-  if (!afterId) afterId = w.nodes.find((n) => n.kind === 'start')?.id;
-  const after = w.nodes.find((n) => n.id === afterId)!;
   const id = newId(w);
-  const node: WfNode = { id, kind, name: proposeName(w, kind), x: snap(after.x + STEP_X), y: after.y };
+  const node: WfNode = { id, kind, name: proposeName(w, kind), x: 0, y: 0 };
   if (kind === 'wait') node.seconds = '1';
   if (kind === 'input') node.rows = [];
   if (kind === 'http' || kind === 'sql') node.values = {};
+  if (kind === 'login') node.values = { user: '' };
+  const selected = selectedId ? w.nodes.find((n) => n.id === selectedId) : undefined;
+  if (!selected) {
+    const start = w.nodes.find((n) => n.kind === 'start');
+    node.x = snap((start?.x ?? 0) + STEP_X);
+    node.y = snap(Math.max(...w.nodes.map((n) => n.y)) + STEP_Y);
+    return { workflow: { ...w, nodes: [...w.nodes, node] }, id };
+  }
+  const afterId = selected.kind === 'finish' ? previousOf(w, selected.id) : selected.id;
+  const after = w.nodes.find((n) => n.id === afterId) ?? w.nodes.find((n) => n.kind === 'start')!;
+  node.x = snap(after.x + STEP_X);
+  node.y = after.y;
   const next = nextOf(w, after.id);
   // Los que siguen en la cadena se desplazan a la derecha lo justo para dejarle sitio.
   const following = new Set<string>();
@@ -364,9 +374,10 @@ export function setTabValue(
   return out;
 }
 
-/** Los campos de un nodo: variables de su nota, segundos o filas del Input. */
+/** Los campos de un nodo: variables de su nota, usuario del Login, segundos o filas del Input. */
 export function fieldsOf(n: WfNode, fields: FieldsByNode): string[] {
   if (n.kind === 'http' || n.kind === 'sql') return fields[n.id] ?? [];
+  if (n.kind === 'login') return ['user'];
   if (n.kind === 'wait') return ['seconds'];
   if (n.kind === 'input') return (n.rows ?? []).map((r) => r.name);
   return [];

@@ -117,15 +117,27 @@ describe('notas workflow', () => {
     expect(screen.getByRole('img', { name: 'Workflow' }).textContent).toBe('WF');
   });
 
-  it('W-02 W-14 un workflow nuevo se monta con los botones sin dibujar flechas', async () => {
+  it('W-02 W-14 con Start seleccionado, un workflow nuevo se monta con los botones sin dibujar flechas', async () => {
     await mount('', 'edit');
-    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     fireEvent.click(screen.getByRole('button', { name: '+ Input' }));
     fireEvent.click(screen.getByRole('button', { name: '+ HTTP' }));
     fireEvent.click(screen.getByRole('button', { name: '+ Espera' }));
     expect(chain(saved()).map((n) => n.name ?? n.kind)).toEqual(['start', 'Input1', 'Http1', 'Espera1', 'finish']);
     expect(useTabs.getState().tabs[0].status).toBe('pending');
+  });
+
+  it('W-14 W-29 sin selección, «+ Login» deja el nodo suelto y su «Usuario» se guarda en values.user', async () => {
+    await mount('', 'edit');
+    fireEvent.click(screen.getByRole('button', { name: '+ Login' }));
+    expect(chain(saved()).map((n) => n.kind)).toEqual(['start', 'finish']);
+    const login = saved().nodes.find((n) => n.kind === 'login')!;
+    expect(login).toMatchObject({ name: 'Login1', values: { user: '' } });
+    expect(screen.getByRole('button', { name: 'Login Login1' }).className).toContain('loose');
+    fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: '$Input1.user' } });
+    expect(saved().nodes.find((n) => n.kind === 'login')!.values).toEqual({ user: '$Input1.user' });
+    expect(screen.getByText('No hay ningún nodo llamado Input1')).toBeTruthy();
   });
 
   it('W-40 las casillas se guardan; solo «Parar si error» viene marcada', async () => {
@@ -221,12 +233,66 @@ describe('notas workflow', () => {
       emit({ type: 'end', status: 'stopped', errors: 1, millis: 130, message: 'Detenido por error en Conn1' });
       finish();
     });
-    expect(screen.getByText('Detenido por error en Conn1')).toBeTruthy();
+    expect(within(screen.getByRole('toolbar', { name: 'Barra de ejecución' })).getByRole('status').textContent)
+      .toBe('Detenido por error en Conn1');
     expect(screen.getByRole('button', { name: 'Espera Espera1, no ejecutado' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'HTTP Conn1, error' }));
     const panel = within(screen.getByRole('complementary', { name: 'Nodo Conn1' }));
     expect(panel.getByText('Respondió 404 Not Found')).toBeTruthy();
     expect(panel.getByText('77')).toBeTruthy();
+  });
+
+  it('W-74 W-75 W-76 W-77 cada ejecución queda en «Ejecución», con lo escrito, lo que entró y lo que no existía', async () => {
+    let count = 0;
+    mocked.workflowExecute.mockImplementation(async (_req, onEvent) => {
+      const first = ++count === 1;
+      onEvent({ type: 'start', chain: ['start', 'n1', 'n2', 'n3', 'finish'] });
+      onEvent({ type: 'node', nodeId: 'n1', status: 'ok', millis: 0, raw: { id: '54' }, values: { id: '54' } });
+      onEvent({
+        type: 'node', nodeId: 'n2', status: first ? 'ok' : 'error', millis: 5,
+        raw: { id: first ? '$Input1.id' : '$Input1.nada' }, values: { id: first ? '54' : null },
+        missing: first ? undefined : ['$Input1.nada'],
+        error: first ? undefined : { code: 'http_status', message: 'Respondió 404 Not Found' },
+      });
+      onEvent({ type: 'end', status: first ? 'finished' : 'stopped', errors: first ? 0 : 1, millis: 10,
+        message: first ? 'Terminado' : 'Detenido por error en Conn1' });
+    });
+    await mount(LINEAR);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ejecutar' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ejecutar' }));
+    });
+    const select = screen.getByLabelText<HTMLSelectElement>('Ejecución');
+    expect(select.options).toHaveLength(2);
+    expect(select.options[0].textContent).toContain('Detenido por error en Conn1');
+    expect(select.options[1].textContent).toContain('Terminado');
+    // W-77: sin nodo seleccionado, el resumen de la última, con la referencia que no existía.
+    const summary = within(screen.getByRole('complementary', { name: 'Resumen de la ejecución' }));
+    expect(summary.getByText('$Input1.nada', { selector: '.wf-entered > code' })).toBeTruthy();
+    expect(summary.getByText((_, el) => el?.className === 'wf-warning' && el.textContent === '$Input1.nada no existe → null')).toBeTruthy();
+    // W-75: elegir la anterior cambia el lienzo y el panel.
+    fireEvent.change(select, { target: { value: select.options[1].value } });
+    fireEvent.click(screen.getByRole('button', { name: 'HTTP Conn1, correcto' }));
+    const panel = within(screen.getByRole('complementary', { name: 'Nodo Conn1' }));
+    expect(panel.getByText('$Input1.id', { selector: 'code' })).toBeTruthy();
+    expect(panel.getByText('54', { selector: 'code' })).toBeTruthy();
+  });
+
+  it('W-74 se guardan como mucho 20 ejecuciones', async () => {
+    mocked.workflowExecute.mockImplementation(async (_req, onEvent) => {
+      onEvent({ type: 'start', chain: ['start', 'finish'] });
+      onEvent({ type: 'end', status: 'finished', errors: 0, millis: 1, message: 'Terminado' });
+    });
+    await mount(LINEAR);
+    const tabId = useTabs.getState().tabs[0].id;
+    for (let i = 0; i < 21; i++) {
+      await act(async () => {
+        await useWorkflowRuns.getState().execute(tabId, {});
+      });
+    }
+    expect(useWorkflowRuns.getState().runs[tabId].executions).toHaveLength(20);
   });
 
   it('W-60 W-17 con el foco en un nodo, Ctrl+Intro sigue llegando a los atajos globales', async () => {
@@ -256,5 +322,7 @@ describe('notas workflow', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Ejecutar' }));
     });
     expect(screen.getByRole('alert').textContent).toContain('«Conn1» no tiene nota');
+    // W-74: un error previo no es una ejecución.
+    expect(screen.queryByLabelText('Ejecución')).toBeNull();
   });
 });

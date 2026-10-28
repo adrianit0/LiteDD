@@ -3032,3 +3032,60 @@ mark {
   flex-direction: column;
   gap: 8px;
 }
+
+/* W-74 a W-77: ejecuciones del workflow. */
+.wf-executions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.wf-executions select {
+  max-width: 320px;
+}
+
+.wf-entered {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.wf-entered .wf-warning {
+  flex-basis: 100%;
+}
+
+.wf-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wf-summary-node {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wf-summary-node .wf-state {
+  margin-left: 0;
+}
+
+.wf-summary-refs {
+  margin: 4px 0 0;
+  padding-left: 14px;
+  font-size: 12px;
+}
+
+.wf-state.skipped,
+.wf-state.pending {
+  color: var(--text-muted);
+}
+
+.wf-node.wf-kind-login .wf-node-kind {
+  color: var(--green);
+}
