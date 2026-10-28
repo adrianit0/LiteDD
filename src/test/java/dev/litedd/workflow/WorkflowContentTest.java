@@ -91,6 +91,15 @@ class WorkflowContentTest {
     }
 
     @Test
+    void w29_w81_login_nodes_keep_their_user_in_values() {
+        WorkflowContent c = WorkflowContent.parse(LINEAR.replace(
+                "{\"id\":\"loose\",\"kind\":\"sql\",\"name\":\"Query1\"}",
+                "{\"id\":\"loose\",\"kind\":\"login\",\"name\":\"Login1\",\"values\":{\"user\":\"$Input1.user\"}}"));
+        assertThat(c.node("loose").orElseThrow().values()).containsEntry("user", "$Input1.user");
+        assertThat(c.problems()).isEmpty();
+    }
+
+    @Test
     void w16_w81_at_most_one_hundred_nodes() {
         StringBuilder nodes = new StringBuilder("{\"id\":\"start\",\"kind\":\"start\"},{\"id\":\"finish\",\"kind\":\"finish\"}");
         for (int i = 0; i < 98; i++) {

@@ -78,7 +78,7 @@ class WorkflowRunnerTest {
         server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", ex -> {
             String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            received.add(new String[]{ex.getRequestURI().getPath(), body});
+            received.add(new String[]{ex.getRequestURI().getPath(), body, ex.getRequestHeaders().getFirst("X-USERID")});
             Handler h = routes.get(ex.getRequestURI().getPath());
             if (h == null) {
                 reply(ex, 404, "{\"error\":\"not found\"}");
@@ -226,7 +226,97 @@ class WorkflowRunnerTest {
         return received.stream().filter(r -> r[0].equals(path)).map(r -> r[1]).toList();
     }
 
+    /** Las rutas recibidas, en orden, con la cabecera X-USERID si la llevaban. */
+    private List<String> calls() {
+        return received.stream().map(r -> r[0] + (r[2] == null ? "" : " [" + r[2] + "]")).toList();
+    }
+
+    private static String login(String id, String name, String user) {
+        return "{\"id\":\"" + id + "\",\"kind\":\"login\",\"name\":\"" + name + "\",\"values\":{\"user\":" + quote(user) + "}}";
+    }
+
     // --- Pruebas ---
+
+    @Test
+    void w29_w69_the_login_node_logs_in_once_and_later_http_nodes_use_its_session() {
+        Note asOther = httpNote("Como otro", "{\"endpoint\":\"/user/5/tasks\",\"user\":\"otro\"}");
+        Note open = httpNote("Abierta", "{\"endpoint\":\"/echo\",\"method\":\"POST\",\"login\":\"none\"}");
+        List<JsonNode> events = run(workflow(flow("{}",
+                input("n1", "Input1", "user", "demo"),
+                login("n2", "Login1", "$Input1.user"),
+                node("n3", "http", "Conn1", asOther, Map.of()),
+                node("n4", "http", "Conn2", tasks, Map.of("id", "5")),
+                node("n5", "http", "Abierta", open, Map.of()))), Map.of());
+
+        assertThat(statuses(events)).containsExactly("start:ok", "n1:ok", "n2:ok", "n3:ok", "n4:ok", "n5:ok", "finish:ok");
+        // Un solo login, con el usuario del Input; la nota «Como otro» no hace el suyo. Las dos notas con «No necesita
+        // login» («Tareas» y «Abierta») van sin sesión.
+        assertThat(calls()).containsExactly("/demo/users/demo/login", "/demo/user/5/tasks [usr-4711]",
+                "/demo/user/5/tasks", "/demo/echo");
+        // W-32: el valor del Login es el cuerpo de su respuesta.
+        assertThat(nodeEvent(events, "n2").get("http").get("response").get("status").asInt()).isEqualTo(200);
+        // W-78: lo escrito y lo que entró.
+        assertThat(nodeEvent(events, "n2").get("raw").get("user").asText()).isEqualTo("$Input1.user");
+        assertThat(nodeEvent(events, "n2").get("values").get("user").asText()).isEqualTo("demo");
+    }
+
+    @Test
+    void w69_the_execution_login_is_not_the_reusable_login_of_http_notes() {
+        run(workflow(flow("{}", login("n1", "Login1", ""))), Map.of());
+        assertThat(calls()).containsExactly("/demo/users/demo/login");
+        Note reuse = httpNote("Reutiliza", "{\"endpoint\":\"/user/5/tasks\",\"login\":\"reuse\"}");
+        assertThat(http.execute(reuse.id(), reuse.version(), "suelta", LOCAL, null).error().code()).isEqualTo("no_login");
+    }
+
+    @Test
+    void w69_http_nodes_before_the_first_login_log_in_as_always() {
+        Note withLogin = httpNote("Con login", "{\"endpoint\":\"/user/5/tasks\"}");
+        run(workflow(flow("{}", node("n1", "http", "Conn1", withLogin, Map.of()), login("n2", "Login1", ""))), Map.of());
+        assertThat(calls()).containsExactly("/demo/users/demo/login", "/demo/user/5/tasks [usr-4711]", "/demo/users/demo/login");
+    }
+
+    @Test
+    void w42_w69_a_failed_login_blocks_the_http_nodes_that_need_it_until_another_login() {
+        Note withLogin = httpNote("Con login", "{\"endpoint\":\"/user/5/tasks\"}");
+        Note open = httpNote("Abierta", "{\"endpoint\":\"/echo\",\"method\":\"POST\",\"login\":\"none\"}");
+        List<JsonNode> events = run(workflow(flow("{\"stopOnError\":false}",
+                login("n1", "Login1", "otro"),
+                node("n2", "http", "Conn1", withLogin, Map.of()),
+                node("n3", "http", "Abierta", open, Map.of()),
+                login("n4", "Login2", "demo"),
+                node("n5", "http", "Conn2", withLogin, Map.of()))), Map.of());
+
+        assertThat(statuses(events)).containsExactly("start:ok", "n1:error", "n2:error", "n3:ok", "n4:ok", "n5:ok", "finish:ok");
+        assertThat(nodeEvent(events, "n1").get("error").get("code").asText()).isEqualTo("login_failed");
+        assertThat(nodeEvent(events, "n2").get("error").get("message").asText()).isEqualTo("El login de «Login1» falló: no se envía");
+        assertThat(calls()).containsExactly("/demo/users/otro/login", "/demo/echo", "/demo/users/demo/login",
+                "/demo/user/5/tasks [usr-4711]");
+        assertThat(end(events).get("message").asText()).isEqualTo("Terminado con 2 errores");
+    }
+
+    @Test
+    void w61_w63_a_login_needs_the_login_note_and_counts_as_an_http_call() {
+        Note wf = workflow(flow("{}", login("n1", "Login1", "")));
+        assertThatThrownBy(() -> runner.prepare(wf.id(), wf.version(), "otro", null, Map.of()))
+                .isInstanceOfSatisfying(ApiError.class, e -> assertThat(e.body().code()).isEqualTo("profile_changed"));
+        config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
+                new AppConfig.Http(false, List.of(Profile.local(base, "demo")), null, 30, 10, null, null, null)));
+        assertThatThrownBy(() -> runner.prepare(wf.id(), wf.version(), LOCAL, null, Map.of()))
+                .isInstanceOfSatisfying(ApiError.class, e -> assertThat((List<Object>) e.body().details())
+                        .containsExactly("El nodo Login necesita la nota de login: Elige la nota de login en «Ajustes»"));
+    }
+
+    @Test
+    void w78_events_carry_what_was_written_and_the_missing_references() {
+        List<JsonNode> events = run(workflow(flow("{}",
+                input("n1", "Input1", "id", "5"),
+                node("n2", "http", "Conn1", echo, Map.of("t", "$Input1.id", "w", "$Input1.nada $Input1.nada")))), Map.of());
+        JsonNode conn = nodeEvent(events, "n2");
+        assertThat(conn.get("raw").get("w").asText()).isEqualTo("$Input1.nada $Input1.nada");
+        assertThat(conn.get("values").get("w").asText()).isEqualTo("null null");
+        assertThat(conn.get("missing")).extracting(JsonNode::asText).containsExactly("$Input1.nada");
+        assertThat(nodeEvent(events, "n1").has("missing")).isFalse();
+    }
 
     @Test
     void w60_w62_w30_runs_the_chain_in_order_and_passes_results_forward() {

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.litedd.http.ApiError;
 import dev.litedd.httpnotes.HttpNoteContent;
 import dev.litedd.httpnotes.HttpRunner;
+import dev.litedd.httpnotes.LoginSession;
 import dev.litedd.httpnotes.Variables;
 import dev.litedd.mysql.SqlRunner;
 import dev.litedd.notes.Note;
@@ -54,10 +55,14 @@ public final class WorkflowRunner {
                            List<Field> fields, Map<String, String> values, String error) {
     }
 
-    /** W-70, W-72: el estado de un nodo y, al terminar, los valores usados y su resultado. */
+    /**
+     * W-70, W-72, W-78: el estado de un nodo y, al terminar, lo escrito en cada campo (raw), lo que entró (values), las
+     * referencias que no existían (missing) y su resultado.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record NodeEvent(String type, String nodeId, String status, Long millis, Map<String, String> values, Failure error,
-                            HttpRunner.Result http, SqlRunner.Rows sql) {
+    public record NodeEvent(String type, String nodeId, String status, Long millis, Map<String, String> raw,
+                            Map<String, String> values, List<String> missing, Failure error, HttpRunner.Result http,
+                            SqlRunner.Rows sql) {
     }
 
     public record StartEvent(String type, List<String> chain) {
@@ -167,7 +172,12 @@ public final class WorkflowRunner {
         Map<String, Note> used = new HashMap<>();
         Map<String, List<String>> fields = new HashMap<>();
         boolean anyHttp = false;
+        boolean anyLogin = false;
         for (Node n : chain) {
+            if (WorkflowContent.LOGIN.equals(n.kind())) {
+                anyLogin = true;
+                continue;
+            }
             if (!WorkflowContent.HTTP.equals(n.kind()) && !WorkflowContent.SQL.equals(n.kind())) {
                 continue;
             }
@@ -209,6 +219,15 @@ public final class WorkflowRunner {
             }
             used.put(n.id(), note);
         }
+        if (anyLogin) {
+            // W-61: el Login usa la nota de login de «Ajustes».
+            try {
+                http.checkLoginNote();
+            } catch (ApiError e) {
+                problems.add("El nodo Login necesita la nota de login: " + e.getMessage());
+            }
+        }
+        anyHttp |= anyLogin;
         if (!problems.isEmpty()) {
             throw new ApiError(400, "workflow_invalid", "No se puede ejecutar: " + String.join(". ", problems), problems);
         }
@@ -237,6 +256,8 @@ public final class WorkflowRunner {
                 case WorkflowContent.HTTP, WorkflowContent.SQL -> fields.get(n.id())
                         .forEach(f -> v.put(f, valueOf(fromTab, f, n.values().get(f))));
                 case WorkflowContent.WAIT -> v.put(SECONDS, valueOf(fromTab, SECONDS, n.seconds()));
+                case WorkflowContent.LOGIN -> v.put(WorkflowContent.USER, valueOf(fromTab, WorkflowContent.USER,
+                        n.values().get(WorkflowContent.USER)));
                 case WorkflowContent.INPUT -> n.rows().forEach(r -> v.put(r.name(), valueOf(fromTab, r.name(), r.value())));
                 default -> {
                     continue;
@@ -268,12 +289,24 @@ public final class WorkflowRunner {
         return true;
     }
 
-    /** Estado de una ejecución en curso: la cancelación y la llamada o consulta que está en marcha. */
+    /**
+     * Estado de una ejecución en curso: la cancelación, la llamada o consulta que está en marcha y el último Login
+     * (W-69), que vale solo para esta ejecución.
+     */
     private static final class Run {
         final CountDownLatch cancel = new CountDownLatch(1);
         volatile boolean cancelled;
         volatile String current;
         volatile boolean gone;
+        /** Nombre del último nodo Login; null si aún no hubo ninguno. */
+        String loginName;
+        /** Su sesión; null si falló. */
+        LoginSession session;
+
+        void login(String name, LoginSession result) {
+            loginName = name;
+            session = result;
+        }
     }
 
     /** Resultado de un nodo. stop: el flujo se detiene aunque «Parar si error» esté desmarcada (W-43, W-63). */
@@ -300,22 +333,24 @@ public final class WorkflowRunner {
                     return;
                 }
                 if (!n.named()) {
-                    emit(run, executionId, sink, new NodeEvent("node", n.id(), "ok", 0L, null, null, null, null));
+                    emit(run, executionId, sink, new NodeEvent("node", n.id(), "ok", 0L, null, null, null, null, null, null));
                     continue;
                 }
-                emit(run, executionId, sink, new NodeEvent("node", n.id(), "running", null, null, null, null, null));
+                emit(run, executionId, sink, new NodeEvent("node", n.id(), "running", null, null, null, null, null, null, null));
                 long nodeStart = System.nanoTime();
-                Outcome o = execute(p, n, executionId, run, name -> {
+                Resolution r = resolve(p, n, name -> {
                     Supplier<Optional<JsonNode>> v = valuesByName.get(name);
                     return v == null ? Optional.empty() : v.get();
                 });
+                Outcome o = execute(p, n, r, executionId, run);
                 long millis = (System.nanoTime() - nodeStart) / 1_000_000;
                 if (run.cancelled && !"ok".equals(o.status())) {
                     o = new Outcome("cancelled", o.values(), new Failure("cancelled", "Cancelado"), o.http(), o.sql(), null, null);
                 }
                 // W-68: ni valores, ni cuerpos, ni cabeceras.
                 log.debug("Nodo {} ({}) {} en {} ms", n.name(), n.kind(), o.status(), millis);
-                emit(run, executionId, sink, new NodeEvent("node", n.id(), o.status(), millis, o.values(), o.error(), o.http(), o.sql()));
+                emit(run, executionId, sink, new NodeEvent("node", n.id(), o.status(), millis, p.values().get(n.id()), o.values(),
+                        r.missing().isEmpty() ? null : r.missing(), o.error(), o.http(), o.sql()));
                 if (o.value() != null) {
                     valuesByName.put(n.name(), memoize(o.value()));
                 }
@@ -342,25 +377,34 @@ public final class WorkflowRunner {
         }
     }
 
-    private Outcome execute(Prepared p, Node n, String executionId, Run run, Function<String, Optional<JsonNode>> lookup) {
-        Map<String, String> raw = p.values().getOrDefault(n.id(), Map.of());
+    /** W-34, W-35, W-78: los campos de un nodo con sus referencias resueltas y las que no existían. */
+    private record Resolution(Map<String, String> resolved, List<String> missing) {
+    }
+
+    private static Resolution resolve(Prepared p, Node n, Function<String, Optional<JsonNode>> lookup) {
         Map<String, String> resolved = new LinkedHashMap<>();
         List<String> missing = new ArrayList<>();
-        for (Map.Entry<String, String> e : raw.entrySet()) {
+        for (Map.Entry<String, String> e : p.values().getOrDefault(n.id(), Map.of()).entrySet()) {
             References.Resolved r = References.resolve(e.getValue(), lookup);
             resolved.put(e.getKey(), r.value());
-            missing.addAll(r.missing());
+            r.missing().stream().filter(m -> !missing.contains(m)).forEach(missing::add);
         }
-        if (!missing.isEmpty() && p.content().options().stopOnMissing()) {
+        return new Resolution(resolved, missing);
+    }
+
+    private Outcome execute(Prepared p, Node n, Resolution r, String executionId, Run run) {
+        Map<String, String> resolved = r.resolved();
+        if (!r.missing().isEmpty() && p.content().options().stopOnMissing()) {
             // W-43
-            String message = missing.getFirst() + " no existe";
+            String message = r.missing().getFirst() + " no existe";
             return new Outcome("error", resolved, new Failure("missing_reference", message), null, null, null, "Detenido: " + message);
         }
         String sub = executionId + "/" + n.id();
         run.current = sub;
         try {
             return switch (n.kind()) {
-                case WorkflowContent.HTTP -> http(p, n, resolved, sub);
+                case WorkflowContent.HTTP -> http(p, n, resolved, sub, run);
+                case WorkflowContent.LOGIN -> login(p, n, resolved, sub, run);
                 case WorkflowContent.SQL -> sql(p.notes().get(n.id()), resolved, sub);
                 case WorkflowContent.WAIT -> waitFor(resolved, run);
                 default -> input(resolved);
@@ -370,19 +414,58 @@ public final class WorkflowRunner {
         }
     }
 
-    /** W-42, W-54, W-62, W-63 */
-    private Outcome http(Prepared p, Node n, Map<String, String> resolved, String sub) {
+    /** W-63: si el perfil activo cambió, el nodo no se envía y el flujo se detiene. */
+    private Outcome profileChanged(Prepared p, Map<String, String> resolved) {
         Profile active = http.activeProfile();
-        if (!active.id().equals(p.profile().id())) {
-            String message = "El perfil activo ha cambiado a «" + active.name() + "»: no se envía";
-            return new Outcome("error", resolved, new Failure("profile_changed", message), null, null, null,
-                    "Detenido: el perfil activo ha cambiado");
+        if (active.id().equals(p.profile().id())) {
+            return null;
+        }
+        String message = "El perfil activo ha cambiado a «" + active.name() + "»: no se envía";
+        return new Outcome("error", resolved, new Failure("profile_changed", message), null, null, null,
+                "Detenido: el perfil activo ha cambiado");
+    }
+
+    /** W-29, W-69: el login de «Ajustes» con el usuario del nodo; su sesión es la de los nodos HTTP siguientes. */
+    private Outcome login(Prepared p, Node n, Map<String, String> resolved, String sub, Run run) {
+        Outcome changed = profileChanged(p, resolved);
+        if (changed != null) {
+            return changed;
+        }
+        String user = resolved.get(WorkflowContent.USER);
+        HttpRunner.LoginCall call;
+        try {
+            // W-54: una referencia que vale null se envía como el texto null; vacío es el usuario del perfil.
+            call = http.loginAs(user == null ? "null" : user, p.profile(), sub);
+        } catch (ApiError e) {
+            run.login(n.name(), null);
+            return Outcome.error(resolved, e.body().code(), e.getMessage());
+        }
+        run.login(n.name(), call.session());
+        HttpRunner.Result r = call.result();
+        Supplier<Optional<JsonNode>> value = r.response() != null ? () -> body(r.response()) : null;
+        if (call.session() == null) {
+            Failure f = r.error() == null ? new Failure("login_failed", "El login falló") : new Failure(r.error().code(), r.error().message());
+            return new Outcome("error", resolved, f, r, null, value, null);
+        }
+        return new Outcome("ok", resolved, null, r, null, value, null);
+    }
+
+    /** W-42, W-54, W-62, W-63, W-69 */
+    private Outcome http(Prepared p, Node n, Map<String, String> resolved, String sub, Run run) {
+        Outcome changed = profileChanged(p, resolved);
+        if (changed != null) {
+            return changed;
         }
         Map<String, String> values = new HashMap<>();
         resolved.forEach((k, v) -> values.put(k, v == null ? "null" : v));
+        Note note = p.notes().get(n.id());
         HttpRunner.Result r;
         try {
-            r = http.executeWith(p.notes().get(n.id()), values, p.profile(), sub);
+            boolean usesLogin = !HttpNoteContent.LOGIN_NONE.equals(HttpNoteContent.parse(note.content()).login());
+            if (run.loginName != null && run.session == null && usesLogin) {
+                return Outcome.error(resolved, "login_failed", "El login de «" + run.loginName + "» falló: no se envía");
+            }
+            r = http.executeWith(note, values, p.profile(), sub, run.session);
         } catch (ApiError e) {
             return Outcome.error(resolved, e.body().code(), e.getMessage());
         }

@@ -141,7 +141,7 @@ public final class HttpRunner {
         if (profile.requireKey()) {
             checkConfirmKey(profile, confirmKey);
         }
-        return run(note, HttpNoteContent.parse(note.content()), profile, executionId).withProfile(profile);
+        return run(note, HttpNoteContent.parse(note.content()), profile, executionId, null).withProfile(profile);
     }
 
     /**
@@ -149,10 +149,38 @@ public final class HttpRunner {
      * y la clave al empezar (W-63).
      */
     public Result executeWith(Note note, Map<String, String> values, Profile profile, String executionId) {
+        return executeWith(note, values, profile, executionId, null);
+    }
+
+    /**
+     * W-69: con la sesión de un nodo Login, la nota la usa como con «Reutilizar login», sin su propio login y sin
+     * importar su usuario. Con «No necesita login» se envía sin login.
+     */
+    public Result executeWith(Note note, Map<String, String> values, Profile profile, String executionId, LoginSession forced) {
         if (!"http".equals(note.type())) {
             throw new ApiError(400, "not_http", "La nota no es una nota HTTP");
         }
-        return run(note, HttpNoteContent.parse(note.content()).withValues(values), profile, executionId).withProfile(profile);
+        return run(note, HttpNoteContent.parse(note.content()).withValues(values), profile, executionId, forced).withProfile(profile);
+    }
+
+    /** Un login y, si fue correcto, su sesión. */
+    public record LoginCall(Result result, LoginSession session) {
+    }
+
+    /**
+     * W-29: el login de la nota de «Ajustes» con el usuario indicado (vacío, el del perfil). Devuelve la sesión sin
+     * dejarla como login reutilizable: vale solo para la ejecución que lo pide (W-69).
+     */
+    public LoginCall loginAs(String user, Profile profile, String executionId) {
+        AppConfig.Http settings = config.get().http();
+        String chosen = user == null || user.isBlank() ? profile.user() : user.strip();
+        LoginCall call = login(loginContent(settings), chosen, profile, settings, executionId, true);
+        return new LoginCall(call.result().withProfile(profile), call.session());
+    }
+
+    /** W-61: un workflow con Login necesita la nota de login de «Ajustes». */
+    public void checkLoginNote() {
+        loginContent(config.get().http());
     }
 
     /** H-69: con la casilla «Pedir clave al enviar», la clave definida en «Ajustes»; se comprueba antes de conectar. */
@@ -169,20 +197,22 @@ public final class HttpRunner {
         }
     }
 
-    private Result run(Note note, HttpNoteContent content, Profile profile, String executionId) {
+    private Result run(Note note, HttpNoteContent content, Profile profile, String executionId, LoginSession forced) {
         AppConfig.Http settings = config.get().http();
         String id = executionId == null ? UUID.randomUUID().toString() : executionId;
 
         // H-27: la propia nota de login hace el login y lo deja para reutilizar.
         if (note.id().equals(settings.loginNoteId())) {
             String user = userOf(content, profile);
-            return login(content, user, profile, settings, id, true);
+            return remember(login(content, user, profile, settings, id, true), profile).result();
         }
         LoginSession session = null;
         LoginSummary summary = null;
         switch (content.login()) {
             case HttpNoteContent.LOGIN_NONE -> {
             }
+            // W-69: la sesión de un nodo Login sustituye al login de la nota, salvo con «No necesita login».
+            case String mode when forced != null -> session = forced;
             case HttpNoteContent.LOGIN_REUSE -> {
                 Reusable reusable = lastLogin.get();
                 if (reusable == null || !reusable.profileId().equals(profile.id())) {
@@ -193,13 +223,14 @@ public final class HttpRunner {
                 session = reusable.session();
             }
             default -> {
-                Result login = login(loginContent(settings), userOf(content, profile), profile, settings, loginExecution(id), false);
-                if (login.error() != null) {
+                LoginCall login = login(loginContent(settings), userOf(content, profile), profile, settings, loginExecution(id), false);
+                if (login.session() == null) {
                     // H-26: sin login correcto no hay llamada.
-                    return login;
+                    return login.result();
                 }
-                session = lastLogin.get().session();
-                summary = login.login();
+                remember(login, profile);
+                session = login.session();
+                summary = login.result().login();
             }
         }
         Prepared p = prepare(content, content.pathValues(), session, null, profile, settings);
@@ -212,16 +243,24 @@ public final class HttpRunner {
         }
     }
 
-    /** H-20 a H-23: login con Basic Auth y la contraseña del perfil; si es correcto queda como último login (H-25). */
-    private Result login(HttpNoteContent loginNote, String user, Profile profile, AppConfig.Http settings, String executionId,
-                         boolean asRequest) {
+    /** H-25: un login correcto queda como último login, el que reutilizan las notas con «Reutilizar login». */
+    private LoginCall remember(LoginCall call, Profile profile) {
+        if (call.session() != null) {
+            lastLogin.set(new Reusable(profile.id(), call.session()));
+        }
+        return call;
+    }
+
+    /** H-20 a H-23: login con Basic Auth y la contraseña del perfil; la sesión, solo si es correcto. */
+    private LoginCall login(HttpNoteContent loginNote, String user, Profile profile, AppConfig.Http settings, String executionId,
+                            boolean asRequest) {
         if (user.isEmpty()) {
-            return new Result("login", new Failure("no_user", "Falta el usuario: escríbelo en la nota o en «Ajustes»"), null, null, null);
+            return failed(new Result("login", new Failure("no_user", "Falta el usuario: escríbelo en la nota o en «Ajustes»"), null, null, null));
         }
         String password = credentials.password(profile.id()).orElse(null);
         if (password == null) {
-            return new Result("login", new Failure("no_password",
-                    "Falta la contraseña del perfil «" + profile.name() + "» en «Ajustes»"), null, null, null);
+            return failed(new Result("login", new Failure("no_password",
+                    "Falta la contraseña del perfil «" + profile.name() + "» en «Ajustes»"), null, null, null));
         }
         Map<String, String> values = new HashMap<>(loginNote.pathValues());
         values.put(USER_NAME, user);
@@ -232,7 +271,7 @@ public final class HttpRunner {
         try {
             ex = caller.send(p.call(), executionId, settings.timeoutSeconds(), maxBytes(settings));
         } catch (CallFailed e) {
-            return new Result(phase, new Failure(e.code(), "Login: " + e.getMessage()), p.sent(), null, null);
+            return failed(new Result(phase, new Failure(e.code(), "Login: " + e.getMessage()), p.sent(), null, null));
         }
         log.debug("Login HTTP {} en {} ms", ex.status(), ex.millis());
         LoginSummary summary = new LoginSummary(user, ex.status(), ex.millis());
@@ -249,10 +288,14 @@ public final class HttpRunner {
         }
         if (problem != null) {
             // H-26: se muestra la respuesta del login.
-            return new Result("login", new Failure("login_failed", problem), p.sent(), received(ex), summary);
+            return failed(new Result("login", new Failure("login_failed", problem), p.sent(), received(ex), summary));
         }
-        lastLogin.set(new Reusable(profile.id(), new LoginSession(user, userId, cookies.get(CSRF_COOKIE), cookies)));
-        return new Result(asRequest ? "request" : "login", null, p.sent(), received(ex), summary);
+        return new LoginCall(new Result(phase, null, p.sent(), received(ex), summary),
+                new LoginSession(user, userId, cookies.get(CSRF_COOKIE), cookies));
+    }
+
+    private static LoginCall failed(Result result) {
+        return new LoginCall(result, null);
     }
 
     private HttpNoteContent loginContent(AppConfig.Http settings) {

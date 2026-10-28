@@ -36,9 +36,13 @@ public record WorkflowContent(Options options, List<Node> nodes, List<Edge> edge
     public static final String SQL = "sql";
     public static final String WAIT = "wait";
     public static final String INPUT = "input";
+    /** W-29 */
+    public static final String LOGIN = "login";
+    /** W-29: el usuario del Login va en values, como los campos de HTTP y SQL. */
+    public static final String USER = "user";
     /** W-16 */
     public static final int MAX_NODES = 100;
-    static final Set<String> KINDS = Set.of(START, FINISH, HTTP, SQL, WAIT, INPUT);
+    static final Set<String> KINDS = Set.of(START, FINISH, HTTP, SQL, WAIT, INPUT, LOGIN);
     /** W-21, W-28 */
     static final Pattern NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,39}");
 
@@ -254,6 +258,7 @@ public record WorkflowContent(Options options, List<Node> nodes, List<Edge> edge
             case HTTP -> "HTTP";
             case SQL -> "SQL";
             case WAIT -> "Espera";
+            case LOGIN -> "Login";
             default -> "Input";
         };
     }
