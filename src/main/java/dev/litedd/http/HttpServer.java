@@ -77,7 +77,8 @@ public final class HttpServer {
 
             config.routes.get("/api/health", ctx -> ctx.json(Map.of(
                     "app", AppInfo.NAME,
-                    "version", AppInfo.VERSION)));
+                    "version", AppInfo.VERSION,
+                    "build", AppInfo.BUILD)));
             routes.forEach(r -> r.register(config.routes));
 
             if (hasWeb) {

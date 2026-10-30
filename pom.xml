@@ -50,6 +50,9 @@
     <frontend.dir>${project.basedir}/frontend</frontend.dir>
     <!-- -Pdist: el icono solo se pasa a jpackage en Linux (ADR-0004) -->
     <jpackage.icon></jpackage.icon>
+    <!-- R-06: los da el workflow de publicación; un JAR compilado a mano lleva build 0 -->
+    <litedd.build>0</litedd.build>
+    <litedd.commit></litedd.commit>
   </properties>
 
   <dependencyManagement>

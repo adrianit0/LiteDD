@@ -15,6 +15,7 @@ connection.json
 backups/
 .env
 .env.*
+*.pem
 
 # IDE y sistema
 .idea/

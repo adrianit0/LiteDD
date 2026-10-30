@@ -1,0 +1,45 @@
+# ADR-0033: cada push a main ejecuta las pruebas y, si pasan, publica el JAR firmado (R-01 a R-05).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'specs/**'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'LICENSE'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # La lista de commits sale de la release anterior (R-03).
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Pruebas y JAR
+        run: ./mvnw -B -Pdist verify -Dlitedd.build="$GITHUB_RUN_NUMBER" -Dlitedd.commit="$GITHUB_SHA"
+
+      - name: Publicar
+        run: scripts/release.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LITEDD_RELEASE_KEY: ${{ secrets.LITEDD_RELEASE_KEY }}

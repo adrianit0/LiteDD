@@ -1,5 +1,6 @@
 package dev.litedd.http;
 
+import dev.litedd.AppInfo;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,12 @@ class HttpServerTest {
         Response r = send("GET /api/health", "Host: 127.0.0.1:" + port);
         assertThat(r.status).isEqualTo(200);
         assertThat(r.body).contains("\"app\":\"LiteDD\"").contains("\"version\"");
+    }
+
+    @Test
+    void r45_health_gives_the_build_so_the_window_can_tell_it_changed() throws IOException {
+        Response r = send("GET /api/health", "Host: 127.0.0.1:" + port);
+        assertThat(r.body).contains("\"build\":" + AppInfo.BUILD);
     }
 
     @Test
