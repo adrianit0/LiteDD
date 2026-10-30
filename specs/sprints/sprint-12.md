@@ -50,4 +50,52 @@ Documentos: [requisitos/actualizaciones.md](../requisitos/actualizaciones.md), [
 
 ## Resultado
 
-Pendiente.
+Fecha: 2026-10-30. Código terminado; faltan la clave de firma, el primer push y la prueba real en Ubuntu.
+
+### Hecho
+
+- **Especificación:** ADR-0033 aceptado, requisitos R-01 a R-47, principio 4 de la constitución como lista cerrada de destinos autorizados, y cambios en seguridad, interfaz, API y arquitectura. El usuario confirmó que tiene permiso de su empresa.
+- **Publicación:**
+  - `.github/workflows/release.yml` con las acciones fijadas por hash, sin credenciales persistidas y con `contents: write` como único permiso.
+  - `scripts/release.sh` genera el manifiesto, lo firma y publica. No publica nada sin secreto ni con una clave que no corresponda a `release-key.pub`.
+  - `build` y `commit` en `version.properties`, `AppInfo` y `/api/health`.
+- **Servidor (`dev.litedd.update`):**
+  - `UpdateUrls`: validación de la URL y rutas de las releases.
+  - `UpdateManifest`: firma Ed25519 antes de interpretar el contenido.
+  - `UpdateClient`: lista de hosts, redirecciones a mano, límites de tamaño y tiempo, y descarga con tamaño y SHA-256.
+  - `Installation`, `UpdateHelper`, `Updater` y `UpdateApi`.
+  - Ajuste `updateRepository` en `config.json`.
+- **Interfaz:**
+  - Categoría «Actualizaciones» con versión, URL, botones y lista de commits.
+  - Confirmación con el build y los commits.
+  - Bloqueo con pestañas sin guardar o ejecuciones en marcha.
+  - Recarga de la ventana al volver con otro build.
+- **Pruebas:** 463 de backend (5 omitidas en Windows, 4 de ellas las de `UpdateHelper`) y 415 de interfaz. `./mvnw -Pdist verify` en verde con build y commit inyectados.
+
+### Criterios de aceptación
+
+1. **Un push con una prueba rota no publica:** **pendiente del primer push.** El workflow ejecuta `verify` antes de publicar.
+2. **Un push correcto publica los tres ficheros:** **pendiente del primer push.** `scripts/release.sh` se probó sin publicar, con una clave temporal: genera `latest.json` y una firma de 64 bytes.
+3. **Sin URL no hay conexión:** pruebas R-11 y R-12. **Cumplido en pruebas.**
+4. **«Guardar ajustes» rechaza otra URL:** con la aplicación arrancada, `https://evil.example/demo/app` deja la ventana abierta con el motivo, y una URL de `github.com` se guarda. **Cumplido.**
+5. **Búsqueda:** pruebas R-13. `UpdateClient` real descargó un fichero de una release pública pasando por `github.com` y `release-assets.githubusercontent.com`. **Cumplido, salvo la búsqueda contra una release propia.**
+6. **Rechazos:** pruebas R-20, R-21, R-30 a R-32. `UpdateClient` real también rechazó un host fuera de la lista. **Cumplido en pruebas.**
+7. **Cambios sin guardar o ejecuciones en marcha:** pruebas R-41. **Cumplido en pruebas.**
+8. **Actualización real en Ubuntu:** **pendiente.** Exige una release firmada.
+9. **Vuelta atrás:** **pendiente.** `UpdateHelperTest` solo corre en Linux, así que se ejecutará por primera vez en el CI. Aquí se comprobó la sintaxis del script con `sh -n`. Ejecutarlo en Git Bash lo bloqueó una comprobación de seguridad del entorno.
+10. **Copia antes de migrar:** no cambia; la cubren las pruebas de `Migrator`. **Cumplido en pruebas.**
+11. **Desarrollo y Windows:** con el JAR en Windows, la categoría da el motivo, no muestra los botones y `POST /api/update/check` responde 409 sin conectar. **Cumplido.**
+
+### Pendiente
+
+- El usuario genera el par de claves y crea el secreto `LITEDD_RELEASE_KEY`. La clave pública va a `src/main/resources/dev/litedd/update/release-key.pub`. Sin ese fichero, R-14 deja la actualización no disponible.
+- Primer push: ejecuta `./mvnw verify` en Linux por primera vez y, con ello, `UpdateHelperTest`.
+- Instalar a mano una vez el JAR de la primera release, guardar la URL en «Ajustes → Actualizaciones» y actualizar con un segundo push.
+
+### Desviaciones y decisiones
+
+- **`JarDownload` no existe:** la descarga comparte el bucle de lectura y sus límites con el manifiesto, así que es un método de `UpdateClient`.
+- **`Updater` es una pieza más que el plan:** reúne búsqueda e instalación, y `UpdateApi` solo expone las rutas.
+- **R-14 añade la clave pública:** un JAR sin ella no puede verificar nada (R-33), así que no ofrece actualizar.
+- **`scripts/release.sh` comprueba la clave contra `release-key.pub`:** una release firmada con otra clave la rechazaría toda instalación.
+- **El tiempo máximo de la petición no cubre el cuerpo:** al vencer se cierra el flujo, lo que corta una descarga parada.

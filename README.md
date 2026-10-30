@@ -9,7 +9,7 @@ LiteDD es un gestor local de notas para un único usuario. Admite seis tipos de 
 - **Pizarra**, un dibujo sencillo al estilo de Paint: pincel, goma, colores, texto, cubo de relleno, selección para mover un área, pegar imágenes del portapapeles y deshacer. El lienzo crece o encoge arrastrando su borde. En consulta se ve como una imagen que se puede copiar o descargar en PNG, y una nota Markdown puede mostrarla con `![[`, siempre en su última versión.
 - **Workflow**, un flujo que empieza en Start, pasa por notas HTTP y SQL ya creadas, esperas y valores de entrada (Input), y termina en Finish. Se diseña una vez en un lienzo, uniendo los nodos con flechas, y en consulta se ejecuta para cada caso cambiando solo los Input. El resultado de un nodo se usa en los siguientes con referencias como `$Conn1.data.test`, `$Query1[0].col1` o `$Input1.id`. Un nodo Login hace un solo login con el usuario elegido y su sesión la usan las notas HTTP siguientes. Cuatro casillas deciden si se para ante un error o ante una referencia que no existe, si los campos con el mismo nombre comparten valor y si los valores quedan fijados. Cada pestaña guarda sus 20 últimas ejecuciones con lo que entró y salió de cada nodo, y marca las referencias que no existían.
 
-Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación no hace llamadas a internet: solo se conecta a MySQL, al servidor local de las notas HTTP y, si se activan, a los entornos de preproducción configurados.
+Las notas se organizan en un árbol jerárquico y se abren en pestañas. Todo se guarda en un único fichero SQLite en la máquina local. La aplicación solo se conecta a MySQL, al servidor local de las notas HTTP y, si se activan, a los entornos de preproducción configurados y a GitHub para descargar actualizaciones. No hace ninguna otra llamada a internet.
 
 ## Requisitos
 
@@ -50,6 +50,14 @@ litedd --stop          apaga la instancia en marcha
 
 LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los ajustes (⚙ en la barra superior) permiten además un apagado automático tras unos minutos sin ventanas.
 
+## Actualizar
+
+Cada push a `main` que pasa las pruebas publica en GitHub una versión con un JAR firmado. En «Ajustes → Actualizaciones», escribe la URL del repositorio, guarda los ajustes y usa «Buscar actualizaciones» y «Actualizar». LiteDD solo contacta con GitHub al pulsar un botón, no envía ningún dato y nunca se actualiza solo.
+
+Actualizar sustituye el JAR y reinicia la aplicación, sin tocar las notas ni los ajustes. Si la versión nueva no arranca, se vuelve a la anterior, y lo ocurrido queda en `~/.local/state/litedd/update.log`. Si la versión nueva ya migró la base de datos, usar la anterior exige [restaurar](#restaurar-una-copia) la copia `-premigracion`.
+
+Los cambios en `scripts/`, en `packaging/` o en la versión de Java no llegan por esta vía: hay que volver a instalar.
+
 ## Dónde están los datos
 
 | Qué | Dónde |
@@ -60,6 +68,7 @@ LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los
 | Contraseñas de las notas HTTP y clave de confirmación | `~/.config/litedd/http.json` (solo para tu usuario; no se exporta ni entra en las copias) |
 | CA de los entornos de preproducción | `~/.config/litedd/http-ca.pem` |
 | Registro | `~/.local/state/litedd/litedd.log` (rota a 5 MB, 3 ficheros) |
+| Registro de la última actualización | `~/.local/state/litedd/update.log` |
 
 Cada día, al arrancar, se hace una copia `litedd-AAAAMMDD.db` y se conservan las 3 últimas. Antes de «Reemplazar todo» y antes de una migración se hace una copia adicional con sufijo propio, y se conservan las 2 últimas. Desde «Ajustes → Datos» se puede exportar a ZIP, importar, crear una copia al momento y abrir la carpeta de datos.
 

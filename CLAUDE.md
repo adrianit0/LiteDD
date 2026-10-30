@@ -15,6 +15,7 @@ Instrucciones operativas para trabajar en LiteDD. La fuente de verdad es `specs/
 | Imagen de aplicación | `./mvnw -Pdist package` → `target/dist/litedd` (en Windows, parar antes cualquier instancia que la use) |
 | Instalar / desinstalar (Ubuntu) | `scripts/install.sh` / `scripts/uninstall.sh` |
 | Instalar en Ubuntu sin Maven | `scripts/install.sh litedd.jar` con el JAR de `target/dist/input/` (ADR-0018) |
+| Publicar una versión | Push a `main`: `.github/workflows/release.yml` prueba, firma con el secreto `LITEDD_RELEASE_KEY` y publica (ADR-0033) |
 | Apagar la instancia en marcha | `litedd --stop` |
 | Datos aislados para pruebas manuales | `XDG_DATA_HOME`, `XDG_CONFIG_HOME` y `XDG_STATE_HOME` apuntando a una carpeta temporal |
 | Pruebas contra MySQL real (Sprint 3+) | `./mvnw -Pit verify` con `LITEDD_IT_HOST`, `LITEDD_IT_PORT`, `LITEDD_IT_USER`, `LITEDD_IT_PASSWORD` |
