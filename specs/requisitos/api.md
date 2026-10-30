@@ -61,12 +61,15 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/data/import | Subir ZIP con el modo elegido |
 | POST | /api/data/backup | Crear copia ahora |
 | POST | /api/data/open-folder | Abrir la carpeta de datos (X-10, ADR-0017) |
-| GET | /api/health | Firma y versión de la aplicación |
+| GET | /api/update | Versión, build y commit instalados, y si la actualización está disponible y por qué (R-10, R-14) |
+| POST | /api/update/check | Buscar una versión nueva (R-13) |
+| POST | /api/update/apply | Descargar y verificar el build indicado y reiniciar (R-32, R-42, R-43) |
+| GET | /api/health | Firma, versión y build de la aplicación |
 | GET | /api/events | Canal SSE de presencia |
 | POST | /api/presence/bye | Aviso de cierre de ventana |
 | POST | /api/shutdown | Apagado ordenado |
 
-El 409 de `PUT /api/notes/{id}` lleva en `details` la nota guardada (ADR-0007). `GET` y `PUT /api/settings` guardan además el estado de interfaz en la tabla `setting` (ADR-0005). `POST /api/sql/execute` guarda los últimos valores de la nota y `POST /api/sql/analyze` con `noteId` los devuelve en `lastValues` (ADR-0014). `PUT /api/notes/{id}` valida la estructura de un workflow (W-81). `POST /api/workflow/execute` comprueba la cadena, la versión, el perfil y la clave antes de responder la primera línea; esos errores siguen A-02 (ADR-0031). El evento de un nodo terminado lleva `raw`, `values` y `missing` (W-78, ADR-0032).
+El 409 de `PUT /api/notes/{id}` lleva en `details` la nota guardada (ADR-0007). `GET` y `PUT /api/settings` guardan además el estado de interfaz en la tabla `setting` (ADR-0005). `POST /api/sql/execute` guarda los últimos valores de la nota y `POST /api/sql/analyze` con `noteId` los devuelve en `lastValues` (ADR-0014). `PUT /api/notes/{id}` valida la estructura de un workflow (W-81). `POST /api/workflow/execute` comprueba la cadena, la versión, el perfil y la clave antes de responder la primera línea; esos errores siguen A-02 (ADR-0031). El evento de un nodo terminado lleva `raw`, `values` y `missing` (W-78, ADR-0032). `POST /api/update/apply` solo acepta el build de la última búsqueda verificada y responde antes de apagar, cuando la descarga ya está comprobada (ADR-0033).
 
 Petición y respuesta de `POST /api/sql/execute`:
 

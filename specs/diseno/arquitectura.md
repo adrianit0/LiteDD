@@ -81,6 +81,7 @@ La interfaz solo habla con el servidor HTTP. El módulo sqlengine genera el SQL 
 | store | Acceso a SQLite y migraciones |
 | transfer | Exportación, importación y copias |
 | session | Pestañas abiertas y su estado |
+| update | Búsqueda, verificación e instalación de versiones publicadas en GitHub (ADR-0033) |
 | Interfaz | Aplicación de página única en la ventana de Chrome |
 
 ### Stack
@@ -113,6 +114,7 @@ Las versiones no fijadas en la tabla se fijan en el Sprint 0 con la última esta
 4. La interfaz mantiene abierto un canal SSE (`/api/events`) como señal de presencia.
 5. Al cerrar la ventana, la interfaz envía un aviso de despedida. Si a los 15 segundos no queda ninguna ventana conectada, el proceso se apaga de forma ordenada.
 6. Si la presencia se pierde sin despedida (pestaña suspendida, fallo del navegador), el proceso sigue vivo. Un ajuste opcional permite apagarlo tras N minutos; por defecto está desactivado.
+7. Al actualizar, el proceso se apaga de forma ordenada y un proceso `sh` independiente sustituye el JAR y lo vuelve a arrancar con `--no-window`. La ventana abierta recupera el contacto y se recarga (ADR-0033).
 
 Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window`, `litedd --port N`, `litedd --stop`.
 
@@ -131,6 +133,7 @@ Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window
 - `scripts/install.sh` copia la imagen a `~/.local/opt/litedd/`, crea `~/.local/bin/litedd` y el lanzador `~/.local/share/applications/litedd.desktop` con icono.
 - `scripts/install.sh litedd.jar` instala desde el JAR único sin Maven: genera la imagen con el `jpackage` del JDK 21 local o, si no lo hay, ejecuta el JAR con el Java 21 instalado (ADR-0018).
 - `scripts/dev.sh` arranca backend y Vite con recarga en caliente.
+- `.github/workflows/release.yml` ejecuta las pruebas en cada push a `main` y publica el JAR firmado en una release de GitHub, de donde lo toma «Ajustes → Actualizaciones» (ADR-0033).
 
 ### Rutas en disco
 
@@ -143,6 +146,7 @@ Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window
 | Datos | `~/.local/share/litedd/litedd.db` |
 | Copias | `~/.local/share/litedd/backups/` |
 | Registro | `~/.local/state/litedd/litedd.log` |
+| Registro de la última actualización | `~/.local/state/litedd/update.log` |
 
 ### Convenciones de código
 

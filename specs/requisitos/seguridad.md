@@ -25,7 +25,7 @@ LiteDD nunca modifica la base de datos consultada, aunque la conexión use un us
 | S-13 | Se valida Origin en las peticiones que modifican estado. No se emiten cabeceras CORS. |
 | S-14 | Cabecera CSP: `default-src 'self'`; imágenes `'self'` y `data:`. Ningún recurso se carga de internet: todo va empaquetado. |
 | S-15 | El HTML generado desde Markdown se sanea con DOMPurify. Mermaid se configura con `securityLevel: 'strict'`. |
-| S-16 | Sin telemetría ni llamadas a servicios externos. Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41) y, si el usuario lo activa, a los perfiles de preproducción que configure, solo por HTTPS validado contra la CA importada o, si se desmarca «Pedir CA corporativa» en un entorno, contra las CA de confianza de Java (H-62 a H-68, H-71). |
+| S-16 | Sin telemetría ni llamadas a servicios externos, salvo los destinos autorizados (constitución, principio 4). Las notas HTTP solo llaman a 127.0.0.1, localhost o ::1 (H-40, H-41) y, si el usuario lo activa, a los perfiles de preproducción que configure, solo por HTTPS validado contra la CA importada o, si se desmarca «Pedir CA corporativa» en un entorno, contra las CA de confianza de Java (H-62 a H-68, H-71). La búsqueda de actualizaciones solo contacta con GitHub si el usuario ha guardado la URL de su repositorio y pulsa un botón, y no envía ningún dato suyo (R-11, R-12, R-20 a R-22). |
 
 ## Credenciales y registro
 
@@ -43,5 +43,5 @@ LiteDD nunca modifica la base de datos consultada, aunque la conexión use un us
 | S-31 | Ejemplos y pruebas usan el esquema inventado litedd_demo con las tablas author, book y loan. |
 | S-32 | Sin nombres de máquina, usuarios, contraseñas ni rutas personales. Los ejemplos usan marcadores. |
 | S-33 | El README describe qué hace la aplicación de forma genérica. No menciona su origen, su motivo ni otros proyectos. |
-| S-34 | .gitignore excluye datos, configuración, registros, `*.db`, exportaciones `*.zip` y `.env`. |
+| S-34 | .gitignore excluye datos, configuración, registros, `*.db`, exportaciones `*.zip`, claves `*.pem` y `.env`. |
 | S-35 | Mensajes de commit neutros y en español. |
