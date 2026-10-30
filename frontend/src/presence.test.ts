@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { api, request } from './api';
 import { RETRY_DELAY, startPresence } from './presence';
 import { useTabs } from './stores/tabsStore';
@@ -5,7 +6,7 @@ import { useUi } from './stores/uiStore';
 
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
-  return { ...actual, api: { health: vi.fn(), bye: vi.fn(), refreshToken: vi.fn().mockResolvedValue(undefined) } };
+  return { ...actual, api: { health: vi.fn(), bye: vi.fn(), refreshToken: vi.fn().mockResolvedValue(undefined), appBuild: vi.fn().mockResolvedValue(5) } };
 });
 
 const mocked = vi.mocked(api);
@@ -102,5 +103,56 @@ describe('presencia y contacto', () => {
     expect(useUi.getState().contactLost).toBe(true);
     await vi.advanceTimersByTimeAsync(RETRY_DELAY);
     expect(useUi.getState().contactLost).toBe(false);
+  });
+
+  describe('R-45 tras reiniciarse el servidor', () => {
+    let reload: Mock<() => void>;
+
+    /** Corta el canal y deja que el servidor vuelva con ese build. */
+    async function restartWith(build: number | null) {
+      mocked.health.mockResolvedValue(true);
+      stop = startPresence();
+      await vi.advanceTimersByTimeAsync(0);
+      mocked.appBuild.mockResolvedValue(build);
+      streams[0].end();
+      await vi.advanceTimersByTimeAsync(RETRY_DELAY);
+    }
+
+    beforeEach(() => {
+      reload = vi.fn<() => void>();
+      vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload });
+      mocked.appBuild.mockResolvedValue(5);
+      useUi.setState({ updating: false, notices: [] });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('R-45 con otro build guarda lo pendiente y recarga la ventana', async () => {
+      await restartWith(6);
+      expect(savePending).toHaveBeenCalledTimes(1);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(savePending.mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
+    });
+
+    it('R-45 con el mismo build no recarga', async () => {
+      await restartWith(5);
+      expect(reload).not.toHaveBeenCalled();
+      expect(useUi.getState().notices).toEqual([]);
+    });
+
+    it('R-45 si se pidió actualizar y vuelve el mismo build, avisa de que sigue la versión anterior', async () => {
+      useUi.setState({ updating: true });
+      await restartWith(5);
+      expect(reload).not.toHaveBeenCalled();
+      expect(useUi.getState().updating).toBe(false);
+      expect(useUi.getState().notices.at(-1)?.text).toContain('sigue la versión anterior');
+    });
+
+    it('R-45 sin saber el build no recarga', async () => {
+      await restartWith(null);
+      expect(reload).not.toHaveBeenCalled();
+    });
   });
 });

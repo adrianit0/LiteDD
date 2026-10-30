@@ -16,6 +16,9 @@ export function startPresence(): () => void {
   let retrying = false;
   let controller: AbortController | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  // R-45: la interfaz cargada es la de este build.
+  let loadedBuild: number | null = null;
+  void api.appBuild().then((build) => (loadedBuild = build));
 
   const listen = async () => {
     controller = new AbortController();
@@ -56,6 +59,19 @@ export function startPresence(): () => void {
     useUi.getState().setContactLost(false);
     void listen();
     await useTabs.getState().savePending();
+    await afterRestart();
+  };
+
+  /** R-45: si el servidor es otro build, la ventana se recarga para tomar su interfaz. */
+  const afterRestart = async () => {
+    const build = await api.appBuild();
+    const ui = useUi.getState();
+    if (build !== null && loadedBuild !== null && build !== loadedBuild) {
+      window.location.reload();
+    } else if (ui.updating) {
+      ui.setUpdating(false);
+      ui.notify('No se pudo aplicar la actualización: sigue la versión anterior. El detalle está en update.log.', 'error');
+    }
   };
 
   const onPageHide = () => {

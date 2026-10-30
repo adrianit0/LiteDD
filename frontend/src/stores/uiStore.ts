@@ -16,7 +16,7 @@ export interface Notice {
 export type SidebarView = 'tree' | 'trash';
 
 /** U-10: categorías de «Ajustes», en su orden. */
-export type SettingsCategory = 'general' | 'connection' | 'sql' | 'http' | 'environments' | 'data';
+export type SettingsCategory = 'general' | 'connection' | 'sql' | 'http' | 'environments' | 'data' | 'updates';
 
 interface UiState {
   /** ADR-0009: el panel izquierdo muestra el árbol o la papelera. */
@@ -48,6 +48,9 @@ interface UiState {
   /** U-11: sin contacto con el servidor. */
   contactLost: boolean;
   setContactLost: (lost: boolean) => void;
+  /** R-45: se pidió actualizar y el servidor va a reiniciarse. */
+  updating: boolean;
+  setUpdating: (updating: boolean) => void;
   load: () => Promise<void>;
   setSidebarWidth: (width: number) => void;
   toggleSidebar: () => void;
@@ -112,6 +115,8 @@ export const useUi = create<UiState>((set, get) => ({
   setContactLost: (lost) => {
     if (get().contactLost !== lost) set({ contactLost: lost });
   },
+  updating: false,
+  setUpdating: (updating) => set({ updating }),
 
   async load() {
     const s = await api.getSettings();

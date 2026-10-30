@@ -113,7 +113,7 @@ describe('U-13 ventana por categorías', () => {
   it('U-10 U-13 las categorías van en su orden y las flechas las recorren', async () => {
     await renderAt();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'HTTP', 'Entornos', 'Datos']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'HTTP', 'Entornos', 'Datos', 'Actualizaciones']);
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'General' })).toBeTruthy();
 
@@ -186,7 +186,7 @@ describe('U-10 «General» y «SQL»', () => {
     goTo('General');
     fireEvent.change(screen.getByLabelText('Apagado automático sin ventanas (min)'), { target: { value: '30' } });
     await saveSettings();
-    const expected = { defaultPageSize: 50, rowCap: 5000, queryTimeoutSeconds: 30, port: 47600, autoShutdownMinutes: 30, autosave: true, http: DEFAULT_CONFIG.http };
+    const expected = { ...DEFAULT_CONFIG, defaultPageSize: 50, rowCap: 5000, autoShutdownMinutes: 30 };
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expected });
     expect(useUi.getState().config).toEqual(expected);
     expect(useUi.getState().settingsOpen).toBe(false);

@@ -9,6 +9,7 @@ import { useTree } from '../stores/treeStore';
 import { useUi, type SettingsCategory } from '../stores/uiStore';
 import { ConnectionSettings, EMPTY_CONNECTION, connectionChanged, type ConnectionDraft } from './ConnectionSettings';
 import { CorporateCaSettings, HttpProfilesSettings, fromProfileForms, toProfileForms, type ProfileForm } from './HttpProfilesSettings';
+import { UpdateSettings } from './UpdateSettings';
 
 /** U-10: categorías, en su orden. */
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
@@ -18,6 +19,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'http', label: 'HTTP' },
   { id: 'environments', label: 'Entornos' },
   { id: 'data', label: 'Datos' },
+  { id: 'updates', label: 'Actualizaciones' },
 ];
 
 /** Formulario: los números se editan como texto para poder dejar campos vacíos. */
@@ -36,6 +38,7 @@ interface ConfigForm {
   httpAccept: string;
   httpUserAgent: string;
   httpCacheControl: string;
+  updateRepository: string;
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -54,6 +57,7 @@ function toForm(c: AppConfig): ConfigForm {
     httpAccept: c.http.accept ?? '',
     httpUserAgent: c.http.userAgent ?? '',
     httpCacheControl: c.http.cacheControl ?? '',
+    updateRepository: c.updateRepository ?? '',
   };
 }
 
@@ -75,6 +79,7 @@ function fromForm(f: ConfigForm): AppConfig {
       userAgent: f.httpUserAgent.trim() === '' ? null : f.httpUserAgent.trim(),
       cacheControl: f.httpCacheControl.trim() === '' ? null : f.httpCacheControl.trim(),
     },
+    updateRepository: f.updateRepository.trim() === '' ? null : f.updateRepository.trim(),
   };
 }
 
@@ -493,6 +498,16 @@ export function SettingsDialog() {
     http,
     environments,
     data,
+    updates: (
+      <UpdateSettings
+        repository={form.updateRepository}
+        saved={config.updateRepository}
+        busy={busy}
+        run={busyWhile}
+        onChange={(updateRepository) => update({ updateRepository })}
+        onMessage={setMessage}
+      />
+    ),
   };
   const current = CATEGORIES.find((c) => c.id === category)!;
 

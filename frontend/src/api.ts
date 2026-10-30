@@ -141,6 +141,33 @@ export interface AppConfig {
   autosave: boolean;
   /** H-10, H-20, H-22, H-31, H-35, H-60. Las contraseñas y la clave no están aquí (H-21, H-64). */
   http: HttpSettings;
+  /** R-11: URL del repositorio de actualizaciones; null = sin conexión a GitHub. */
+  updateRepository: string | null;
+}
+
+/** R-10, R-14: reason dice por qué no está disponible. */
+export interface UpdateStatus {
+  version: string;
+  build: number;
+  commit: string;
+  available: boolean;
+  reason: string | null;
+}
+
+/** R-03 */
+export interface UpdateRelease {
+  build: number;
+  version: string;
+  commit: string;
+  date: string;
+  size: number;
+  sha256: string;
+  commits: string[];
+}
+
+export interface UpdateCheck {
+  newer: boolean;
+  latest: UpdateRelease;
 }
 
 /** H-60: el perfil fijo. */
@@ -191,6 +218,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   autoShutdownMinutes: null,
   autosave: true,
   http: DEFAULT_HTTP,
+  updateRepository: null,
 };
 
 export interface HttpHeader {
@@ -525,6 +553,9 @@ export const api = {
   importData: (file: Blob, mode: ImportMode) => requestRaw<ImportResult>('POST', `/api/data/import?mode=${mode}`, file, 'application/zip'),
   backupNow: () => request<{ file: string }>('POST', '/api/data/backup'),
   openDataFolder: () => request<{ opened: boolean; path: string }>('POST', '/api/data/open-folder'),
+  updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
+  checkUpdate: () => request<UpdateCheck>('POST', '/api/update/check'),
+  applyUpdate: (build: number) => request<{ restarting: boolean }>('POST', '/api/update/apply', { build }),
   /** U-11: comprobación sin token del servidor. */
   health: async () => {
     try {
@@ -554,6 +585,15 @@ export const api = {
       return info.version ?? '';
     } catch {
       return '';
+    }
+  },
+  /** R-45: build del servidor en marcha; null si no se sabe. */
+  appBuild: async () => {
+    try {
+      const info = (await (await fetch('/api/health', { cache: 'no-store' })).json()) as { build?: number };
+      return info.build ?? null;
+    } catch {
+      return null;
     }
   },
   /** Ciclo de vida: la ventana se cierra. */
