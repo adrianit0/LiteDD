@@ -33,6 +33,8 @@ import dev.litedd.transfer.Backups;
 import dev.litedd.transfer.DataApi;
 import dev.litedd.transfer.Exporter;
 import dev.litedd.transfer.Importer;
+import dev.litedd.update.UpdateApi;
+import dev.litedd.update.Updater;
 import dev.litedd.workflow.WorkflowApi;
 import dev.litedd.workflow.WorkflowRunner;
 import org.slf4j.Logger;
@@ -168,7 +170,8 @@ public final class Main {
                             DataPaths.dataDir(), Desktop::openFolder, clock),
                     new HttpApi(httpRunner, httpCredentials, corporateCa, settings::get),
                     new WorkflowApi(workflowRunner, variableValues, notes),
-                    new LifecycleApi(presence.value, exit))).start();
+                    new LifecycleApi(presence.value, exit),
+                    new UpdateApi(Updater.installed(() -> settings.get().updateRepository(), port), exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());
             shutdown.run();

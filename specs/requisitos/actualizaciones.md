@@ -21,7 +21,7 @@ LiteDD se puede actualizar sin compilar ni copiar el JAR a mano. Cada push a `ma
 | R-11 | «URL del repositorio» nace vacía y se guarda en `config.json` con «Guardar ajustes» (U-13). Solo admite `https://github.com/<propietario>/<repositorio>`, con `/` o `.git` final opcionales; otra URL impide guardar. Mientras no haya una URL guardada, los botones están desactivados y el servidor rechaza las llamadas sin conectar. |
 | R-12 | LiteDD solo contacta con GitHub al pulsar un botón. Nunca al arrancar ni de forma periódica. |
 | R-13 | «Buscar actualizaciones» obtiene `latest.json` y su firma y los comprueba (R-30, R-31). Si no hay nada nuevo, dice «Tienes la última versión». Si lo hay, muestra build, fecha, commit y la lista de commits, y activa «Actualizar». Si falla, dice el motivo y la aplicación sigue igual. |
-| R-14 | La actualización solo está disponible en Linux, si la aplicación corre desde un JAR, hay un `bin/litedd` en sus carpetas superiores y se puede escribir en la carpeta del JAR. Si no, la categoría indica el motivo y no muestra los botones. |
+| R-14 | La actualización solo está disponible en Linux, si la aplicación corre desde un JAR que incluye la clave pública, hay un `bin/litedd` en sus carpetas superiores y se puede escribir en la carpeta del JAR. Si no, la categoría indica el motivo y no muestra los botones. |
 
 ## Red
 

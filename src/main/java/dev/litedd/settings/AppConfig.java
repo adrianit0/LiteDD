@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.litedd.http.ApiError;
 import dev.litedd.httpnotes.HttpUrls;
+import dev.litedd.update.UpdateUrls;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,10 +29,11 @@ import java.util.regex.Pattern;
  * @param autoShutdownMinutes apagado tras N minutos sin ventanas y sin despedida; null desactivado
  * @param autosave            N-40: guardado automático; false, guardado manual (N-46). Si falta, true
  * @param http                notas HTTP (H-10, H-20, H-22, H-31, H-35, H-60). Si falta, los valores por defecto
+ * @param updateRepository    R-11: URL del repositorio de actualizaciones; null, sin conexión a GitHub
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
-                        Boolean autosave, Http http) {
+                        Boolean autosave, Http http, String updateRepository) {
 
     /**
      * Ajustes de las notas HTTP. Las contraseñas y la clave de confirmación no están aquí: van a http.json (H-21, H-64).
@@ -196,6 +198,12 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         // Un config.json anterior a N-46 o a H-10 no trae los campos.
         autosave = autosave == null || autosave;
         http = http == null ? Http.DEFAULT : http;
+        updateRepository = updateRepository == null || updateRepository.isBlank() ? null : updateRepository.strip();
+    }
+
+    public AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
+                     Boolean autosave, Http http) {
+        this(defaultPageSize, rowCap, queryTimeoutSeconds, port, autoShutdownMinutes, autosave, http, null);
     }
 
     public static final AppConfig DEFAULT = new AppConfig(20, 10_000, 30, 47600, null, true, Http.DEFAULT);
@@ -229,6 +237,9 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         }
         if (http.maxResponseMb() < 1 || http.maxResponseMb() > 100) {
             throw invalid("El tamaño máximo de respuesta debe estar entre 1 y 100 MB");
+        }
+        if (updateRepository != null && !UpdateUrls.isRepository(updateRepository)) {
+            throw invalid("La URL del repositorio debe ser https://github.com/<propietario>/<repositorio>");
         }
         return this;
     }
