@@ -50,7 +50,7 @@ Documentos: [requisitos/actualizaciones.md](../requisitos/actualizaciones.md), [
 
 ## Resultado
 
-Fecha: 2026-10-30. Código terminado; faltan la clave de firma, el primer push y la prueba real en Ubuntu.
+Fecha: 2026-10-31. `build-1` publicado; falta la prueba real en Ubuntu.
 
 ### Hecho
 
@@ -70,27 +70,26 @@ Fecha: 2026-10-30. Código terminado; faltan la clave de firma, el primer push y
   - Confirmación con el build y los commits.
   - Bloqueo con pestañas sin guardar o ejecuciones en marcha.
   - Recarga de la ventana al volver con otro build.
-- **Pruebas:** 463 de backend (5 omitidas en Windows, 4 de ellas las de `UpdateHelper`) y 415 de interfaz. `./mvnw -Pdist verify` en verde con build y commit inyectados.
+- **Pruebas:** 464 de backend (5 omitidas en Windows, 4 de ellas las de `UpdateHelper`) y 415 de interfaz. `./mvnw -Pdist verify` en verde en Windows y, por primera vez, en Linux con el CI.
 
 ### Criterios de aceptación
 
-1. **Un push con una prueba rota no publica:** **pendiente del primer push.** El workflow ejecuta `verify` antes de publicar.
-2. **Un push correcto publica los tres ficheros:** **pendiente del primer push.** `scripts/release.sh` se probó sin publicar, con una clave temporal: genera `latest.json` y una firma de 64 bytes.
+1. **Un push con una prueba rota no publica:** **no ha ocurrido todavía.** El workflow ejecuta `verify` antes de publicar.
+2. **Un push correcto publica los tres ficheros:** el primer push publicó `build-1` con `litedd.jar`, `latest.json` y `latest.json.sig`. **Cumplido**, salvo comprobar que un push solo de `specs/` no publica.
 3. **Sin URL no hay conexión:** pruebas R-11 y R-12. **Cumplido en pruebas.**
 4. **«Guardar ajustes» rechaza otra URL:** con la aplicación arrancada, `https://evil.example/demo/app` deja la ventana abierta con el motivo, y una URL de `github.com` se guarda. **Cumplido.**
-5. **Búsqueda:** pruebas R-13. `UpdateClient` real descargó un fichero de una release pública pasando por `github.com` y `release-assets.githubusercontent.com`. **Cumplido, salvo la búsqueda contra una release propia.**
+5. **Búsqueda:** pruebas R-13. Con las clases del propio JAR publicado, `UpdateClient` leyó `latest.json`, validó la firma con la clave incluida, descargó `build-1` comprobando tamaño y hash, y rechazó el manifiesto alterado. **Cumplido.**
 6. **Rechazos:** pruebas R-20, R-21, R-30 a R-32. `UpdateClient` real también rechazó un host fuera de la lista. **Cumplido en pruebas.**
 7. **Cambios sin guardar o ejecuciones en marcha:** pruebas R-41. **Cumplido en pruebas.**
-8. **Actualización real en Ubuntu:** **pendiente.** Exige una release firmada.
-9. **Vuelta atrás:** **pendiente.** `UpdateHelperTest` solo corre en Linux, así que se ejecutará por primera vez en el CI. Aquí se comprobó la sintaxis del script con `sh -n`. Ejecutarlo en Git Bash lo bloqueó una comprobación de seguridad del entorno.
+8. **Actualización real en Ubuntu:** **pendiente.** Exige instalar `build-1` y publicar un segundo build.
+9. **Vuelta atrás:** `UpdateHelperTest` solo corre en Linux y forma parte del paso de pruebas que pasó en el CI. **Cumplido en pruebas.**
 10. **Copia antes de migrar:** no cambia; la cubren las pruebas de `Migrator`. **Cumplido en pruebas.**
 11. **Desarrollo y Windows:** con el JAR en Windows, la categoría da el motivo, no muestra los botones y `POST /api/update/check` responde 409 sin conectar. **Cumplido.**
 
 ### Pendiente
 
-- El usuario crea el secreto `LITEDD_RELEASE_KEY`. La clave pública ya está en `src/main/resources/dev/litedd/update/release-key.pub`, y una firma de prueba con `scripts/release.sh` se verifica con ella.
-- Primer push: ejecuta `./mvnw verify` en Linux por primera vez y, con ello, `UpdateHelperTest`.
-- Instalar a mano una vez el JAR de la primera release, guardar la URL en «Ajustes → Actualizaciones» y actualizar con un segundo push.
+- Instalar a mano una vez el JAR de `build-1`, guardar la URL en «Ajustes → Actualizaciones» y actualizar con un segundo build.
+- `-Pit` en Ubuntu (ADR-0013): el CI no lo ejecuta.
 
 ### Desviaciones y decisiones
 
@@ -99,3 +98,4 @@ Fecha: 2026-10-30. Código terminado; faltan la clave de firma, el primer push y
 - **R-14 añade la clave pública:** un JAR sin ella no puede verificar nada (R-33), así que no ofrece actualizar.
 - **`scripts/release.sh` comprueba la clave contra `release-key.pub`:** una release firmada con otra clave la rechazaría toda instalación.
 - **El tiempo máximo de la petición no cubre el cuerpo:** al vencer se cierra el flujo, lo que corta una descarga parada.
+- **Tamaño del JAR:** el de `build-1` pesa 31 MB. Uno compilado en un equipo de desarrollo puede pesar el doble, porque `web/assets` acumula interfaces de builds anteriores si no se limpia `target/`.
