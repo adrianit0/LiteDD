@@ -88,7 +88,7 @@ Fecha: 2026-10-30. Código terminado; faltan la clave de firma, el primer push y
 
 ### Pendiente
 
-- El usuario genera el par de claves y crea el secreto `LITEDD_RELEASE_KEY`. La clave pública va a `src/main/resources/dev/litedd/update/release-key.pub`. Sin ese fichero, R-14 deja la actualización no disponible.
+- El usuario crea el secreto `LITEDD_RELEASE_KEY`. La clave pública ya está en `src/main/resources/dev/litedd/update/release-key.pub`, y una firma de prueba con `scripts/release.sh` se verifica con ella.
 - Primer push: ejecuta `./mvnw verify` en Linux por primera vez y, con ello, `UpdateHelperTest`.
 - Instalar a mano una vez el JAR de la primera release, guardar la URL en «Ajustes → Actualizaciones» y actualizar con un segundo push.
 

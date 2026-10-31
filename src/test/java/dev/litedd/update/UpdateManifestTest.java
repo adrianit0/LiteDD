@@ -106,4 +106,9 @@ class UpdateManifestTest {
         PublicKey parsed = UpdateManifest.publicKey(base64 + "\n");
         assertThat(parsed.getEncoded()).isEqualTo(keys.getPublic().getEncoded());
     }
+
+    @Test
+    void r04_the_jar_includes_the_public_key() {
+        assertThat(UpdateManifest.bundledKey()).isNotNull();
+    }
 }
