@@ -96,6 +96,7 @@ Diseño:
 - **Volver atrás tras una migración no es inmediato.** Migrator rechaza una base más reciente que la aplicación. Tras una versión que migró, usar el JAR anterior exige restaurar la copia `-premigracion` (X-09), y se pierde lo escrito desde entonces.
 - **Si GitHub cambia el host de descarga,** la actualización falla con un error claro y hace falta instalar a mano una versión con la lista corregida. Es preferible a aceptar cualquier host.
 - **Si se pierde la clave privada,** se genera otra y hay que instalar a mano una vez.
+- **El workflow no se debe renombrar.** GitHub cuenta las ejecuciones por workflow: con otro nombre, el número de build volvería a empezar y las instalaciones no verían las versiones nuevas (R-31).
 - **La primera instalación es manual:** hay que llevar una vez un JAR con esta función, de la primera release o compilado a mano, y ejecutar `scripts/install.sh litedd.jar`.
 - **Las pruebas `-Pit` no bloquean la publicación,** porque el runner no tiene MySQL. Una regresión solo visible contra MySQL real se publicaría.
 - **`./mvnw verify` se ejecutará en Linux por primera vez.** Pueden aparecer fallos que en Windows no se ven.

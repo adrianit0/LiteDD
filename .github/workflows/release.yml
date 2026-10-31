@@ -1,4 +1,6 @@
 # ADR-0033: cada push a main ejecuta las pruebas y, si pasan, publica el JAR firmado (R-01 a R-05).
+# El número de ejecución es el número de build (R-02): renombrar este fichero lo reiniciaría y las
+# instalaciones dejarían de ver versiones nuevas (R-31).
 name: Release
 
 on:
