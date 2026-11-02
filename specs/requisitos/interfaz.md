@@ -6,7 +6,7 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 
 ```text
 ┌────────────────────────────────────────────────────────────────┐
-│ LiteDD                                              [Local ▾] ⚙ │
+│ [Logotipo]                                          [Local ▾] ⚙ │
 ├────────────────┬───────────────────────────────────────────────┤
 │ Buscar…        │ [Nota A ×] [Consulta B ×] [Nota A ×]          │
 │ Filtros        ├───────────────────────────────────────────────┤
@@ -33,6 +33,7 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 | U-11 | Si se pierde el contacto con el servidor, aparece una banda de aviso y se reintenta solo. El texto en edición se conserva en memoria y se guarda al recuperar el contacto. |
 | U-12 | Con «Permitir entornos de preproducción» marcada (H-62), la barra superior muestra a la izquierda del botón de «Ajustes» un desplegable con los perfiles de las notas HTTP, en el orden de «Ajustes» (H-70). El elegido es el perfil activo (H-63). Si no es Local, el desplegable usa el color de aviso (U-02). Con la casilla desmarcada, el desplegable no aparece y todo va al perfil Local. |
 | U-13 | La ventana «Ajustes» es ancha y de alto fijo: no crece con el contenido. A la izquierda, una lista de botones con las categorías (U-10), que también se recorre con las flechas; a la derecha, la categoría elegida, que es lo único que se desplaza. Una «×» arriba a la derecha la cierra, igual que «Cerrar» y Esc, sin guardar. El pie tiene juntos «Cerrar» y «Guardar ajustes», que guarda todas las categorías a la vez. Los accesos desde otras partes la abren en su categoría: «Configurar la conexión» en «Conexión» y «Abrir «Ajustes»» de una nota HTTP sin URL base en «Entornos» (ADR-0030). |
+| U-14 | La barra superior mide 48 px y muestra a la izquierda el logotipo de la aplicación, con «LiteDD» como texto alternativo. El icono del logotipo es gris, con una hoja de papel abajo a la derecha, y sus grises tienen un contraste mínimo de 3:1 con la barra. Ese icono es también el favicon, sobre una placa propia para que se vea en pestañas claras y oscuras (ADR-0034). |
 
 ## Atajos de teclado
 

@@ -100,6 +100,16 @@ describe('U-12 selector de perfil de las notas HTTP', () => {
   });
 });
 
+describe('U-14 logotipo', () => {
+  it('U-14 la barra superior muestra el logotipo en lugar del nombre', async () => {
+    render(<App />);
+    await act(async () => {});
+    const banner = within(screen.getByRole('banner'));
+    expect(banner.getByRole('img', { name: 'LiteDD' }).getAttribute('src')).toBe('/litedd-logo.svg');
+    expect(banner.queryByText('LiteDD')).toBeNull();
+  });
+});
+
 describe('App', () => {
   it('muestra la pantalla vacía «LiteDD» con el panel de notas', async () => {
     render(<App />);

@@ -131,7 +131,8 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">LiteDD</span>
+        {/* U-14 */}
+        <img className="brand" src="/litedd-logo.svg" alt="LiteDD" />
         <div className="topbar-end">
           <HttpProfileSelect />
           <button type="button" className="icon-button" aria-label="Ajustes" title="Ajustes" onClick={() => useUi.getState().setSettingsOpen(true)}>
