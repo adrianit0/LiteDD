@@ -49,8 +49,8 @@ LiteDD se puede actualizar sin compilar ni copiar el JAR a mano. Cada push a `ma
 | R-40 | «Actualizar» pide confirmación en un diálogo con el build, el commit y la lista de commits, y avisa de que la aplicación se reiniciará. |
 | R-41 | Antes de confirmar se guardan las pestañas pendientes. Si queda alguna sin guardar o hay una consulta, una llamada HTTP o un workflow en marcha, no se actualiza y se indica el motivo. |
 | R-42 | El JAR se descarga en la carpeta del actual como `litedd.jar.new`, con permisos 644. Si queda una descarga anterior, se sustituye. |
-| R-43 | Tras verificar, un proceso `sh` independiente espera a que termine LiteDD, que se apaga de forma ordenada. Después guarda el JAR actual como `litedd.jar.prev`, mueve el nuevo a su sitio y ejecuta `bin/litedd --no-window` con el mismo puerto. |
-| R-44 | Si a los 60 s no existe `instance.json`, el proceso restaura `litedd.jar.prev` y arranca esa versión. Lo que hace queda en `~/.local/state/litedd/update.log`, que se reescribe en cada actualización. |
+| R-43 | Tras verificar, un proceso `sh` independiente espera a que termine LiteDD, que se apaga de forma ordenada. Después guarda el JAR actual como `litedd.jar.prev`, mueve el nuevo a su sitio y ejecuta `bin/litedd --no-window` con el mismo puerto y sin las variables `_JPACKAGE_LAUNCHER` y `LD_LIBRARY_PATH` que hereda de la aplicación, de modo que arranca igual que desde el escritorio (ADR-0035). |
+| R-44 | Si a los 60 s no existe `instance.json`, el proceso restaura `litedd.jar.prev` y arranca esa versión. Lo que hace, junto con la salida de errores de `bin/litedd`, queda en `~/.local/state/litedd/update.log`, que se reescribe en cada actualización. |
 | R-45 | La ventana abierta recupera el contacto (U-11) y guarda lo pendiente. Si `/api/health` indica otro build, se recarga. Si indica el mismo, avisa de que no se pudo aplicar y de que sigue la versión anterior. |
 | R-46 | Actualizar solo sustituye el JAR. No toca datos, ajustes, contraseñas ni ficheros de `scripts/` o `packaging/`. |
 | R-47 | Las migraciones siguen D-02, con su copia previa (X-09). Volver al JAR anterior tras una migración exige restaurar esa copia. |

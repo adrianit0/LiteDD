@@ -54,7 +54,7 @@ LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los
 
 Cada push a `main` que pasa las pruebas publica en GitHub una versión con un JAR firmado. En «Ajustes → Actualizaciones», escribe la URL del repositorio, guarda los ajustes y usa «Buscar actualizaciones» y «Actualizar». LiteDD solo contacta con GitHub al pulsar un botón, no envía ningún dato y nunca se actualiza solo.
 
-Actualizar sustituye el JAR y reinicia la aplicación, sin tocar las notas ni los ajustes. Si la versión nueva no arranca, se vuelve a la anterior, y lo ocurrido queda en `~/.local/state/litedd/update.log`. Si la versión nueva ya migró la base de datos, usar la anterior exige [restaurar](#restaurar-una-copia) la copia `-premigracion`.
+Actualizar sustituye el JAR y reinicia la aplicación, sin tocar las notas ni los ajustes. La ventana abierta se recarga sola. Si la versión nueva no arranca, se vuelve a la anterior, y lo ocurrido queda en `~/.local/state/litedd/update.log`. Si la versión nueva ya migró la base de datos, usar la anterior exige [restaurar](#restaurar-una-copia) la copia `-premigracion`.
 
 Los cambios en `scripts/`, en `packaging/` o en la versión de Java no llegan por esta vía: hay que volver a instalar.
 

@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,14 +19,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledOnOs(OS.LINUX)
 class UpdateHelperTest {
 
-    /** Hace de aplicación: si el JAR dice «bueno», escribe instance.json, como el servidor al arrancar. */
+    /**
+     * Hace de aplicación: si el JAR dice «bueno», escribe instance.json, como el servidor al arrancar. Como el lanzador
+     * de jpackage, con _JPACKAGE_LAUNCHER heredada entrega sus argumentos a la JVM, que los rechaza (ADR-0035).
+     */
     private static final String LAUNCHER = """
             #!/bin/sh
             dir=$(dirname "$0")/..
+            if [ -n "$_JPACKAGE_LAUNCHER" ]; then
+              echo "Unrecognized option: $1" >&2
+              exit 1
+            fi
+            echo "[$LD_LIBRARY_PATH]" >> "$dir/library-path"
             echo "$@" >> "$dir/args"
             cat "$dir/lib/litedd.jar" >> "$dir/ran"
             if grep -q bueno "$dir/lib/litedd.jar"; then
               touch "$dir/instance.json"
+            else
+              echo "No arranca" >&2
             fi
             """;
 
@@ -52,10 +63,12 @@ class UpdateHelperTest {
         installation = new Installation(jar, launcher);
     }
 
-    /** Un proceso de un segundo hace de LiteDD apagándose. */
+    /** Un proceso de un segundo hace de LiteDD apagándose, con el entorno que deja el lanzador de jpackage. */
     private void run(int seconds) throws Exception {
         Process app = new ProcessBuilder("sleep", "1").start();
-        UpdateHelper.start(installation, 47600, instance, log, app.pid(), seconds);
+        ProcessBuilder helper = UpdateHelper.process(installation, 47600, instance, log, app.pid(), seconds);
+        helper.environment().putAll(Map.of("_JPACKAGE_LAUNCHER", "0", "LD_LIBRARY_PATH", ":" + jar.getParent()));
+        helper.start();
         Instant limit = Instant.now().plus(Duration.ofSeconds(seconds * 3L + 10));
         while (Instant.now().isBefore(limit)) {
             if (Files.exists(log) && Files.readString(log).contains("FIN")) {
@@ -77,6 +90,14 @@ class UpdateHelperTest {
     }
 
     @Test
+    void r43_the_launcher_starts_like_from_the_desktop_without_the_jpackage_environment() throws Exception {
+        Files.writeString(next, "bueno nuevo\n");
+        run(5);
+        assertThat(Files.readString(dir.resolve("library-path")).strip()).isEqualTo("[]");
+        assertThat(Files.readString(log)).contains("Versión nueva en marcha").doesNotContain("Unrecognized option");
+    }
+
+    @Test
     void r44_a_version_that_does_not_start_goes_back_to_the_previous_one() throws Exception {
         Files.writeString(next, "roto\n");
         run(2);
@@ -93,6 +114,13 @@ class UpdateHelperTest {
         run(1);
         assertThat(Files.readString(jar)).isEqualTo("roto anterior\n");
         assertThat(Files.readString(log)).contains("-premigracion");
+    }
+
+    @Test
+    void r44_the_log_keeps_the_errors_of_the_launcher() throws Exception {
+        Files.writeString(next, "roto\n");
+        run(1);
+        assertThat(Files.readString(log)).contains("No arranca");
     }
 
     @Test

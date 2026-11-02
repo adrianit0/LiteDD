@@ -81,7 +81,7 @@ Fecha: 2026-10-31. Sprint terminado: en Ubuntu, una instalación de `build-1` se
 5. **Búsqueda:** pruebas R-13. Con las clases del propio JAR publicado, `UpdateClient` leyó `latest.json`, validó la firma con la clave incluida, descargó `build-1` comprobando tamaño y hash, y rechazó el manifiesto alterado. **Cumplido.**
 6. **Rechazos:** pruebas R-20, R-21, R-30 a R-32. `UpdateClient` real también rechazó un host fuera de la lista. **Cumplido en pruebas.**
 7. **Cambios sin guardar o ejecuciones en marcha:** pruebas R-41. **Cumplido en pruebas.**
-8. **Actualización real en Ubuntu:** el usuario instaló `build-1` a mano, buscó y actualizó a `build-2` con los botones, y confirma que funcionó. **Cumplido.**
+8. **Actualización real en Ubuntu:** el usuario instaló `build-1` a mano, buscó y actualizó a `build-2` con los botones, y confirma que funcionó. **Cumplido.** Más tarde se vio que la versión nueva no arrancaba sola con la imagen de jpackage y había que abrir la aplicación a mano (ADR-0035).
 9. **Vuelta atrás:** `UpdateHelperTest` solo corre en Linux y forma parte del paso de pruebas que pasó en el CI. **Cumplido en pruebas.**
 10. **Copia antes de migrar:** no cambia; la cubren las pruebas de `Migrator`. **Cumplido en pruebas.**
 11. **Desarrollo y Windows:** con el JAR en Windows, la categoría da el motivo, no muestra los botones y `POST /api/update/check` responde 409 sin conectar. **Cumplido.**

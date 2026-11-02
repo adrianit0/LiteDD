@@ -114,7 +114,7 @@ Las versiones no fijadas en la tabla se fijan en el Sprint 0 con la última esta
 4. La interfaz mantiene abierto un canal SSE (`/api/events`) como señal de presencia.
 5. Al cerrar la ventana, la interfaz envía un aviso de despedida. Si a los 15 segundos no queda ninguna ventana conectada, el proceso se apaga de forma ordenada.
 6. Si la presencia se pierde sin despedida (pestaña suspendida, fallo del navegador), el proceso sigue vivo. Un ajuste opcional permite apagarlo tras N minutos; por defecto está desactivado.
-7. Al actualizar, el proceso se apaga de forma ordenada y un proceso `sh` independiente sustituye el JAR y lo vuelve a arrancar con `--no-window`. La ventana abierta recupera el contacto y se recarga (ADR-0033).
+7. Al actualizar, el proceso se apaga de forma ordenada y un proceso `sh` independiente sustituye el JAR y lo vuelve a arrancar con `--no-window`. La ventana abierta recupera el contacto y se recarga, sin ningún paso a mano (ADR-0033, ADR-0035).
 
 Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window`, `litedd --port N`, `litedd --stop`.
 
