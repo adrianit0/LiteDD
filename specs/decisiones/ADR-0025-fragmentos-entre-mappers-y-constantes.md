@@ -47,3 +47,4 @@ Diseño:
 - Guardar una nota XML cuesta un análisis de cada nota XML activa. Con decenas de mappers sigue siendo de milisegundos a pocos cientos de milisegundos.
 - Una nota en la papelera no aporta fragmentos. Los mappers que la usaban muestran el error y conservan sus hijas hasta que se restaura.
 - Las constantes son datos del usuario: se exportan, a diferencia de los valores de variables (X-04), porque valen para todas las notas.
+- ADR-0037 añade la migración masiva: pegar el `.java` de constantes rellena sus valores.

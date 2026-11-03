@@ -133,6 +133,87 @@ describe('M-65 constantes', () => {
     expect(useUi.getState().constantsOpen).toBe(false);
   });
 
+  const source = `
+    package demo;
+    public class DemoConstants {
+        public static final int STATUS_ACTIVE = 60 * 1000;
+        public static final String LABEL = "novel";
+        public static final int UNUSED = 5;
+    }
+    class Old {
+        static final String GONE = "y";
+    }`;
+
+  const startMigration = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Migración masiva…' }));
+    return screen.getByLabelText<HTMLTextAreaElement>('Contenido del .java');
+  };
+
+  it('M-69 «Migración masiva…» rellena la tabla sin guardar, marca las filas y resume lo hecho', async () => {
+    mocked.putConstants.mockResolvedValue([active, label, { ...gone, value: 'y' }]);
+    await open();
+    const box = startMigration();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Aplicar' })).toHaveProperty('disabled', true);
+    fireEvent.change(box, { target: { value: source } });
+    const applyButton = screen.getByRole('button', { name: 'Aplicar' });
+    fireEvent.click(applyButton);
+    expect(mocked.putConstants).not.toHaveBeenCalled();
+    // En el navegador, si el mismo botón pasara a ser «Guardar» durante el clic, enviaría el formulario.
+    expect(applyButton.isConnected).toBe(false);
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de Old.GONE').value).toBe('y');
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de DemoConstants.STATUS_ACTIVE').value).toBe('');
+    expect(screen.getByText('Old.GONE').closest('tr')!.className).toBe('constant-changed');
+    expect(screen.getByText('DemoConstants.LABEL').closest('tr')!.className).toBe('');
+    expect(screen.getByRole('status').textContent).toBe(
+      '1 constante rellenada y 1 que ya tenía ese valor. 1 constante del texto no está en la lista y no se añade. ' +
+        'No se ha podido leer el valor de DemoConstants.STATUS_ACTIVE: dáselo a mano. Revisa los cambios y pulsa «Guardar».',
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    });
+    expect(mocked.putConstants).toHaveBeenCalledWith({ 'demo.Old@GONE': 'y' });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('Old.GONE').closest('tr')!.className).toBe('');
+  });
+
+  it('M-69 «Cancelar» y Esc vuelven a la lista sin cambiar nada y el texto pegado no se conserva', async () => {
+    await open();
+    fireEvent.change(startMigration(), { target: { value: source } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByRole('table')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de Old.GONE').value).toBe('x');
+    const box = startMigration();
+    expect(box.value).toBe('');
+    fireEvent.change(box, { target: { value: source } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(useUi.getState().constantsOpen).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de Old.GONE').value).toBe('x');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Migración masiva…' }));
+    expect(startMigration().value).toBe('');
+  });
+
+  it('M-69 un texto sin constantes avisa y sigue en el cuadro', async () => {
+    await open();
+    fireEvent.change(startMigration(), { target: { value: 'esto no es Java' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }));
+    expect(screen.getByRole('alert').textContent).toBe('No se ha encontrado ninguna constante en el texto pegado.');
+    expect(screen.getByLabelText('Contenido del .java')).toBeTruthy();
+  });
+
+  it('M-69 sin constantes en la lista no hay nada que migrar', async () => {
+    mocked.constants.mockResolvedValue([]);
+    render(<ConstantsDialog />);
+    await screen.findByText('Ninguna nota usa constantes Java.');
+    expect(screen.getByRole('button', { name: 'Migración masiva…' })).toHaveProperty('disabled', true);
+  });
+
+  it('M-69 una fila editada a mano también se marca', async () => {
+    await open();
+    fireEvent.change(screen.getByLabelText('Valor de DemoConstants.STATUS_ACTIVE'), { target: { value: '5' } });
+    expect(screen.getByText('DemoConstants.STATUS_ACTIVE').closest('tr')!.className).toBe('constant-missing constant-changed');
+  });
+
   it('M-63 el error de una constante sin valor ofrece abrir «Constantes»', () => {
     useUi.setState({ constantsOpen: false });
     render(

@@ -2274,9 +2274,42 @@ mark {
   width: 150px;
 }
 
-.constants-filter {
-  width: 100%;
+.constants-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   margin: 8px 0;
+}
+
+.constants-filter {
+  flex: 1;
+  min-width: 0;
+}
+
+/* M-69, ADR-0037: migración masiva. */
+.constants-summary {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.constants-migration-hint {
+  margin-top: 8px;
+}
+
+.constants-source {
+  flex: 1;
+  min-height: 200px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  resize: none;
+  font: 12px var(--font-mono);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: pre;
+  overflow: auto;
 }
 
 .constants-table {
@@ -2311,6 +2344,15 @@ mark {
 
 .constant-missing .constant-name {
   color: var(--warning);
+}
+
+/* M-69: valor distinto del guardado. */
+.constant-changed td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.constant-changed input {
+  border-color: var(--accent);
 }
 
 .constant-unused {
