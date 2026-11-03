@@ -41,7 +41,7 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 |---|---|
 | N-30 | Markdown GFM: tablas, listas de tareas, tachado y autoenlaces. Resaltado de bloques de código. Los bloques mermaid se dibujan como diagrama. |
 | N-31 | Las casillas de tareas son de solo lectura en consulta. |
-| N-32 | Los enlaces externos se abren en el navegador por defecto. Los enlaces a notas abren la nota; con clic central, en pestaña nueva. |
+| N-32 | Los enlaces externos, con clic o con clic central, se abren en una pestaña nueva del Chrome habitual del usuario, fuera de la ventana de LiteDD; si Chrome no está, en el navegador por defecto (ADR-0036). Los enlaces a notas abren la nota; con clic central, en pestaña nueva. |
 | N-33 | Una tabla copiada desde un resultado SQL y pegada en una nota se ve como tabla. |
 | N-34 | En consulta, cada bloque de código tiene una cabecera con el lenguaje a la izquierda y un botón «Copiar» a la derecha, que copia el código sin los números de línea. Los números de línea se ven en el borde izquierdo y no se seleccionan con el texto. |
 | N-35 | En consulta, pulsar una imagen la abre en un visor sobre la aplicación, ajustada a la ventana. En el visor, la rueda del ratón acerca o aleja la imagen hacia el puntero, arrastrar la desplaza y doble clic vuelve al ajuste inicial; hay botones para acercar, alejar, ajustar y cerrar, y el nivel de zoom se ve en porcentaje. Escape o un clic fuera de la imagen cierran el visor. El zoom solo afecta a la imagen, no al resto de la aplicación. |

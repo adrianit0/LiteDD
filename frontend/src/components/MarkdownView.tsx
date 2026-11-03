@@ -5,8 +5,18 @@ import { useAttachments } from '../markdown/attachments';
 import { useBoards } from '../markdown/boards';
 import { renderMermaidBlocks } from '../markdown/mermaid';
 import { useTree } from '../stores/treeStore';
+import { useUi } from '../stores/uiStore';
+import { api } from '../api';
 import { copyText } from '../clipboard';
 import { ImageViewer } from './ImageViewer';
+
+/** N-32: los enlaces externos se abren en una pestaña del Chrome habitual, fuera de la ventana (ADR-0036). */
+function openExternal(href: string | null) {
+  if (!href || !/^(https?:|mailto:)/i.test(href)) return;
+  api.openLink(href).catch((e: unknown) => {
+    useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo abrir el enlace', 'error');
+  });
+}
 
 /** N-34: copia el código de un bloque, sin los números de línea. */
 function copyCode(button: Element) {
@@ -88,9 +98,7 @@ export function MarkdownView({ content, onOpenNote }: Props) {
       onOpenNote(noteId, false);
       return;
     }
-    // N-32: los enlaces externos se abren en el navegador.
-    const href = a.getAttribute('href');
-    if (href && /^(https?:|mailto:)/i.test(href)) window.open(href, '_blank', 'noopener,noreferrer');
+    openExternal(a.getAttribute('href'));
   };
 
   // N-32, P-03: clic central sobre un enlace a nota abre una pestaña nueva. B-42: también sobre una pizarra.
@@ -101,6 +109,7 @@ export function MarkdownView({ content, onOpenNote }: Props) {
     if (a) {
       e.preventDefault();
       if (a.dataset.noteId) onOpenNote(a.dataset.noteId, true);
+      else openExternal(a.getAttribute('href'));
       return;
     }
     const board = target.closest<HTMLElement>('[data-board-id]');

@@ -29,13 +29,14 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Ciclo de vida, ajustes (U-10) y datos (X-01, X-05, X-10) por HTTP. */
+/** Ciclo de vida, enlaces externos (N-32), ajustes (U-10) y datos (X-01, X-05, X-10) por HTTP. */
 class LifecycleTest {
 
     private static final String TOKEN = "test-token-0123456789abcdefghijklmnop";
@@ -51,6 +52,8 @@ class LifecycleTest {
     int port;
     AtomicInteger shutdowns = new AtomicInteger();
     AtomicReference<Path> openedFolder = new AtomicReference<>();
+    List<String> openedLinks = new CopyOnWriteArrayList<>();
+    volatile boolean linksFail;
 
     @BeforeEach
     void start() throws Exception {
@@ -64,7 +67,12 @@ class LifecycleTest {
         Backups backups = new Backups(store, dir.resolve("backups"), clock);
         server = new HttpServer(port, TOKEN, List.of(
                 new SettingsApi(store, settings),
-                new LifecycleApi(presence, shutdowns::incrementAndGet),
+                new LifecycleApi(presence, shutdowns::incrementAndGet, url -> {
+                    if (linksFail) {
+                        throw new IllegalStateException("sin navegador");
+                    }
+                    openedLinks.add(url);
+                }),
                 new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                         dir.resolve("data"), openedFolder::set, clock))).start();
     }
@@ -184,6 +192,34 @@ class LifecycleTest {
         // El lanzador se asocia a la ventana por su clase.
         String desktopFile = Files.readString(Path.of("packaging/litedd.desktop"));
         assertThat(desktopFile).contains("StartupWMClass=" + Desktop.WINDOW_CLASS);
+    }
+
+    // --- N-32 ---
+
+    @Test
+    void n32_external_links_open_in_the_usual_chrome_as_a_new_tab() throws Exception {
+        assertThat(post("/api/open-link", "{\"url\":\"https://example.org/a?b=1#c\"}").statusCode()).isEqualTo(200);
+        assertThat(post("/api/open-link", "{\"url\":\"MAILTO:demo@example.org\"}").statusCode()).isEqualTo(200);
+        assertThat(openedLinks).containsExactly("https://example.org/a?b=1#c", "MAILTO:demo@example.org");
+        // ADR-0036: sin --app ni el perfil propio de la ventana, Chrome lo abre en el perfil habitual.
+        assertThat(Desktop.browserTabCommand("https://example.org/")).containsExactly("google-chrome", "https://example.org/");
+    }
+
+    @Test
+    void n32_only_web_and_mail_links_are_opened() throws Exception {
+        for (String bad : List.of("{\"url\":\"file:///etc/hosts\"}", "{\"url\":\"javascript:alert(1)\"}",
+                "{\"url\":\"--app=https://example.org/\"}", "{\"url\":\"https://example.org/a b\"}",
+                "{\"url\":\"https://example.org/\\nb\"}", "{\"url\":\"https:\"}", "{}")) {
+            HttpResponse<String> r = post("/api/open-link", bad);
+            assertThat(r.statusCode()).as(bad).isEqualTo(400);
+            assertThat(JSON.readTree(r.body()).get("code").asText()).isEqualTo("invalid_link");
+        }
+        assertThat(openedLinks).isEmpty();
+
+        linksFail = true;
+        HttpResponse<String> failed = post("/api/open-link", "{\"url\":\"https://example.org/\"}");
+        assertThat(failed.statusCode()).isEqualTo(500);
+        assertThat(JSON.readTree(failed.body()).get("code").asText()).isEqualTo("open_failed");
     }
 
     @Test

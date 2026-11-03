@@ -28,6 +28,7 @@ vi.mock('./api', async (importOriginal) => {
       httpProfile: vi.fn(),
       setHttpProfile: vi.fn(),
       duplicateNote: vi.fn(),
+      openLink: vi.fn(),
     },
   };
 });
@@ -445,6 +446,36 @@ describe('App', () => {
       fireEvent(screen.getByRole('link', { name: 'ir' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
     });
     expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['origen', 'destino', 'destino']);
+  });
+
+  it('N-32 un enlace externo se abre en el Chrome habitual, no en la ventana de LiteDD', async () => {
+    const windowOpen = vi.spyOn(window, 'open').mockReturnValue(null);
+    mocked.openLink.mockResolvedValue({ opened: true });
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('web', {
+        note: { ...created, id: 'web', title: 'Web', content: '[web](https://example.org/a) y [correo](mailto:demo@example.org)' },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('link', { name: 'web' }));
+    });
+    expect(mocked.openLink).toHaveBeenLastCalledWith('https://example.org/a');
+    // El clic central tampoco abre la página en la aplicación.
+    await act(async () => {
+      fireEvent(screen.getByRole('link', { name: 'correo' }), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    });
+    expect(mocked.openLink).toHaveBeenLastCalledWith('mailto:demo@example.org');
+    expect(windowOpen).not.toHaveBeenCalled();
+    expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['web']);
+
+    mocked.openLink.mockRejectedValue(new ApiError(500, 'open_failed', 'No se pudo abrir el enlace en el navegador', null));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('link', { name: 'web' }));
+    });
+    const notice = useUi.getState().notices.find((n) => n.text === 'No se pudo abrir el enlace en el navegador');
+    expect(notice?.kind).toBe('error');
+    act(() => useUi.getState().dismiss(notice!.id));
   });
 
   it('P-01 P-12 la barra muestra icono, título, estado y cierre; sin pestañas vuelve la pantalla vacía', async () => {

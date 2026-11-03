@@ -61,6 +61,7 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/data/import | Subir ZIP con el modo elegido |
 | POST | /api/data/backup | Crear copia ahora |
 | POST | /api/data/open-folder | Abrir la carpeta de datos (X-10, ADR-0017) |
+| POST | /api/open-link | Abrir un enlace externo `http:`, `https:` o `mailto:` en una pestaña del Chrome habitual (N-32, ADR-0036) |
 | GET | /api/update | Versión, build y commit instalados, y si la actualización está disponible y por qué (R-10, R-14) |
 | POST | /api/update/check | Buscar una versión nueva (R-13) |
 | POST | /api/update/apply | Descargar y verificar el build indicado y reiniciar (R-32, R-42, R-43) |

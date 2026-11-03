@@ -11,8 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Ventana y carpeta en el escritorio. En Linux: google-chrome --app (o xdg-open) y xdg-open. En
- * otros sistemas, solo para desarrollo, el navegador y el explorador por defecto (ADR-0004).
+ * Ventana, enlaces y carpeta en el escritorio. En Linux: google-chrome --app (o xdg-open), google-chrome
+ * (o xdg-open) y xdg-open. En otros sistemas, solo para desarrollo, el navegador y el explorador por
+ * defecto (ADR-0004).
  */
 public final class Desktop {
 
@@ -48,6 +49,31 @@ public final class Desktop {
     static List<String> chromeCommand(String url, Path profile) {
         return List.of("google-chrome", "--app=" + url, "--class=" + WINDOW_CLASS, "--user-data-dir=" + profile,
                 "--ozone-platform=x11", "--no-first-run", "--no-default-browser-check");
+    }
+
+    /**
+     * N-32: abre un enlace externo en una pestaña del Chrome habitual del usuario, no en la ventana de LiteDD
+     * (ADR-0036). Si Chrome no está, y para mailto:, xdg-open.
+     */
+    public static void openLink(String url) {
+        if (LINUX) {
+            boolean mail = url.regionMatches(true, 0, "mailto:", 0, 7);
+            boolean opened = !mail && start(browserTabCommand(url).toArray(String[]::new)) || start("xdg-open", url);
+            if (!opened) {
+                throw new IllegalStateException("No se pudo abrir el enlace " + url);
+            }
+            return;
+        }
+        try {
+            java.awt.Desktop.getDesktop().browse(URI.create(url));
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalStateException("No se pudo abrir el enlace " + url, e);
+        }
+    }
+
+    /** ADR-0036: sin --app ni --user-data-dir, Chrome entrega la URL al proceso del perfil habitual como pestaña nueva. */
+    static List<String> browserTabCommand(String url) {
+        return List.of("google-chrome", url);
     }
 
     /** X-10: abre la carpeta de datos. */

@@ -170,7 +170,7 @@ public final class Main {
                             DataPaths.dataDir(), Desktop::openFolder, clock),
                     new HttpApi(httpRunner, httpCredentials, corporateCa, settings::get),
                     new WorkflowApi(workflowRunner, variableValues, notes),
-                    new LifecycleApi(presence.value, exit),
+                    new LifecycleApi(presence.value, exit, Desktop::openLink),
                     new UpdateApi(Updater.installed(() -> settings.get().updateRepository(), port), exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());

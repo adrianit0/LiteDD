@@ -553,6 +553,8 @@ export const api = {
   importData: (file: Blob, mode: ImportMode) => requestRaw<ImportResult>('POST', `/api/data/import?mode=${mode}`, file, 'application/zip'),
   backupNow: () => request<{ file: string }>('POST', '/api/data/backup'),
   openDataFolder: () => request<{ opened: boolean; path: string }>('POST', '/api/data/open-folder'),
+  /** N-32: en una pestaña del Chrome habitual, no en la ventana de LiteDD (ADR-0036). */
+  openLink: (url: string) => request<{ opened: boolean }>('POST', '/api/open-link', { url }),
   updateStatus: () => request<UpdateStatus>('GET', '/api/update'),
   checkUpdate: () => request<UpdateCheck>('POST', '/api/update/check'),
   applyUpdate: (build: number) => request<{ restarting: boolean }>('POST', '/api/update/apply', { build }),
