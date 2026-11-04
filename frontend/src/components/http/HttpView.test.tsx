@@ -17,6 +17,7 @@ vi.mock('../../api', async (importOriginal) => {
     api: {
       saveNote: vi.fn(),
       putSession: vi.fn(),
+      getSettings: vi.fn(),
       putSettings: vi.fn(),
       tags: vi.fn(),
       httpExecute: vi.fn(),
@@ -267,6 +268,40 @@ describe('nota HTTP', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Formatear JSON' }));
     expect(screen.getByRole('alert').textContent).toBe('El cuerpo no es JSON válido.');
     expect(saved().body.raw).toBe('{roto');
+  });
+
+  it('H-19 el alto del cuerpo raw se arrastra o se cambia con las flechas y se recuerda sin tocar la nota', async () => {
+    mocked.putSettings.mockResolvedValue({});
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    useUi.setState({ httpBodyHeight: 220 });
+    await mount('{"body":{"mode":"raw","rawType":"json","raw":"{}"}}');
+    fireEvent.click(screen.getByRole('tab', { name: /Body/ }));
+    const box = () => document.querySelector<HTMLElement>('.http-raw')!;
+    const border = screen.getByRole('separator', { name: 'Alto del cuerpo' });
+    expect(box().style.height).toBe('220px');
+
+    fireEvent.pointerDown(border, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(border, { clientY: 1400, pointerId: 1 });
+    fireEvent.pointerUp(border, { pointerId: 1 });
+    // Sin máximo: la nota se desplaza.
+    expect(box().style.height).toBe('1120px');
+    fireEvent.keyDown(border, { key: 'ArrowUp' });
+    expect(box().style.height).toBe('1104px');
+    fireEvent.keyDown(border, { key: 'ArrowDown', shiftKey: true });
+    expect(box().style.height).toBe('1168px');
+    fireEvent.pointerDown(border, { clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(border, { clientY: -2000, pointerId: 1 });
+    fireEvent.pointerUp(border, { pointerId: 1 });
+    expect(box().style.height).toBe('120px');
+
+    // Se recuerda como estado de interfaz y vale para las demás notas HTTP; la nota no cambia.
+    await vi.waitFor(() => expect(mocked.putSettings).toHaveBeenCalledWith({ 'ui.httpBodyHeight': 120 }));
+    expect(useTabs.getState().tabs[0]).toMatchObject({ status: 'saved', preview: true });
+    mocked.getSettings.mockResolvedValue({ 'ui.httpBodyHeight': 480 });
+    await act(async () => {
+      await useUi.getState().load();
+    });
+    expect(box().style.height).toBe('480px');
   });
 
   it('H-30 H-33 H-34 «Enviar» guarda, ejecuta lo guardado y muestra la respuesta', async () => {

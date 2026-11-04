@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import { api, DEFAULT_CONFIG, type AppConfig } from '../api';
 
-/** Estado de interfaz guardado en la tabla setting (ADR-0005): panel (U-01) y plegado (N-01). */
+/** Estado de interfaz guardado en la tabla setting (ADR-0005): panel (U-01), plegado (N-01) y alto del cuerpo raw (H-19). */
 export const SIDEBAR_MIN = 180;
 export const SIDEBAR_MAX = 600;
 const SIDEBAR_DEFAULT = 280;
+/** H-19, ADR-0039: sin máximo, porque la nota HTTP se desplaza. */
+export const HTTP_BODY_MIN = 120;
+const HTTP_BODY_DEFAULT = 220;
 const PERSIST_DELAY = 400;
 
 export interface Notice {
@@ -24,6 +27,8 @@ interface UiState {
   setSidebarView: (view: SidebarView) => void;
   sidebarWidth: number;
   sidebarVisible: boolean;
+  /** H-19: común a todas las notas HTTP. */
+  httpBodyHeight: number;
   collapsed: ReadonlySet<string>;
   notices: Notice[];
   /** N-73 */
@@ -53,6 +58,7 @@ interface UiState {
   setUpdating: (updating: boolean) => void;
   load: () => Promise<void>;
   setSidebarWidth: (width: number) => void;
+  setHttpBodyHeight: (height: number) => void;
   toggleSidebar: () => void;
   toggleCollapsed: (id: string) => void;
   expand: (id: string) => void;
@@ -89,12 +95,14 @@ function withDefaults(config: Partial<AppConfig>): AppConfig {
 }
 
 const clamp = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
+const bodyHeight = (h: number) => Math.max(HTTP_BODY_MIN, Math.round(h));
 
 export const useUi = create<UiState>((set, get) => ({
   sidebarView: 'tree',
   setSidebarView: (view) => set({ sidebarView: view }),
   sidebarWidth: SIDEBAR_DEFAULT,
   sidebarVisible: true,
+  httpBodyHeight: HTTP_BODY_DEFAULT,
   collapsed: new Set(),
   reveal: null,
   notices: [],
@@ -123,6 +131,7 @@ export const useUi = create<UiState>((set, get) => ({
     set({
       sidebarWidth: typeof s['ui.sidebarWidth'] === 'number' ? clamp(s['ui.sidebarWidth']) : SIDEBAR_DEFAULT,
       sidebarVisible: s['ui.sidebarVisible'] !== false,
+      httpBodyHeight: typeof s['ui.httpBodyHeight'] === 'number' ? bodyHeight(s['ui.httpBodyHeight']) : HTTP_BODY_DEFAULT,
       collapsed: new Set(Array.isArray(s['ui.collapsed']) ? (s['ui.collapsed'] as string[]) : []),
       config: s.config && typeof s.config === 'object' ? withDefaults(s.config as Partial<AppConfig>) : DEFAULT_CONFIG,
     });
@@ -132,6 +141,12 @@ export const useUi = create<UiState>((set, get) => ({
     const w = clamp(width);
     set({ sidebarWidth: w });
     persist({ 'ui.sidebarWidth': w });
+  },
+
+  setHttpBodyHeight(height) {
+    const h = bodyHeight(height);
+    set({ httpBodyHeight: h });
+    persist({ 'ui.httpBodyHeight': h });
   },
 
   toggleSidebar() {

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from 'react';
 import { api } from '../../api';
 import { useTabs, type Tab } from '../../stores/tabsStore';
 import { useHttpRun, useHttpRuns } from '../../stores/httpRunStore';
 import { useActiveProfile } from '../../stores/httpProfileStore';
-import { useUi } from '../../stores/uiStore';
+import { useUi, HTTP_BODY_MIN } from '../../stores/uiStore';
 import {
   COMMON_HEADERS,
   METHODS,
@@ -43,6 +43,8 @@ export function HttpView({ tab }: { tab: Tab }) {
   // H-10, H-63: la URL base es la del perfil activo.
   const profile = useActiveProfile(http);
   const autosave = useUi((s) => s.config.autosave);
+  const bodyHeight = useUi((s) => s.httpBodyHeight);
+  const drag = useRef<{ startY: number; startHeight: number } | null>(null);
   const [section, setSection] = useState<Section>('params');
   const [jsonProblem, setJsonProblem] = useState<string | null>(null);
   const [, setTick] = useState(0);
@@ -99,6 +101,26 @@ export function HttpView({ tab }: { tab: Tab }) {
     }
     setJsonProblem(null);
     update({ body: { ...content.body, raw: pretty } });
+  };
+
+  // H-19: el borde inferior del cuerpo raw cambia su alto, como el del panel izquierdo (U-01).
+  const onResizeStart = (e: PointerEvent<HTMLDivElement>) => {
+    drag.current = { startY: e.clientY, startHeight: bodyHeight };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizeMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    useUi.getState().setHttpBodyHeight(drag.current.startHeight + e.clientY - drag.current.startY);
+  };
+  const onResizeEnd = () => {
+    drag.current = null;
+  };
+  const onResizeKey = (e: ReactKeyboardEvent) => {
+    const step = e.shiftKey ? 64 : 16;
+    if (e.key === 'ArrowUp') useUi.getState().setHttpBodyHeight(bodyHeight - step);
+    else if (e.key === 'ArrowDown') useUi.getState().setHttpBodyHeight(bodyHeight + step);
+    else return;
+    e.preventDefault();
   };
 
   const sectionTabs: [Section, string][] = [
@@ -345,16 +367,32 @@ export function HttpView({ tab }: { tab: Tab }) {
             <KeyValueTable label="form-data" rows={content.body.form} onChange={(form) => update({ body: { ...content.body, form } })} />
           )}
           {content.body.mode === 'raw' && (
-            <div className="http-raw">
-              <NoteEditor
-                key={`${tab.id}-raw`}
-                type="plain"
-                value={content.body.raw}
-                onChange={(raw) => {
-                  setJsonProblem(null);
-                  update({ body: { ...content.body, raw } });
-                }}
-                onBlur={saveOnBlur}
+            <div className="http-raw-area">
+              <div className="http-raw" style={{ height: bodyHeight }}>
+                <NoteEditor
+                  key={`${tab.id}-raw`}
+                  type="plain"
+                  value={content.body.raw}
+                  onChange={(raw) => {
+                    setJsonProblem(null);
+                    update({ body: { ...content.body, raw } });
+                  }}
+                  onBlur={saveOnBlur}
+                />
+              </div>
+              <div
+                className="http-raw-resizer"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Alto del cuerpo"
+                aria-valuenow={bodyHeight}
+                aria-valuemin={HTTP_BODY_MIN}
+                title="Arrastra para cambiar el alto del cuerpo"
+                tabIndex={0}
+                onPointerDown={onResizeStart}
+                onPointerMove={onResizeMove}
+                onPointerUp={onResizeEnd}
+                onKeyDown={onResizeKey}
               />
             </div>
           )}

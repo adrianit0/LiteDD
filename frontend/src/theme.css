@@ -2100,11 +2100,31 @@ mark {
   color: var(--text-muted);
 }
 
+/* H-19, ADR-0039: el alto lo pone la interfaz y se cambia con el borde inferior. */
+.http-raw-area {
+  position: relative;
+}
+
 .http-raw {
-  height: 220px;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+}
+
+.http-raw-resizer {
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 2;
+}
+
+.http-raw-resizer:hover,
+.http-raw-resizer:focus-visible {
+  background: var(--accent);
+  outline: none;
 }
 
 .http-response {
