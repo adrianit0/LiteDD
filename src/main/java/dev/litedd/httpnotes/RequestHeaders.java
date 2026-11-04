@@ -36,6 +36,9 @@ public final class RequestHeaders {
     private RequestHeaders() {
     }
 
+    /** H-17, ADR-0038: el cuerpo raw se envía en UTF-8 y lo declara. */
+    static final String UTF_8 = "; charset=UTF-8";
+
     /** H-17: Content-Type que corresponde al cuerpo. */
     static String contentTypeFor(HttpNoteContent.Body body, String boundary) {
         return switch (body.mode()) {
@@ -44,7 +47,7 @@ public final class RequestHeaders {
                 case "text" -> "text/plain";
                 case "xml" -> "application/xml";
                 default -> "application/json";
-            };
+            } + UTF_8;
             default -> "application/json";
         };
     }

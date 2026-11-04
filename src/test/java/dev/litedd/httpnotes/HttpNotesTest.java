@@ -288,9 +288,33 @@ class HttpNotesTest {
         String multipart = new String(HttpRunner.body(form, "B"), StandardCharsets.UTF_8);
         assertThat(multipart).isEqualTo("--B\r\nContent-Disposition: form-data; name=\"nombre\"\r\n\r\nAna\r\n--B--\r\n");
         assertThat(RequestHeaders.contentTypeFor(form, "B")).isEqualTo("multipart/form-data; boundary=B");
-        assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body("raw", "xml", "<a/>", null), "B")).isEqualTo("application/xml");
-        assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body("raw", "text", "x", null), "B")).isEqualTo("text/plain");
+        assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body("raw", "xml", "<a/>", null), "B"))
+                .isEqualTo("application/xml; charset=UTF-8");
+        assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body("raw", "text", "x", null), "B"))
+                .isEqualTo("text/plain; charset=UTF-8");
+        assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body("raw", "json", "{}", null), "B"))
+                .isEqualTo("application/json; charset=UTF-8");
         assertThat(RequestHeaders.contentTypeFor(new HttpNoteContent.Body(null, null, null, null), "B")).isEqualTo("application/json");
+    }
+
+    @Test
+    void h17_raw_body_goes_in_utf8_and_declares_it() {
+        routes.put("/demo/contracts", ex -> reply(ex, 200, "application/json", "{}"));
+        Note n = http("Renovación", """
+                {"method":"POST","endpoint":"/contracts","login":"none",
+                 "body":{"mode":"raw","rawType":"json","raw":"{\\\"tipo\\\": \\\"Renovación/ampliación\\\", \\\"año\\\": 2026}"}}""");
+        assertThat(run(n).error()).isNull();
+        Received call = to("/demo/contracts").getFirst();
+        // ADR-0038: sin charset, un servidor Java leería «ó» como «Ã³».
+        assertThat(call.header("Content-Type")).isEqualTo("application/json; charset=UTF-8");
+        assertThat(call.body()).isEqualTo("{\"tipo\": \"Renovación/ampliación\", \"año\": 2026}");
+
+        // Lo que cambia la nota manda sobre el valor generado (H-15).
+        Note own = http("Sin charset", """
+                {"method":"POST","endpoint":"/contracts","login":"none","generated":{"Content-Type":{"value":"application/json"}},
+                 "body":{"mode":"raw","rawType":"json","raw":"{}"}}""");
+        assertThat(run(own).error()).isNull();
+        assertThat(to("/demo/contracts").getLast().header("Content-Type")).isEqualTo("application/json");
     }
 
     // --- Login (H-20 a H-27) ---

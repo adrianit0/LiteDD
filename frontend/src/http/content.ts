@@ -145,12 +145,13 @@ export function joinUrl(base: string, endpoint: string): string {
   return baseSlash || endpointSlash ? base + endpoint : `${base}/${endpoint}`;
 }
 
-/** H-17 */
+/** H-17, ADR-0038: el cuerpo raw se envía en UTF-8 y lo declara. */
 export function contentTypeFor(body: HttpBody): string {
   if (body.mode === 'form-data') return 'multipart/form-data';
-  if (body.mode === 'raw' && body.rawType === 'text') return 'text/plain';
-  if (body.mode === 'raw' && body.rawType === 'xml') return 'application/xml';
-  return 'application/json';
+  if (body.mode !== 'raw') return 'application/json';
+  if (body.rawType === 'text') return 'text/plain; charset=UTF-8';
+  if (body.rawType === 'xml') return 'application/xml; charset=UTF-8';
+  return 'application/json; charset=UTF-8';
 }
 
 export interface GeneratedHeader {

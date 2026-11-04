@@ -1,5 +1,6 @@
 import {
   EMPTY_CONTENT,
+  contentTypeFor,
   formatJson,
   generatedHeaders,
   joinUrl,
@@ -79,11 +80,20 @@ describe('contenido de una nota HTTP', () => {
     ]);
     const xml = { ...EMPTY_CONTENT, body: { ...EMPTY_CONTENT.body, mode: 'raw' as const, rawType: 'xml' as const } };
     const withLogin = generatedHeaders(xml, '0.1.0', true, none);
-    expect(withLogin.find((h) => h.name === 'Content-Type')?.defaultValue).toBe('application/xml');
+    expect(withLogin.find((h) => h.name === 'Content-Type')?.defaultValue).toBe('application/xml; charset=UTF-8');
     expect(withLogin.filter((h) => h.fromLogin).map((h) => h.name)).toEqual(['X-USERID', 'X-CSRF-TOKEN', 'Cookie']);
     // ADR-0022: los valores de «Ajustes» sustituyen a los de serie.
     const custom = generatedHeaders(EMPTY_CONTENT, '0.1.0', false, { accept: '*/*', userAgent: 'MiCliente/2.0', cacheControl: null });
     expect(custom.map((h) => h.defaultValue)).toEqual(['*/*', 'application/json', 'MiCliente/2.0', 'no-cache']);
+  });
+
+  it('H-17 el Content-Type de un cuerpo raw declara UTF-8 (ADR-0038)', () => {
+    const raw = (rawType: 'json' | 'text' | 'xml') => ({ ...EMPTY_CONTENT.body, mode: 'raw' as const, rawType });
+    expect(contentTypeFor(raw('json'))).toBe('application/json; charset=UTF-8');
+    expect(contentTypeFor(raw('text'))).toBe('text/plain; charset=UTF-8');
+    expect(contentTypeFor(raw('xml'))).toBe('application/xml; charset=UTF-8');
+    expect(contentTypeFor({ ...EMPTY_CONTENT.body, mode: 'form-data' })).toBe('multipart/form-data');
+    expect(contentTypeFor(EMPTY_CONTENT.body)).toBe('application/json');
   });
 
   it('H-17 H-34 formatear JSON y mostrar cuerpos', () => {
