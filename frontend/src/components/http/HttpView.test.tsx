@@ -219,8 +219,13 @@ describe('nota HTTP', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Valor de Accept').placeholder).toBe('application/json');
     expect(screen.getByLabelText<HTMLInputElement>('Valor de User-Agent').placeholder).toBe('LiteDD/0.1.0');
     expect(screen.getByLabelText<HTMLInputElement>('Valor de X-USERID').placeholder).toBe('(del login)');
-    // ADR-0022: los valores por defecto de «Ajustes» se ven como valor generado.
-    act(() => useUi.setState({ config: { ...useUi.getState().config, http: { ...useUi.getState().config.http, userAgent: 'MiCliente/2.0' } } }));
+    // H-72: los valores por defecto de «Ajustes» se ven como valor generado.
+    const headers = [
+      { key: 'Accept', value: '', enabled: true },
+      { key: 'User-Agent', value: 'MiCliente/2.0', enabled: true },
+      { key: 'Cache-Control', value: '', enabled: true },
+    ];
+    act(() => useUi.setState({ config: { ...useUi.getState().config, http: { ...useUi.getState().config.http, headers } } }));
     expect(screen.getByLabelText<HTMLInputElement>('Valor de User-Agent').placeholder).toBe('MiCliente/2.0');
 
     fireEvent.change(screen.getByLabelText('Valor de Accept'), { target: { value: 'text/plain' } });
@@ -234,6 +239,26 @@ describe('nota HTTP', () => {
     expect(screen.queryByRole('table', { name: 'Headers generados' })).toBeNull();
     expect(saved().hideGenerated).toBe(true);
     expect(screen.getByRole('button', { name: 'Mostrar headers generados' })).toBeTruthy();
+  });
+
+  it('H-72 H-73 una cabecera desactivada en «Ajustes» se activa en la nota y la Cookie suma la del login', async () => {
+    const headers = [
+      { key: 'Accept', value: '', enabled: true },
+      { key: 'X-Requested-With', value: 'XMLHttpRequest', enabled: false },
+      { key: 'Cookie', value: 'LANG-ATDESK=ES', enabled: true },
+    ];
+    useUi.setState({ config: { ...useUi.getState().config, http: { ...useUi.getState().config.http, headers } } });
+    await mount();
+    fireEvent.click(screen.getByRole('tab', { name: 'Headers' }));
+    expect(screen.queryByLabelText('Enviar User-Agent')).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Valor de Cookie').placeholder).toBe('(del login); LANG-ATDESK=ES');
+    expect(screen.getByLabelText<HTMLInputElement>('Enviar X-Requested-With').checked).toBe(false);
+    fireEvent.click(screen.getByLabelText('Enviar X-Requested-With'));
+    expect(saved().generated).toEqual({ 'X-Requested-With': { value: null, enabled: true } });
+    expect(screen.getByLabelText<HTMLInputElement>('Enviar X-Requested-With').checked).toBe(true);
+    // Volver a como dice «Ajustes» quita el cambio de la nota.
+    fireEvent.click(screen.getByLabelText('Enviar X-Requested-With'));
+    expect(saved().generated).toEqual({});
   });
 
   it('H-24 sin login no se muestran las cabeceras del login', async () => {

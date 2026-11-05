@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { api, type AppConfig, type ConnectionForm, type ConnectionStatus, type ImportMode } from '../api';
 import { PAGE_SIZES } from '../sql/types';
+import { COMMON_HEADERS, defaultHeaderProblem, restoreBasicHeaders, serieValue, type Row } from '../http/content';
+import { KeyValueTable } from './http/KeyValueTable';
 import { ask } from '../stores/dialogStore';
 import { useConnection } from '../stores/connectionStore';
 import { useHttpProfile } from '../stores/httpProfileStore';
@@ -17,6 +19,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'connection', label: 'Conexión' },
   { id: 'sql', label: 'SQL' },
   { id: 'http', label: 'HTTP' },
+  { id: 'headers', label: 'Cabeceras' },
   { id: 'environments', label: 'Entornos' },
   { id: 'data', label: 'Datos' },
   { id: 'updates', label: 'Actualizaciones' },
@@ -35,9 +38,7 @@ interface ConfigForm {
   httpLoginNoteId: string;
   httpTimeoutSeconds: string;
   httpMaxResponseMb: string;
-  httpAccept: string;
-  httpUserAgent: string;
-  httpCacheControl: string;
+  httpHeaders: Row[];
   updateRepository: string;
 }
 
@@ -54,9 +55,7 @@ function toForm(c: AppConfig): ConfigForm {
     httpLoginNoteId: c.http.loginNoteId ?? '',
     httpTimeoutSeconds: String(c.http.timeoutSeconds),
     httpMaxResponseMb: String(c.http.maxResponseMb),
-    httpAccept: c.http.accept ?? '',
-    httpUserAgent: c.http.userAgent ?? '',
-    httpCacheControl: c.http.cacheControl ?? '',
+    httpHeaders: c.http.headers,
     updateRepository: c.updateRepository ?? '',
   };
 }
@@ -75,9 +74,10 @@ function fromForm(f: ConfigForm): AppConfig {
       loginNoteId: f.httpLoginNoteId === '' ? null : f.httpLoginNoteId,
       timeoutSeconds: Number(f.httpTimeoutSeconds),
       maxResponseMb: Number(f.httpMaxResponseMb),
-      accept: f.httpAccept.trim() === '' ? null : f.httpAccept.trim(),
-      userAgent: f.httpUserAgent.trim() === '' ? null : f.httpUserAgent.trim(),
-      cacheControl: f.httpCacheControl.trim() === '' ? null : f.httpCacheControl.trim(),
+      // H-72: como en el servidor, sin filas sin nombre y sin espacios a los lados.
+      headers: f.httpHeaders
+        .filter((h) => h.key.trim() !== '')
+        .map((h) => ({ key: h.key.trim(), value: h.value.trim(), enabled: h.enabled })),
     },
     updateRepository: f.updateRepository.trim() === '' ? null : f.updateRepository.trim(),
   };
@@ -371,19 +371,33 @@ export function SettingsDialog() {
           onChange={(e) => update({ httpMaxResponseMb: e.target.value })}
         />
       </div>
-      <h4 className="settings-subtitle">Headers generados</h4>
-      <div className="form-grid">
-        <label htmlFor="st-http-accept">Accept</label>
-        <input id="st-http-accept" value={form.httpAccept} placeholder="application/json" onChange={(e) => update({ httpAccept: e.target.value })} />
+      <p className="muted settings-hint">Las cabeceras que se envían por defecto están en «Cabeceras».</p>
+    </>
+  );
 
-        <label htmlFor="st-http-ua">User-Agent</label>
-        <input id="st-http-ua" value={form.httpUserAgent} placeholder="LiteDD/versión" onChange={(e) => update({ httpUserAgent: e.target.value })} />
-
-        <label htmlFor="st-http-cache">Cache-Control</label>
-        <input id="st-http-cache" value={form.httpCacheControl} placeholder="no-cache" onChange={(e) => update({ httpCacheControl: e.target.value })} />
+  // H-72 a H-74, ADR-0040
+  const headers = (
+    <>
+      <KeyValueTable
+        label="Cabeceras por defecto"
+        rows={form.httpHeaders}
+        onChange={(httpHeaders) => update({ httpHeaders })}
+        suggestions={COMMON_HEADERS}
+        problem={(row) => defaultHeaderProblem(row, form.httpHeaders)}
+        valuePlaceholder={(row) => serieValue(row.key, 'versión')}
+      />
+      <div className="settings-row">
+        <button type="button" onClick={() => update({ httpHeaders: restoreBasicHeaders(form.httpHeaders) })}>
+          Restablecer básicas
+        </button>
       </div>
       <p className="muted settings-hint">
-        Valen para todas las notas HTTP y para el login; vacío, el valor de serie. Cada nota puede cambiarlos. Content-Type depende del cuerpo.
+        Se envían en este orden en todas las notas HTTP, en los workflows y en el login. En Accept, User-Agent y Cache-Control, el valor vacío es
+        el de serie. Una cabecera desactivada no se envía, pero cada nota puede activarla, desactivar las demás o cambiar su valor.
+      </p>
+      <p className="muted settings-hint">
+        Content-Type y las cabeceras del login las calcula LiteDD en cada llamada. Una fila Cookie se añade a las cookies del login.
+        «Restablecer básicas» vuelve a poner Accept, User-Agent y Cache-Control al principio y conserva las demás.
       </p>
     </>
   );
@@ -496,6 +510,7 @@ export function SettingsDialog() {
     ),
     sql,
     http,
+    headers,
     environments,
     data,
     updates: (

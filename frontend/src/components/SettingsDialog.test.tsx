@@ -113,7 +113,7 @@ describe('U-13 ventana por categorías', () => {
   it('U-10 U-13 las categorías van en su orden y las flechas las recorren', async () => {
     await renderAt();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'HTTP', 'Entornos', 'Datos', 'Actualizaciones']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'HTTP', 'Cabeceras', 'Entornos', 'Datos', 'Actualizaciones']);
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'General' })).toBeTruthy();
 
@@ -314,7 +314,7 @@ describe('C-01 a C-11 «Conexión»', () => {
 });
 
 describe('U-10 «HTTP» y «Entornos»', () => {
-  it('H-10 H-15 H-20 H-22 H-31 H-35 H-61 guarda URL base y usuario de Local, nota de login, cabeceras y límites', async () => {
+  it('H-10 H-20 H-22 H-31 H-35 H-61 H-72 guarda URL base y usuario de Local, nota de login, cabeceras y límites', async () => {
     useTree.setState({
       nodes: [
         { id: 'l1', parentId: null, position: 0, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
@@ -327,8 +327,9 @@ describe('U-10 «HTTP» y «Entornos»', () => {
     fireEvent.change(login, { target: { value: 'l1' } });
     fireEvent.change(screen.getByLabelText('Tiempo máximo de llamada (s)'), { target: { value: '45' } });
     fireEvent.change(screen.getByLabelText('Tamaño máximo de respuesta (MB)'), { target: { value: '20' } });
-    fireEvent.change(screen.getByLabelText('User-Agent'), { target: { value: ' MiCliente/2.0 ' } });
-    expect(screen.getByLabelText<HTMLInputElement>('Accept').placeholder).toBe('application/json');
+    goTo('Cabeceras');
+    fireEvent.change(screen.getByLabelText('Cabeceras por defecto: valor 2'), { target: { value: ' MiCliente/2.0 ' } });
+    expect(screen.getByLabelText<HTMLInputElement>('Cabeceras por defecto: valor 1').placeholder).toBe('application/json');
     goTo('Entornos');
     fireEvent.change(screen.getByLabelText('URL base'), { target: { value: ' http://127.0.0.1:8080/demo/ ' } });
     fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'demo' } });
@@ -339,14 +340,40 @@ describe('U-10 «HTTP» y «Entornos»', () => {
       loginNoteId: 'l1',
       timeoutSeconds: 45,
       maxResponseMb: 20,
-      accept: null,
-      userAgent: 'MiCliente/2.0',
-      cacheControl: null,
+      headers: [
+        { key: 'Accept', value: '', enabled: true },
+        { key: 'User-Agent', value: 'MiCliente/2.0', enabled: true },
+        { key: 'Cache-Control', value: '', enabled: true },
+      ],
     };
     expect(mocked.putSettings).toHaveBeenCalledWith({ config: expect.objectContaining({ http }) });
     expect(useUi.getState().config.http).toEqual(http);
     expect(mocked.setHttpPassword).not.toHaveBeenCalled();
     expect(mocked.setConfirmKey).not.toHaveBeenCalled();
+  });
+
+  it('H-72 H-73 H-74 «Cabeceras»: se añaden, se avisan las que no valen y se restablecen las básicas', async () => {
+    await renderAt('Cabeceras');
+    const key = (i: number) => screen.getByLabelText<HTMLInputElement>(`Cabeceras por defecto: clave ${i}`).value;
+    expect([1, 2, 3].map(key)).toEqual(['Accept', 'User-Agent', 'Cache-Control']);
+    expect(screen.queryByLabelText('Cabeceras por defecto: clave 4')).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Cabeceras por defecto: valor 2').placeholder).toBe('LiteDD/versión');
+    fireEvent.change(screen.getByLabelText('Cabeceras por defecto: clave nueva'), { target: { value: ' Accept-Language ' } });
+    fireEvent.change(screen.getByLabelText('Cabeceras por defecto: valor 4'), { target: { value: 'es-ES' } });
+    fireEvent.change(screen.getByLabelText('Cabeceras por defecto: clave nueva'), { target: { value: 'Content-Type' } });
+    expect(screen.getByText('La calcula LiteDD en cada llamada')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar Content-Type' }));
+    // Se rompe una básica: se borra Accept y se cambia User-Agent.
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar Accept' }));
+    fireEvent.change(screen.getByLabelText('Cabeceras por defecto: valor 1'), { target: { value: 'Roto' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restablecer básicas' }));
+    await saveSettings();
+    expect(useUi.getState().config.http.headers).toEqual([
+      { key: 'Accept', value: '', enabled: true },
+      { key: 'User-Agent', value: '', enabled: true },
+      { key: 'Cache-Control', value: '', enabled: true },
+      { key: 'Accept-Language', value: 'es-ES', enabled: true },
+    ]);
   });
 
   it('H-21 la contraseña solo se escribe: no se lee, se guarda aparte y se puede borrar', async () => {

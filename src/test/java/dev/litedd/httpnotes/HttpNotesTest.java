@@ -133,7 +133,7 @@ class HttpNotesTest {
 
     private void configure(String base, int timeout, int maxMb) {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http(base, loginNote.id(), "demo", timeout, maxMb, null, null, null)));
+                new AppConfig.Http(base, loginNote.id(), "demo", timeout, maxMb, null)));
     }
 
     private Note http(String title, String content) {
@@ -218,26 +218,98 @@ class HttpNotesTest {
         assertThatThrownBy(() -> run(empty)).isInstanceOf(ApiError.class).hasMessage("Falta el valor de falta");
     }
 
-    @Test
-    void h15_fixed_generated_headers_take_their_value_from_settings_also_for_the_login() {
+    private void defaultHeaders(Row... headers) {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http("http://127.0.0.1:" + port + "/demo/",
-                loginNote.id(), "demo", 30, 10, "application/xml", "MiCliente/2.0", "max-age=0")));
+                loginNote.id(), "demo", 30, 10, List.of(headers))));
+    }
+
+    // --- Cabeceras por defecto (H-72 a H-74) ---
+
+    @Test
+    void h15_h72_default_headers_from_settings_go_to_every_call_and_to_the_login() {
+        defaultHeaders(new Row("Accept", "application/xml", true), new Row("User-Agent", "MiCliente/2.0", true),
+                new Row("Cache-Control", "max-age=0", true), new Row("Accept-Language", "es-ES", true),
+                new Row("X-Requested-With", "XMLHttpRequest", false));
         Note n = http("Tareas", "{\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"},"
-                + "\"generated\":{\"Cache-Control\":{\"value\":\"no-store\"}}}");
-        assertThat(run(n).error()).isNull();
+                + "\"generated\":{\"Cache-Control\":{\"value\":\"no-store\"},\"X-Requested-With\":{\"value\":null,\"enabled\":true}}}");
+        Result r = run(n);
+        assertThat(r.error()).isNull();
         Received login = to("/demo/users/demo/login").getFirst();
         assertThat(login.header("User-Agent")).isEqualTo("MiCliente/2.0");
         assertThat(login.header("Accept")).isEqualTo("application/xml");
+        assertThat(login.header("Accept-Language")).isEqualTo("es-ES");
+        // Una desactivada en «Ajustes» no se envía si la nota no la activa.
+        assertThat(login.header("X-Requested-With")).isNull();
         Received call = to("/demo/user/5/tasks").getFirst();
-        assertThat(call.header("User-Agent")).isEqualTo("MiCliente/2.0");
         assertThat(call.header("Accept")).isEqualTo("application/xml");
-        // Lo que cambia la nota manda sobre Ajustes.
+        assertThat(call.header("Accept-Language")).isEqualTo("es-ES");
+        // Lo que cambia la nota manda sobre «Ajustes».
         assertThat(call.header("Cache-Control")).isEqualTo("no-store");
+        assertThat(call.header("X-Requested-With")).isEqualTo("XMLHttpRequest");
+        assertThat(r.request().headers()).extracting(HttpRunner.Header::name).containsExactly("Accept", "User-Agent", "Cache-Control",
+                "Accept-Language", "X-Requested-With", "Content-Type", "X-USERID", "X-CSRF-TOKEN", "Cookie");
 
-        // Vacío en Ajustes es el valor de serie; un salto de línea no se admite.
-        assertThat(new AppConfig.Http(null, null, "", 30, 10, " ", null, null).accept()).isNull();
-        assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http(null, null, "", 30, 10, null, "a\nb", null)).validate()).isInstanceOf(ApiError.class);
+        // En las básicas, vacío es el valor de serie; una borrada no se envía.
+        defaultHeaders(new Row("Accept", "", true), new Row("User-Agent", "", true));
+        received.clear();
+        assertThat(run(n).error()).isNull();
+        Received plain = to("/demo/user/5/tasks").getFirst();
+        assertThat(plain.header("Accept")).isEqualTo("application/json");
+        assertThat(plain.header("User-Agent")).isEqualTo(RequestHeaders.DEFAULT_USER_AGENT);
+        assertThat(plain.header("Cache-Control")).isNull();
+    }
+
+    @Test
+    void h72_settings_without_the_list_get_the_basic_headers_with_their_old_values() throws Exception {
+        AppConfig.Http old = JSON.readValue("{\"accept\":\"text/plain\",\"cacheControl\":\" max-age=0 \"}", AppConfig.Http.class);
+        assertThat(old.headers()).containsExactly(new Row("Accept", "text/plain", true), new Row("User-Agent", "", true),
+                new Row("Cache-Control", "max-age=0", true));
+        assertThat(JSON.readValue("{}", AppConfig.Http.class).headers()).isEqualTo(RequestHeaders.BASIC);
+        // Una lista vacía es que se borraron todas; las filas sin nombre no cuentan.
+        assertThat(JSON.readValue("{\"headers\":[],\"accept\":\"text/plain\"}", AppConfig.Http.class).headers()).isEmpty();
+        assertThat(JSON.readValue("{\"headers\":[{\"key\":\" \",\"value\":\"x\"},{\"key\":\" X-A \"}]}", AppConfig.Http.class).headers())
+                .containsExactly(new Row("X-A", "", true));
+        // Se guarda la lista, no los campos antiguos.
+        String saved = JSON.writeValueAsString(old);
+        assertThat(saved).contains("\"headers\"").doesNotContain("\"accept\"");
+    }
+
+    @Test
+    void h73_calculated_restricted_repeated_or_invalid_headers_are_rejected() {
+        for (String name : List.of("Content-Type", "x-userid", "X-CSRF-TOKEN", "Authorization", "Host", "Content-Length", "Mi Cabecera",
+                "X:Y", "Cabeçera")) {
+            assertThatThrownBy(() -> settingsWith(new Row(name, "v", true)).validate()).as(name)
+                    .isInstanceOf(ApiError.class).hasMessageContaining(name);
+        }
+        assertThatThrownBy(() -> settingsWith(new Row("Accept", "a", true), new Row("accept", "b", false)).validate())
+                .isInstanceOf(ApiError.class).hasMessageContaining("repetida");
+        assertThatThrownBy(() -> settingsWith(new Row("User-Agent", "a\nb", true)).validate())
+                .isInstanceOf(ApiError.class).hasMessageContaining("saltos de línea");
+        assertThat(settingsWith(new Row("Accept-Language", "es-ES", true), new Row("Cookie", "LANG-ATDESK=ES", true)).validate())
+                .isNotNull();
+    }
+
+    private static AppConfig settingsWith(Row... headers) {
+        return new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http(null, null, "", 30, 10, List.of(headers)));
+    }
+
+    @Test
+    void h73_a_settings_cookie_is_added_to_the_login_cookies() {
+        defaultHeaders(new Row("Accept", "", true), new Row("Cookie", "LANG-ATDESK=ES", true));
+        Note n = http("Tareas", "{\"endpoint\":\"/user/#{id}/tasks\",\"pathValues\":{\"id\":\"5\"}}");
+        assertThat(run(n).error()).isNull();
+        assertThat(to("/demo/users/demo/login").getFirst().header("Cookie")).isEqualTo("LANG-ATDESK=ES");
+        assertThat(to("/demo/user/5/tasks").getFirst().header("Cookie")).isEqualTo("CSRF-TOKEN=csrf-abc; JSESSIONID=sesion-1; LANG-ATDESK=ES");
+
+        // Sin login se envía sola; desactivada, solo van las del login.
+        Note none = http("Sin login", "{\"endpoint\":\"/user/5/tasks\",\"login\":\"none\"}");
+        received.clear();
+        assertThat(run(none).error()).isNull();
+        assertThat(to("/demo/user/5/tasks").getFirst().header("Cookie")).isEqualTo("LANG-ATDESK=ES");
+        defaultHeaders(new Row("Cookie", "LANG-ATDESK=ES", false));
+        received.clear();
+        assertThat(run(n).error()).isNull();
+        assertThat(to("/demo/user/5/tasks").getFirst().header("Cookie")).isEqualTo("CSRF-TOKEN=csrf-abc; JSESSIONID=sesion-1");
     }
 
     @Test
@@ -256,7 +328,7 @@ class HttpNotesTest {
         }
         // Los ajustes no admiten una URL base que no sea local.
         assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http("http://example.org/", null, "", 30, 10, null, null, null)).validate())
+                new AppConfig.Http("http://example.org/", null, "", 30, 10, null)).validate())
                 .isInstanceOf(ApiError.class).hasMessageContaining("dirección local");
     }
 
@@ -396,7 +468,7 @@ class HttpNotesTest {
         assertThat(run(http("A", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_password");
         credentials.setPassword(LOCAL, PASSWORD);
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http("http://127.0.0.1:" + port + "/demo/", loginNote.id(), "", 30, 10, null, null, null)));
+                new AppConfig.Http("http://127.0.0.1:" + port + "/demo/", loginNote.id(), "", 30, 10, null)));
         assertThat(run(http("B", "{\"endpoint\":\"/user/5/tasks\"}")).error().code()).isEqualTo("no_user");
         assertThat(received).isEmpty();
     }

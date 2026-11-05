@@ -2,6 +2,7 @@ import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 import type { MapperAnalysis } from './mapper';
 import type { Analysis, Column, ExecuteResponse, Sort } from './sql/types';
 import type { SearchHit } from './search';
+import { BASIC_HEADERS, type Row } from './http/content';
 
 /** Error de la API con el cuerpo de A-02. status 0 = sin contacto con el servidor. */
 export class ApiError extends Error {
@@ -193,10 +194,8 @@ export interface HttpSettings {
   loginNoteId: string | null;
   timeoutSeconds: number;
   maxResponseMb: number;
-  /** H-15, ADR-0022: valores por defecto de las cabeceras generadas fijas; null = el de serie. */
-  accept: string | null;
-  userAgent: string | null;
-  cacheControl: string | null;
+  /** H-72, ADR-0040: cabeceras por defecto, en su orden; en las básicas, vacío es el valor de serie. */
+  headers: Row[];
 }
 
 export const DEFAULT_HTTP: HttpSettings = {
@@ -205,9 +204,7 @@ export const DEFAULT_HTTP: HttpSettings = {
   loginNoteId: null,
   timeoutSeconds: 30,
   maxResponseMb: 10,
-  accept: null,
-  userAgent: null,
-  cacheControl: null,
+  headers: BASIC_HEADERS,
 };
 
 export const DEFAULT_CONFIG: AppConfig = {

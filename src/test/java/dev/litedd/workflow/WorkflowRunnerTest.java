@@ -129,7 +129,7 @@ class WorkflowRunnerTest {
 
     private void configure(List<Profile> profiles, boolean preproduction) {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http(preproduction, profiles, loginNote == null ? null : loginNote.id(), 30, 10, null, null, null)));
+                new AppConfig.Http(preproduction, profiles, loginNote == null ? null : loginNote.id(), 30, 10, null)));
     }
 
     private Note httpNote(String title, String content) {
@@ -300,7 +300,7 @@ class WorkflowRunnerTest {
         assertThatThrownBy(() -> runner.prepare(wf.id(), wf.version(), "otro", null, Map.of()))
                 .isInstanceOfSatisfying(ApiError.class, e -> assertThat(e.body().code()).isEqualTo("profile_changed"));
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true,
-                new AppConfig.Http(false, List.of(Profile.local(base, "demo")), null, 30, 10, null, null, null)));
+                new AppConfig.Http(false, List.of(Profile.local(base, "demo")), null, 30, 10, null)));
         assertThatThrownBy(() -> runner.prepare(wf.id(), wf.version(), LOCAL, null, Map.of()))
                 .isInstanceOfSatisfying(ApiError.class, e -> assertThat((List<Object>) e.body().details())
                         .containsExactly("El nodo Login necesita la nota de login: Elige la nota de login en «Ajustes»"));

@@ -10,10 +10,12 @@ interface Props {
   suggestions?: string[];
   /** Aviso por fila, por ejemplo una cabecera que no se puede escribir. */
   problem?: (row: Row) => string | null;
+  /** H-72: texto del valor vacío de una fila, por ejemplo el valor de serie. */
+  valuePlaceholder?: (row: Row) => string | null;
 }
 
-/** H-14, H-16, H-17: filas clave, valor y activa. La última, vacía, sirve para añadir. */
-export function KeyValueTable({ label, rows, onChange, suggestions, problem }: Props) {
+/** H-14, H-16, H-17, H-72: filas clave, valor y activa. La última, vacía, sirve para añadir. */
+export function KeyValueTable({ label, rows, onChange, suggestions, problem, valuePlaceholder }: Props) {
   const listId = useId();
   const all = [...rows, { key: '', value: '', enabled: true }];
 
@@ -70,7 +72,7 @@ export function KeyValueTable({ label, rows, onChange, suggestions, problem }: P
               <td>
                 <input
                   value={row.value}
-                  placeholder="Valor"
+                  placeholder={(valuePlaceholder && !isNew ? valuePlaceholder(row) : null) ?? 'Valor'}
                   aria-label={isNew ? `${label}: valor nuevo` : `${label}: valor ${i + 1}`}
                   onChange={(e) => change(i, { value: e.target.value })}
                 />

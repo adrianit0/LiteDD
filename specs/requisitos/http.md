@@ -25,10 +25,18 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas o, si el usua
 
 | ID | Requisito |
 |---|---|
-| H-15 | Cabeceras generadas, en gris: Accept, Content-Type según el cuerpo, User-Agent, Cache-Control y, con login, X-USERID, X-CSRF-TOKEN y Cookie. Accept, User-Agent y Cache-Control tienen un valor por defecto configurable en «Ajustes → HTTP» (si no, `application/json`, `LiteDD/versión` y `no-cache`), que vale también para el login. En cada nota su valor se puede cambiar y se pueden desactivar. «Esconder headers generados» las oculta de la lista. |
+| H-15 | Cabeceras generadas, en gris y en este orden: las cabeceras por defecto de «Ajustes → Cabeceras» (H-72), Content-Type según el cuerpo y, con login, X-USERID, X-CSRF-TOKEN y Cookie. En cada nota su valor se puede cambiar y se pueden activar o desactivar; una cabecera por defecto desactivada en «Ajustes» aparece desactivada. «Esconder headers generados» las oculta de la lista. |
 | H-16 | Cabeceras propias: filas clave, valor y casilla de activa. Si una tiene el nombre de una generada, manda la propia. Host, Content-Length, Connection, Expect y Upgrade no se pueden escribir. |
 | H-17 | Cuerpo: none, form-data (solo campos de texto, filas clave, valor y activa) o raw (JSON, texto o XML), siempre codificado en UTF-8. El Content-Type generado es `application/json` sin cuerpo, `multipart/form-data` con form-data y, con raw, `application/json; charset=UTF-8`, `text/plain; charset=UTF-8` o `application/xml; charset=UTF-8`, para que el servidor no lea el cuerpo con otra codificación (ADR-0038). «Formatear JSON» sangra el cuerpo raw y avisa si no es JSON válido. |
 | H-19 | El cuerpo raw mide 220 px de alto por defecto. Su alto cambia al arrastrar el borde inferior o con las flechas arriba y abajo cuando el borde tiene el foco (Mayús da pasos más largos). Mide como mínimo 120 px y no tiene máximo, porque la nota se desplaza. El alto se recuerda como estado de interfaz, es común a todas las notas HTTP y cambiarlo no modifica la nota (ADR-0039). |
+
+## Cabeceras por defecto
+
+| ID | Requisito |
+|---|---|
+| H-72 | En «Ajustes → Cabeceras» hay una lista de cabeceras por defecto, filas nombre, valor y activa, en su orden. Valen para todas las notas HTTP, para los nodos HTTP de los workflows y para el login. De serie son Accept, User-Agent y Cache-Control; en esas tres, el valor vacío es el de serie (`application/json`, `LiteDD/versión` y `no-cache`). Se pueden cambiar, desactivar y borrar, y se pueden añadir otras, por ejemplo Accept-Language. Los valores de Accept, User-Agent y Cache-Control guardados antes de existir la lista pasan a ella (ADR-0040). |
+| H-73 | Content-Type, X-USERID, X-CSRF-TOKEN y Authorization las calcula LiteDD en cada llamada y no se pueden añadir a la lista; tampoco Host, Content-Length, Connection, Expect y Upgrade (H-16). No se admiten nombres repetidos ni no válidos, ni saltos de línea o caracteres de control en los valores. Una fila Cookie activa se añade a las cookies del login, separada por `; `; sin login se envía sola. |
+| H-74 | «Restablecer básicas» vuelve a poner Accept, User-Agent y Cache-Control al principio de la lista, activas y con el valor de serie, y conserva las demás filas. Como el resto de «Ajustes», se aplica al pulsar «Guardar ajustes». |
 
 ## Login
 

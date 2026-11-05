@@ -156,29 +156,72 @@ export function contentTypeFor(body: HttpBody): string {
 
 export interface GeneratedHeader {
   name: string;
-  /** Valor que se enviará si no se cambia; null si lo pone el login. */
+  /** Valor que se enviará si no se cambia; con login, lo que se añade a lo del login (null, nada). */
   defaultValue: string | null;
   /** Solo con login. */
   fromLogin: boolean;
+  /** H-72: si se envía cuando la nota no dice nada. */
+  enabled: boolean;
 }
 
-/** H-15: valores por defecto de «Ajustes» para las cabeceras fijas; null = el de serie. */
-export interface GeneratedDefaults {
-  accept: string | null;
-  userAgent: string | null;
-  cacheControl: string | null;
+/** H-72, H-74: cabeceras por defecto de serie; en ellas, el valor vacío es el de serie. */
+export const BASIC_HEADERS: Row[] = [
+  { key: 'Accept', value: '', enabled: true },
+  { key: 'User-Agent', value: '', enabled: true },
+  { key: 'Cache-Control', value: '', enabled: true },
+];
+
+/** H-73: las calcula LiteDD en cada llamada. */
+const CALCULATED_HEADERS = ['content-type', 'x-userid', 'x-csrf-token', 'authorization'];
+
+/** H-72: valor de serie de una cabecera básica; null si no lo es. */
+export function serieValue(name: string, version: string): string | null {
+  switch (name.trim().toLowerCase()) {
+    case 'accept':
+      return 'application/json';
+    case 'user-agent':
+      return `LiteDD/${version}`;
+    case 'cache-control':
+      return 'no-cache';
+    default:
+      return null;
+  }
 }
 
-/** H-15: cabeceras generadas, en el orden en que se envían. */
-export function generatedHeaders(content: HttpContent, version: string, withLogin: boolean, defaults: GeneratedDefaults): GeneratedHeader[] {
-  const list: GeneratedHeader[] = [
-    { name: 'Accept', defaultValue: defaults.accept ?? 'application/json', fromLogin: false },
-    { name: 'Content-Type', defaultValue: contentTypeFor(content.body), fromLogin: false },
-    { name: 'User-Agent', defaultValue: defaults.userAgent ?? `LiteDD/${version}`, fromLogin: false },
-    { name: 'Cache-Control', defaultValue: defaults.cacheControl ?? 'no-cache', fromLogin: false },
-  ];
+/** H-74: las básicas al principio, activas y con el valor de serie; las demás filas se conservan. */
+export function restoreBasicHeaders(rows: Row[]): Row[] {
+  const basic = BASIC_HEADERS.map((h) => h.key.toLowerCase());
+  return [...BASIC_HEADERS, ...rows.filter((r) => !basic.includes(r.key.trim().toLowerCase()))];
+}
+
+/** H-73: por qué una fila no vale como cabecera por defecto; null si vale. */
+export function defaultHeaderProblem(row: Row, rows: Row[]): string | null {
+  const name = row.key.trim();
+  const lower = name.toLowerCase();
+  if (name === '') return null;
+  if (RESTRICTED_HEADERS.includes(lower)) return 'La pone el cliente; no se puede escribir';
+  if (CALCULATED_HEADERS.includes(lower)) return 'La calcula LiteDD en cada llamada';
+  if (/[^\x21-\x7e]|:/.test(name)) return 'No es un nombre de cabecera válido';
+  if (rows.filter((r) => r.key.trim().toLowerCase() === lower).length > 1) return 'Está repetida';
+  return null;
+}
+
+/**
+ * H-15, H-72, H-73: cabeceras generadas en el orden en que se envían: las de «Ajustes», Content-Type y las del login.
+ * Una Cookie de «Ajustes» activa se añade a la del login y conserva su sitio.
+ */
+export function generatedHeaders(content: HttpContent, version: string, withLogin: boolean, defaults: Row[]): GeneratedHeader[] {
+  const list: GeneratedHeader[] = defaults
+    .filter((h) => h.key.trim() !== '')
+    .map((h) => ({ name: h.key.trim(), defaultValue: h.value.trim() || (serieValue(h.key, version) ?? ''), fromLogin: false, enabled: h.enabled }));
+  list.push({ name: 'Content-Type', defaultValue: contentTypeFor(content.body), fromLogin: false, enabled: true });
   if (withLogin) {
-    for (const name of ['X-USERID', 'X-CSRF-TOKEN', 'Cookie']) list.push({ name, defaultValue: null, fromLogin: true });
+    for (const name of ['X-USERID', 'X-CSRF-TOKEN']) list.push({ name, defaultValue: null, fromLogin: true, enabled: true });
+    const extra = list.findIndex((h) => h.name.toLowerCase() === 'cookie');
+    const added = extra >= 0 && list[extra].enabled && list[extra].defaultValue ? list[extra].defaultValue : null;
+    const cookie = { name: extra >= 0 ? list[extra].name : 'Cookie', defaultValue: added, fromLogin: true, enabled: true };
+    if (extra >= 0) list[extra] = cookie;
+    else list.push(cookie);
   }
   return list;
 }

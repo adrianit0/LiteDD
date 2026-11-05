@@ -5,7 +5,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.litedd.http.ApiError;
+import dev.litedd.httpnotes.HttpNoteContent.Row;
 import dev.litedd.httpnotes.HttpUrls;
+import dev.litedd.httpnotes.RequestHeaders;
 import dev.litedd.update.UpdateUrls;
 
 import java.util.ArrayList;
@@ -43,15 +45,13 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
      * @param loginNoteId    H-20: nota HTTP de login, común a todos los perfiles; null sin elegir
      * @param timeoutSeconds H-31
      * @param maxResponseMb  H-35
-     * @param accept         H-15, ADR-0022: Accept por defecto; null el de serie
-     * @param userAgent      H-15: User-Agent por defecto; null el de serie
-     * @param cacheControl   H-15: Cache-Control por defecto; null el de serie
+     * @param headers        H-72, ADR-0040: cabeceras por defecto, en su orden; null, las básicas
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Http(boolean preproduction, List<Profile> profiles, String loginNoteId, Integer timeoutSeconds, Integer maxResponseMb,
-                       String accept, String userAgent, String cacheControl) {
+                       List<Row> headers) {
 
-        public static final Http DEFAULT = new Http(null, null, "", 30, 10, null, null, null);
+        public static final Http DEFAULT = new Http(null, null, "", 30, 10, null);
 
         private static final Pattern PROFILE_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
         private static final int MAX_NAME = 60;
@@ -61,30 +61,37 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
             loginNoteId = loginNoteId == null || loginNoteId.isBlank() ? null : loginNoteId;
             timeoutSeconds = timeoutSeconds == null ? 30 : timeoutSeconds;
             maxResponseMb = maxResponseMb == null ? 10 : maxResponseMb;
-            accept = blankToNull(accept);
-            userAgent = blankToNull(userAgent);
-            cacheControl = blankToNull(cacheControl);
+            headers = headers == null ? RequestHeaders.BASIC : headers.stream()
+                    .filter(h -> h != null && h.key() != null && !h.key().isBlank())
+                    .map(h -> new Row(h.key().strip(), h.value() == null ? "" : h.value().strip(), h.active()))
+                    .toList();
         }
 
         /** Solo el perfil Local, con su URL base y su usuario: como eran los ajustes antes de los perfiles (H-61). */
-        public Http(String baseUrl, String loginNoteId, String user, Integer timeoutSeconds, Integer maxResponseMb,
-                    String accept, String userAgent, String cacheControl) {
-            this(false, List.of(Profile.local(baseUrl, user)), loginNoteId, timeoutSeconds, maxResponseMb, accept, userAgent, cacheControl);
+        public Http(String baseUrl, String loginNoteId, String user, Integer timeoutSeconds, Integer maxResponseMb, List<Row> headers) {
+            this(false, List.of(Profile.local(baseUrl, user)), loginNoteId, timeoutSeconds, maxResponseMb, headers);
         }
 
-        /** H-61: un config.json anterior a los perfiles trae baseUrl y user, que pasan al perfil Local. */
+        /**
+         * H-61: un config.json anterior a los perfiles trae baseUrl y user, que pasan al perfil Local. H-72: uno anterior a
+         * la lista de cabeceras trae accept, userAgent y cacheControl, que pasan a las básicas.
+         */
         @JsonCreator
         static Http fromJson(@JsonProperty("preproduction") Boolean preproduction, @JsonProperty("profiles") List<Profile> profiles,
                              @JsonProperty("baseUrl") String baseUrl, @JsonProperty("user") String user,
                              @JsonProperty("loginNoteId") String loginNoteId, @JsonProperty("timeoutSeconds") Integer timeoutSeconds,
-                             @JsonProperty("maxResponseMb") Integer maxResponseMb, @JsonProperty("accept") String accept,
-                             @JsonProperty("userAgent") String userAgent, @JsonProperty("cacheControl") String cacheControl) {
+                             @JsonProperty("maxResponseMb") Integer maxResponseMb, @JsonProperty("headers") List<Row> headers,
+                             @JsonProperty("accept") String accept, @JsonProperty("userAgent") String userAgent,
+                             @JsonProperty("cacheControl") String cacheControl) {
             List<Profile> list = new ArrayList<>(profiles == null ? List.of() : profiles);
             if (list.stream().filter(Objects::nonNull).noneMatch(Profile::isLocal)) {
                 list.addFirst(Profile.local(baseUrl, user));
             }
-            return new Http(preproduction != null && preproduction, list, loginNoteId, timeoutSeconds, maxResponseMb,
-                    accept, userAgent, cacheControl);
+            if (headers == null) {
+                headers = List.of(new Row(RequestHeaders.ACCEPT, accept, true), new Row(RequestHeaders.USER_AGENT, userAgent, true),
+                        new Row(RequestHeaders.CACHE_CONTROL, cacheControl, true));
+            }
+            return new Http(preproduction != null && preproduction, list, loginNoteId, timeoutSeconds, maxResponseMb, headers);
         }
 
         /** H-60: el perfil fijo. */
@@ -129,6 +136,20 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
                     }
                 }
             }
+            // H-73
+            Set<String> headerNames = new HashSet<>();
+            for (Row h : headers) {
+                String problem = RequestHeaders.defaultHeaderProblem(h.key());
+                if (problem != null) {
+                    throw invalid("Cabecera por defecto «" + h.key() + "»: " + problem);
+                }
+                if (!headerNames.add(h.key().toLowerCase(Locale.ROOT))) {
+                    throw invalid("La cabecera por defecto «" + h.key() + "» está repetida");
+                }
+                if (hasControl(h.value())) {
+                    throw invalid("Una cabecera por defecto no puede tener saltos de línea ni caracteres de control");
+                }
+            }
         }
 
         private static List<Profile> localFirst(List<Profile> profiles) {
@@ -141,10 +162,6 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
 
         private static boolean hasControl(String value) {
             return value.chars().anyMatch(ch -> ch < 32 || ch == 127);
-        }
-
-        private static String blankToNull(String value) {
-            return value == null || value.isBlank() ? null : value.strip();
         }
     }
 
@@ -229,11 +246,6 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         http.validate();
         if (http.timeoutSeconds() < 1 || http.timeoutSeconds() > 3600) {
             throw invalid("El tiempo máximo de las llamadas HTTP debe estar entre 1 y 3.600 segundos");
-        }
-        for (String header : java.util.Arrays.asList(http.accept(), http.userAgent(), http.cacheControl())) {
-            if (header != null && header.chars().anyMatch(ch -> ch < 32 || ch == 127)) {
-                throw invalid("Una cabecera por defecto no puede tener saltos de línea ni caracteres de control");
-            }
         }
         if (http.maxResponseMb() < 1 || http.maxResponseMb() > 100) {
             throw invalid("El tamaño máximo de respuesta debe estar entre 1 y 100 MB");

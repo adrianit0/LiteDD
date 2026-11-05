@@ -174,7 +174,7 @@ class HttpProfilesTest {
         config.set(new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http(preproduction, List.of(
                 new Profile(LOCAL, "Local", "http://127.0.0.1:" + local.getAddress().getPort() + "/demo/", "ana", localKey, false),
                 new Profile("pre1", "PRE1", "https://localhost:" + pre.getAddress().getPort() + "/demo/", "pre-ana", preKey, preCa)),
-                loginNote.id(), 30, 10, null, null, null)));
+                loginNote.id(), 30, 10, null)));
     }
 
     private Note http(String title, String content) {
@@ -261,7 +261,7 @@ class HttpProfilesTest {
             assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true, h).validate()).as(bad).isInstanceOf(ApiError.class);
         }
         AppConfig.Http plainHttp = new AppConfig.Http(true, List.of(Profile.local(null, ""), pre("http://" + PRE_HOST + "/")),
-                null, 30, 10, null, null, null);
+                null, 30, 10, null);
         assertThatThrownBy(() -> new AppConfig(20, 10_000, 30, 47600, null, true, plainHttp).validate())
                 .isInstanceOf(ApiError.class).hasMessageContaining("PRE1").hasMessageContaining("https");
     }
@@ -548,7 +548,7 @@ class HttpProfilesTest {
 
             // Quitar el perfil en «Ajustes» borra su contraseña y vuelve a Local.
             AppConfig without = new AppConfig(20, 10_000, 30, 47600, null, true, new AppConfig.Http(true,
-                    List.of(config.get().http().local()), loginNote.id(), 30, 10, null, null, null));
+                    List.of(config.get().http().local()), loginNote.id(), 30, 10, null));
             assertThat(c.send("PUT", "/api/settings", JSON.writeValueAsString(Map.of("config", without))).statusCode()).isEqualTo(200);
             assertThat(credentials.password("pre1")).isEmpty();
             assertThat(c.send("GET", "/api/http/profile", null).body()).isEqualTo("{\"active\":\"local\"}");

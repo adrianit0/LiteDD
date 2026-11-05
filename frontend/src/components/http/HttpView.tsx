@@ -15,6 +15,7 @@ import {
   variableNames,
   serializeContent,
   type BodyMode,
+  type GeneratedHeader,
   type HttpContent,
   type HttpMethod,
   type RawType,
@@ -62,7 +63,7 @@ export function HttpView({ tab }: { tab: Tab }) {
   const isLoginNote = tab.noteId === http.loginNoteId;
   const loginOff = !isLoginNote && content.login !== 'always';
   const withLogin = !isLoginNote && content.login !== 'none';
-  const generated = generatedHeaders(content, version, withLogin, http);
+  const generated = generatedHeaders(content, version, withLogin, http.headers);
   const saveOnBlur = () => {
     if (autosave) void store.saveNow(tab.id);
   };
@@ -84,12 +85,13 @@ export function HttpView({ tab }: { tab: Tab }) {
   const missing = variables.filter((v) => !(content.pathValues[v] ?? '').trim());
   const send = () => void runs.execute(tab.id);
 
-  const setGenerated = (name: string, change: { value?: string | null; enabled?: boolean }) => {
-    const current = content.generated[name] ?? { value: null, enabled: true };
+  // H-15, H-72: sin cambios en la nota, la cabecera se envía como dice «Ajustes».
+  const setGenerated = (g: GeneratedHeader, change: { value?: string | null; enabled?: boolean }) => {
+    const current = content.generated[g.name] ?? { value: null, enabled: g.enabled };
     const next = { ...current, ...change };
     const generatedChanges = { ...content.generated };
-    if (next.value === null && next.enabled) delete generatedChanges[name];
-    else generatedChanges[name] = next;
+    if (next.value === null && next.enabled === g.enabled) delete generatedChanges[g.name];
+    else generatedChanges[g.name] = next;
     update({ generated: generatedChanges });
   };
 
@@ -291,7 +293,8 @@ export function HttpView({ tab }: { tab: Tab }) {
                 )}
                 {generated.map((g) => {
                   const change = content.generated[g.name];
-                  const enabled = change?.enabled !== false;
+                  const enabled = change?.enabled ?? g.enabled;
+                  const placeholder = g.fromLogin ? (g.defaultValue ? `(del login); ${g.defaultValue}` : '(del login)') : (g.defaultValue ?? '');
                   return (
                     <tr key={g.name} className={enabled ? undefined : 'kv-off'}>
                       <td className="kv-check">
@@ -299,7 +302,7 @@ export function HttpView({ tab }: { tab: Tab }) {
                           type="checkbox"
                           checked={enabled}
                           aria-label={`Enviar ${g.name}`}
-                          onChange={(e) => setGenerated(g.name, { enabled: e.target.checked })}
+                          onChange={(e) => setGenerated(g, { enabled: e.target.checked })}
                         />
                       </td>
                       <td className="muted">{g.name}</td>
@@ -308,8 +311,8 @@ export function HttpView({ tab }: { tab: Tab }) {
                           className="generated-value"
                           aria-label={`Valor de ${g.name}`}
                           value={change?.value ?? ''}
-                          placeholder={g.defaultValue ?? '(del login)'}
-                          onChange={(e) => setGenerated(g.name, { value: e.target.value === '' ? null : e.target.value })}
+                          placeholder={placeholder}
+                          onChange={(e) => setGenerated(g, { value: e.target.value === '' ? null : e.target.value })}
                         />
                       </td>
                       <td className="kv-actions" />
