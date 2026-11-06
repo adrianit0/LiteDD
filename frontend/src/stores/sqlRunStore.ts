@@ -25,6 +25,9 @@ export interface SqlRun {
   elapsedMs: number | null;
   total: number | null;
   counting: boolean;
+  /** Q-48: plan de «Explicar», aparte de los resultados. */
+  explain: ExecuteResponse | null;
+  explaining: boolean;
   error: RunError | null;
   /** Q-22, Q-93: errores por variable. */
   fieldErrors: Record<string, string>;
@@ -38,6 +41,8 @@ const EMPTY_RUN: SqlRun = {
   elapsedMs: null,
   total: null,
   counting: false,
+  explain: null,
+  explaining: false,
   error: null,
   fieldErrors: {},
 };
@@ -49,6 +54,9 @@ interface SqlRunState {
   execute: (tabId: string, page?: number) => Promise<void>;
   cancel: (tabId: string) => Promise<void>;
   count: (tabId: string) => Promise<void>;
+  /** Q-48: EXPLAIN del SQL final, sin tocar la nota ni los resultados. */
+  explain: (tabId: string) => Promise<void>;
+  closeExplain: (tabId: string) => void;
 }
 
 const now = () => performance.now();
@@ -152,6 +160,25 @@ export const useSqlRuns = create<SqlRunState>((set, get) => {
       } finally {
         if (get().runs[tabId]) patch(tabId, { counting: false });
       }
+    },
+
+    async explain(tabId) {
+      if (run(tabId).explaining) return;
+      patch(tabId, { explaining: true, error: null, fieldErrors: {} });
+      try {
+        const req = await request(tabId, 1, crypto.randomUUID());
+        if (!req) return;
+        patch(tabId, { explain: await api.explain(req) });
+      } catch (e) {
+        const err = toRunError(e);
+        patch(tabId, { error: err, fieldErrors: err.code === 'invalid_values' ? ((err.details ?? {}) as Record<string, string>) : {} });
+      } finally {
+        if (get().runs[tabId]) patch(tabId, { explaining: false });
+      }
+    },
+
+    closeExplain(tabId) {
+      patch(tabId, { explain: null });
     },
   };
 });

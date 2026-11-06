@@ -1347,6 +1347,18 @@ button:disabled {
   gap: 8px;
 }
 
+/* Plan de «Explicar» (Q-48) */
+.explain-panel .results {
+  max-height: 40vh;
+  border: none;
+  border-radius: 0 0 6px 6px;
+}
+
+/* MyBatis de una hija generada (M-25) */
+.mybatis-panel pre {
+  margin-top: 8px;
+}
+
 /* SQL final (Q-70 a Q-73) */
 .final-sql {
   border: 1px solid var(--border);

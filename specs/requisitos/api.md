@@ -38,6 +38,8 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/sql/count | Total de filas |
 | POST | /api/sql/render | SQL final sin ejecutar |
 | POST | /api/sql/cancel | Cancelar por executionId |
+| POST | /api/sql/explain | EXPLAIN del SQL final de una consulta, sin paginación (Q-48) |
+| GET | /api/sql/schema | Tablas y columnas del esquema de la conexión, leídas de `information_schema` (Q-84) |
 | POST | /api/mybatis/analyze | Sentencias y errores de un mapper, con los fragmentos de las demás notas XML (M-41, M-05) |
 | GET | /api/constants | Constantes Java: nombre, valor y número de notas que la usan (M-61, M-65) |
 | PUT | /api/constants | Dar o quitar valores en bloque; un valor vacío deja la constante sin valor (M-65, M-66) |

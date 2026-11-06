@@ -135,6 +135,56 @@ class SqlApiTest {
     }
 
     @Test
+    void q48_explain_only_accepts_queries_and_never_sends_other_statements() throws Exception {
+        // Sin conexión configurada: si llegara al driver respondería 503.
+        for (String content : List.of("UPDATE book SET title = #{t}", "SHOW TABLES", "SELECT * FROM book FOR UPDATE")) {
+            Res r = call("POST", "/api/sql/explain", exec(sqlNote(content), "{\"t\":\"x\"}"));
+            assertThat(r.status).as(content).isEqualTo(400);
+            assertThat(r.json.get("code").asText()).isEqualTo("not_explainable");
+        }
+    }
+
+    @Test
+    void q48_explain_without_connection_reports_the_final_sql_and_does_not_remember_values() throws Exception {
+        Note n = sqlNote("SELECT * FROM book WHERE year > #{y,int}");
+        Res r = call("POST", "/api/sql/explain", exec(n, "{\"y\":\"1990\"}"));
+        assertThat(r.status).isEqualTo(503);
+        assertThat(r.json.get("code").asText()).isEqualTo("not_configured");
+        assertThat(r.json.get("details").get("finalSql").get("inlined").asText()).isEqualTo("SELECT * FROM book WHERE year > 1990");
+        Res a = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content(), "noteId", n.id())));
+        assertThat(a.json.get("lastValues").size()).isZero();
+        // A-05: también comprueba la versión.
+        Res stale = call("POST", "/api/sql/explain", exec(n, "{}").replace("\"version\":" + n.version(), "\"version\":99"));
+        assertThat(stale.status).isEqualTo(409);
+    }
+
+    @Test
+    void q48_explain_is_the_traditional_explain_of_the_rendered_sql() {
+        assertThat(SqlApi.explainSql("SELECT * FROM book WHERE id = ?")).isEqualTo("EXPLAIN SELECT * FROM book WHERE id = ?");
+        assertThat(dev.litedd.sqlengine.SqlStatements.classify(SqlApi.explainSql("SELECT 1")).kind())
+                .isEqualTo(dev.litedd.sqlengine.SqlStatements.StatementKind.META);
+    }
+
+    @Test
+    void q84_schema_without_connection_is_not_configured() throws Exception {
+        Res r = call("GET", "/api/sql/schema", null);
+        assertThat(r.status).isEqualTo(503);
+        assertThat(r.json.get("code").asText()).isEqualTo("not_configured");
+    }
+
+    @Test
+    void q84_schema_reads_information_schema_read_only_and_groups_columns_by_table() {
+        // Principio 3: la sentencia fija es una consulta.
+        assertThat(dev.litedd.sqlengine.SqlStatements.classify(SchemaCatalog.COLUMNS_SQL).kind())
+                .isEqualTo(dev.litedd.sqlengine.SqlStatements.StatementKind.QUERY);
+        assertThat(SchemaCatalog.COLUMNS_SQL).contains("information_schema.COLUMNS").contains("DATABASE()");
+        List<SchemaCatalog.Table> tables = SchemaCatalog.group(List.of(new String[]{"author", "id"},
+                new String[]{"author", "name"}, new String[]{"book", "id"}, new String[]{"book", "title"}));
+        assertThat(tables).containsExactly(new SchemaCatalog.Table("author", List.of("id", "name")),
+                new SchemaCatalog.Table("book", List.of("id", "title")));
+    }
+
+    @Test
     void m41_mapper_analysis_lists_statements_and_errors() throws Exception {
         Res r = call("POST", "/api/mybatis/analyze", JSON.writeValueAsString(Map.of("content",
                 "<mapper><select id=\"a\">SELECT 1</select><delete id=\"b\">DELETE FROM loan</delete></mapper>")));

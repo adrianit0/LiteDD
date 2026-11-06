@@ -16,6 +16,7 @@ vi.mock('../../api', async (importOriginal) => {
       analyze: vi.fn(),
       execute: vi.fn(),
       count: vi.fn(),
+      explain: vi.fn(),
       cancel: vi.fn(),
       saveNote: vi.fn(),
       getNote: vi.fn(),
@@ -484,5 +485,77 @@ describe('A-04 se ejecuta lo guardado', () => {
     });
     expect(mocked.saveNote).toHaveBeenCalled();
     expect(mocked.execute).toHaveBeenCalledWith(expect.objectContaining({ version: 4 }));
+  });
+});
+
+describe('Q-48 «Explicar»', () => {
+  const plan = (): ExecuteResponse => ({
+    kind: 'explain',
+    columns: [
+      { label: 'id', type: 'BIGINT', numeric: true },
+      { label: 'table', type: 'VARCHAR', numeric: false },
+      { label: 'key', type: 'VARCHAR', numeric: false },
+    ],
+    rows: [['1', 'b', 'PRIMARY']],
+    truncatedCells: [],
+    hasMore: false,
+    capReached: false,
+    serverMillis: 2,
+    finalSql,
+  });
+
+  it('lanza EXPLAIN con los valores de la pestaña y muestra el plan aparte, sin tocar los resultados', async () => {
+    mocked.execute.mockResolvedValue(result());
+    mocked.explain.mockResolvedValue(plan());
+    await mount();
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    fireEvent.change(screen.getByLabelText(/title/), { target: { value: 'mar' } });
+    await click(screen.getByRole('button', { name: 'Explicar' }));
+    expect(mocked.explain).toHaveBeenCalledWith(expect.objectContaining({ noteId: 'q1', version: 3, values: { title: 'mar' } }));
+    expect(mocked.saveNote).not.toHaveBeenCalled();
+    const panel = screen.getByRole('region', { name: 'Plan de ejecución' });
+    expect(panel.textContent).toContain('PRIMARY');
+    // Los resultados de la ejecución siguen ahí.
+    expect(screen.getAllByText('El mar').length).toBe(1);
+    await click(within(panel).getByRole('button', { name: 'Cerrar el plan de ejecución' }));
+    expect(screen.queryByRole('region', { name: 'Plan de ejecución' })).toBeNull();
+    expect(screen.getAllByText('El mar').length).toBe(1);
+  });
+
+  it('solo está activo en consultas: no en SHOW ni en lo que solo genera SQL', async () => {
+    await mount(analysis({ kind: 'meta' }));
+    expect((screen.getByRole('button', { name: 'Explicar' }) as HTMLButtonElement).disabled).toBe(true);
+    useSqlRuns.setState({ runs: {} });
+    mocked.analyze.mockResolvedValue(analysis({ kind: 'statement' }));
+    await act(async () => {
+      await useSqlRuns.getState().analyze(tab().id);
+    });
+    expect((screen.getByRole('button', { name: 'Explicar' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('un error se muestra como el de ejecutar', async () => {
+    mocked.explain.mockRejectedValue(new ApiError(422, 'mysql_error', 'Error de MySQL 1146: no existe', { finalSql }));
+    await mount();
+    await click(screen.getByRole('button', { name: 'Explicar' }));
+    expect(screen.getByText(/Error de MySQL 1146/)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Plan de ejecución' })).toBeNull();
+  });
+});
+
+describe('M-25 MyBatis de una hija generada', () => {
+  it('panel plegado con el contenido resaltado y «Copiar»; las notas normales no lo tienen', async () => {
+    await mount();
+    expect(screen.queryByText('MyBatis')).toBeNull();
+    useTabs.setState({ tabs: [], activeId: null, restored: false });
+    const content = 'SELECT b.id FROM book b <where><if test="y != null">AND b.year = #{y,int}</if></where>';
+    await useTabs.getState().open('q2', { note: { ...note, id: 'q2', parentId: 'x1', statementId: 'byYear', statementKind: 'select', content } });
+    await act(async () => {});
+    const panel = screen.getByText('MyBatis').closest('details')!;
+    expect(panel.open).toBe(false);
+    const code = within(panel).getByLabelText('MyBatis de la sentencia');
+    expect(code.textContent).toBe(content);
+    expect(code.querySelector('.cm-mb-param')?.textContent).toBe('#{y,int}');
+    await click(within(panel).getByRole('button', { name: 'Copiar' }));
+    expect(writeText).toHaveBeenCalledWith(content);
   });
 });

@@ -57,6 +57,7 @@ Esta nota genera dos hijas: «selectByAuthor», que se ejecuta como cualquier no
 | M-22 | La nota XML solo tiene las hijas generadas: no se crea ni se suelta ninguna otra nota dentro de ella. |
 | M-23 | `<insert>`, `<update>` y `<delete>` no se ejecutan nunca (principio 3, S-01, S-06). Su hija muestra «Generar SQL» y, con los valores elegidos en el formulario, el SQL final listo para copiar y ejecutar en otra herramienta (Q-45, Q-72). Un `<select>` cuyo SQL no sea una consulta se trata igual. |
 | M-24 | En el árbol, en la lista de sentencias y en la cabecera, las hijas de `<insert>`, `<update>` y `<delete>` llevan una marca con el nombre de la etiqueta: INSERT, UPDATE o DELETE. |
+| M-25 | En consulta, la hija tiene un panel plegable «MyBatis», cerrado por defecto y encima del formulario, con su contenido (M-11) resaltado como el mapper y un botón «Copiar» (ADR-0043). |
 
 ## Árbol y papelera
 

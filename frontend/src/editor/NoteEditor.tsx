@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder, type Command, type KeyBinding } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
@@ -9,6 +9,7 @@ import { tags } from '@lezer/highlight';
 import { applyFormat, type FormatAction } from './formatting';
 import { mapperHighlight, mybatisHighlight } from './mybatis';
 import { insertSnippet, type SnippetKind } from '../sql/snippets';
+import { schemaCompletion, useSqlSchema } from '../sql/schema';
 import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
 import type { TreeNode } from '../types';
 import type { NoteType } from '../types';
@@ -132,6 +133,7 @@ export function sqlBindings(): KeyBinding[] {
 export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScroll = 0, onScroll, linkTargets, onImage }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const completion = useRef(new Compartment()).current;
   const callbacks = useRef({ onChange, onBlur, onScroll, linkTargets, onImage });
   callbacks.current = { onChange, onBlur, onScroll, linkTargets, onImage };
 
@@ -177,7 +179,13 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
         keymap.of(markdownBindings(format)),
       );
     } else if (type === 'sql' || type === 'xml') {
-      extensions.push(sql({ dialect: MySQL }), type === 'xml' ? mapperHighlight : mybatisHighlight, keymap.of(sqlBindings()));
+      // Q-84, Q-85: tablas y columnas del esquema, que se reconfiguran cuando llega o cambia.
+      extensions.push(
+        sql({ dialect: MySQL }),
+        type === 'xml' ? mapperHighlight : mybatisHighlight,
+        completion.of(schemaCompletion(useSqlSchema.getState().tables)),
+        keymap.of(sqlBindings()),
+      );
     } else {
       extensions.push(keymap.of(sqlBindings()));
     }
@@ -199,8 +207,16 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
     requestAnimationFrame(() => {
       v.scrollDOM.scrollTop = initialScroll;
     });
+    let unsubscribe = () => {};
+    if (type === 'sql' || type === 'xml') {
+      unsubscribe = useSqlSchema.subscribe((s, prev) => {
+        if (s.tables !== prev.tables) v.dispatch({ effects: completion.reconfigure(schemaCompletion(s.tables)) });
+      });
+      void useSqlSchema.getState().ensure();
+    }
     onReady?.({ format, snippet, focus: () => v.focus() });
     return () => {
+      unsubscribe();
       v.destroy();
       view.current = null;
     };

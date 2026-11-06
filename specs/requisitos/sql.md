@@ -113,6 +113,7 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 | Q-45 | Si la sentencia no es ejecutable (S-01, S-02), el botón pasa a ser «Generar SQL». Se muestra el SQL final con el aviso: «LiteDD solo ejecuta consultas. Copia la sentencia para ejecutarla en otra herramienta.» |
 | Q-46 | Sin conexión, se muestra el error con un botón «Reconectar». El resto de la aplicación sigue funcionando. |
 | Q-47 | Ante un fallo de comunicación (SQLState 08xxx) se reintenta una vez con una conexión nueva. |
+| Q-48 | El botón «Explicar», junto a «Contar», envía `EXPLAIN` seguido del SQL final con los valores del formulario, sin la paginación de LiteDD y sin cambiar la nota. Solo está activo en consultas (SELECT y WITH). El plan se muestra en un panel «Plan de ejecución», encima de los resultados, que se cierra con «×» y no sustituye los resultados ni recuerda los valores (ADR-0043). |
 
 ## Paginación, ordenación y total
 
@@ -161,6 +162,8 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 | Q-81 | Barra con inserciones: `#{}`, `<if>`, `<where>`, `<choose>`, `<foreach>`, `<trim>` y `<![CDATA[ ]]>`. |
 | Q-82 | Bajo el editor se listan en vivo las variables detectadas con su tipo y los errores de análisis. |
 | Q-83 | Intro mantiene la sangría de la línea actual: la línea nueva empieza con los mismos tabuladores o espacios que hay antes del cursor. |
+| Q-84 | Autocompletado de tablas y columnas del esquema de la conexión, leídas de `information_schema.COLUMNS` (solo lectura, principio 3). Propone tablas y vistas al escribir y, tras `tabla.` o `alias.`, sus columnas. No completa palabras clave. Vale en las notas SQL y en las notas XML MyBatis (ADR-0043). |
+| Q-85 | El esquema se pide al abrir el primer editor SQL o XML y se guarda en memoria hasta que cambia la conexión o falla la petición. Sin conexión, no se propone nada y el editor funciona igual. |
 
 ## Errores
 

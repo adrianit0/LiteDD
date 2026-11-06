@@ -40,7 +40,8 @@ export interface FinalSql {
 }
 
 export interface ExecuteResponse {
-  kind: 'query' | 'meta' | 'statement';
+  /** explain: plan de «Explicar» (Q-48). */
+  kind: 'query' | 'meta' | 'statement' | 'explain';
   columns?: Column[];
   rows?: (string | null)[][];
   truncatedCells?: [number, number][];
@@ -60,3 +61,9 @@ export interface Sort {
 
 /** Q-50: null es «Sin límite». */
 export const PAGE_SIZES: (number | null)[] = [10, 20, 50, 100, 200, 500, null];
+
+/** Q-84: una tabla o vista del esquema de la conexión, con sus columnas en orden. */
+export interface SchemaTable {
+  name: string;
+  columns: string[];
+}

@@ -202,6 +202,31 @@ class MySqlIntegrationTest {
     }
 
     @Test
+    void q48_explain_returns_the_plan_without_pagination() throws Exception {
+        Note n = sqlNote("SELECT b.id, b.title FROM book b WHERE b.year >= #{minYear,int}");
+        Res r = call("POST", "/api/sql/explain", executeBody(n, Map.of("minYear", "2000"), 1, 20, null));
+        assertThat(r.status).isEqualTo(200);
+        assertThat(r.json.get("kind").asText()).isEqualTo("explain");
+        assertThat(r.json.get("columns")).extracting(c -> c.get("label").asText()).contains("table", "type", "key", "rows");
+        assertThat(r.json.get("rows").get(0).get(2).asText()).isEqualTo("b");
+        assertThat(r.json.get("finalSql").get("inlined").asText()).doesNotContain("LIMIT").doesNotContain("EXPLAIN");
+    }
+
+    @Test
+    void q84_schema_lists_demo_tables_and_columns() throws Exception {
+        Res r = call("GET", "/api/sql/schema", null);
+        assertThat(r.status).isEqualTo(200);
+        JsonNode book = null;
+        for (JsonNode t : r.json.get("tables")) {
+            if (t.get("name").asText().equals("book")) {
+                book = t;
+            }
+        }
+        assertThat(book).isNotNull();
+        assertThat(book.get("columns")).extracting(JsonNode::asText).contains("id", "title", "author_id");
+    }
+
+    @Test
     void q44_show_runs_as_it_is() throws Exception {
         JsonNode r = execute(sqlNote("SHOW TABLES"), Map.of(), 1, 20, null).json;
         assertThat(r.get("kind").asText()).isEqualTo("meta");

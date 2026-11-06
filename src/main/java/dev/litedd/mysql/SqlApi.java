@@ -160,6 +160,8 @@ public final class SqlApi implements ApiRoutes {
             CancelRequest req = ctx.bodyAsClass(CancelRequest.class);
             ctx.json(Map.of("cancelled", sql.cancel(req.executionId())));
         });
+        routes.post("/api/sql/explain", ctx -> ctx.json(explain(ctx.bodyAsClass(ExecuteRequest.class))));
+        routes.get("/api/sql/schema", ctx -> ctx.json(Map.of("tables", schema())));
     }
 
     /** A-04: siempre el contenido guardado, en la versión que tiene la pestaña. */
@@ -200,6 +202,42 @@ public final class SqlApi implements ApiRoutes {
                 .filter(cell -> cell.getFirst() < assembled.rows().size()).toList();
         return new ExecuteResponse(meta ? "meta" : "query", result.columns(), assembled.rows(), truncated,
                 assembled.hasMore(), assembled.total(), assembled.capReached(), result.serverMillis(), finalSql, null, null);
+    }
+
+    /**
+     * Q-48: EXPLAIN del SQL final de una consulta, sin paginación y con los valores del formulario. No recuerda los
+     * valores (Q-24) ni llega al driver si la sentencia no es una consulta ejecutable (S-06).
+     */
+    private ExecuteResponse explain(ExecuteRequest req) {
+        Plan plan = plan(req);
+        if (!plan.executable() || plan.classification().kind() != StatementKind.QUERY) {
+            throw new ApiError(400, "not_explainable", "Solo se puede explicar una consulta");
+        }
+        FinalSql finalSql = SqlRunner.finalSql(plan);
+        String explained = explainSql(plan.rendered().sql());
+        String executionId = req.executionId() == null ? UUID.randomUUID().toString() : req.executionId();
+        Result result = sql.run(executionId, false, finalSql, () -> gateway.withConnection(c -> QueryRunner.query(c, explained,
+                SqlRunner.values(plan), rowCap() + 1, timeoutSeconds(), executionId, gateway.running())));
+        Page assembled = Pagination.assemble(result.rows(), new PageRequest(1, null, null, false), rowCap(), true);
+        return new ExecuteResponse("explain", result.columns(), assembled.rows(), result.truncatedCells().stream()
+                .filter(cell -> cell.getFirst() < assembled.rows().size()).toList(), false, null, assembled.capReached(),
+                result.serverMillis(), finalSql, null, null);
+    }
+
+    /** Q-48: el EXPLAIN tradicional; EXPLAIN ANALYZE ejecutaría la consulta (ADR-0043). */
+    static String explainSql(String rendered) {
+        return "EXPLAIN " + rendered;
+    }
+
+    /** Q-84: tablas y columnas del esquema de la conexión. */
+    private List<SchemaCatalog.Table> schema() {
+        try {
+            return gateway.withConnection(c -> SchemaCatalog.load(c, timeoutSeconds()));
+        } catch (MySqlGateway.NotConfiguredException e) {
+            throw new ApiError(503, "not_configured", "No hay ninguna conexión a MySQL configurada");
+        } catch (SQLException e) {
+            throw new ApiError(503, "schema_unavailable", "No se pudo leer el esquema: " + MySqlGateway.rootMessage(e));
+        }
     }
 
     /** Q-54: COUNT(*) envuelto; con columnas repetidas (1060), recorriendo la consulta. */

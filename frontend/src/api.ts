@@ -1,6 +1,6 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 import type { MapperAnalysis } from './mapper';
-import type { Analysis, Column, ExecuteResponse, Sort } from './sql/types';
+import type { Analysis, Column, ExecuteResponse, SchemaTable, Sort } from './sql/types';
 import type { SearchHit } from './search';
 import { BASIC_HEADERS, type Row } from './http/content';
 
@@ -524,6 +524,10 @@ export const api = {
   putConstants: (values: Record<string, string>) => request<JavaConstant[]>('PUT', '/api/constants', { values }),
   execute: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/execute', req),
   count: (req: ExecuteRequest) => request<{ total: number }>('POST', '/api/sql/count', req),
+  /** Q-48 */
+  explain: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/explain', req),
+  /** Q-84 */
+  sqlSchema: () => request<{ tables: SchemaTable[] }>('GET', '/api/sql/schema'),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
   /** H-30, H-63: con el perfil que se muestra. H-69: la clave, si el perfil la pide. */
   httpExecute: (noteId: string, version: number, executionId: string, profileId: string, confirmKey?: string) =>

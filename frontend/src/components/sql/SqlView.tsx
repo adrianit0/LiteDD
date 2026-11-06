@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { defaultSqlState, useTabs, type Tab } from '../../stores/tabsStore';
 import { useSqlRun, useSqlRuns } from '../../stores/sqlRunStore';
 import { useUi } from '../../stores/uiStore';
@@ -9,10 +9,41 @@ import { VariablesForm } from './VariablesForm';
 import { ResultsTable, type SelectedCell } from './ResultsTable';
 import { FinalSqlPanel } from './FinalSqlPanel';
 import { SqlErrors } from './SqlErrors';
+import { isGenerated, mapperTokens } from '../../mapper';
+import { mybatisClass } from '../../editor/mybatis';
 
 const copy = (text: string, what: string) => copyText(text, `${what} copiado`);
 
 const number = (n: number) => n.toLocaleString('es-ES');
+
+/**
+ * M-25: en una hija generada, su contenido MyBatis (M-11), con los <include> ya resueltos, resaltado como el mapper.
+ * Cerrado por defecto.
+ */
+function MybatisPanel({ content }: { content: string }) {
+  const tokens = useMemo(() => mapperTokens(content, mybatisClass), [content]);
+  return (
+    <details className="final-sql mybatis-panel">
+      <summary>MyBatis</summary>
+      <pre className="final-sql-code mapper-source" aria-label="MyBatis de la sentencia">
+        <code>
+          {tokens.map((t, i) =>
+            t.className ? (
+              <span key={i} className={t.className}>
+                {t.text}
+              </span>
+            ) : (
+              t.text
+            ),
+          )}
+        </code>
+      </pre>
+      <button type="button" onClick={() => void copy(content, 'MyBatis')}>
+        Copiar
+      </button>
+    </details>
+  );
+}
 
 /**
  * U-06: nota SQL en consulta, de arriba abajo: formulario de variables, barra de ejecución, tabla de
@@ -64,6 +95,8 @@ export function SqlView({ tab }: { tab: Tab }) {
   // Q-45: lo que no es ejecutable se genera, no se ejecuta.
   // forbiddenClause no llega cuando es null: el servidor omite los campos nulos (ADR-0014).
   const generateOnly = analysis !== null && (analysis.kind === 'statement' || analysis.forbiddenClause != null);
+  // Q-48: solo las consultas se explican; SHOW, DESCRIBE y EXPLAIN no.
+  const explainable = analysis?.kind === 'query' && !generateOnly;
   const result = run.result;
   // Q-74: si la ejecución falla, se ve el SQL que se intentó y no el de la ejecución anterior.
   const failedSql = (run.error?.details as { finalSql?: FinalSql } | null)?.finalSql;
@@ -87,6 +120,8 @@ export function SqlView({ tab }: { tab: Tab }) {
 
   return (
     <div className="sql-view">
+      {isGenerated(tab.note) && <MybatisPanel content={tab.content} />}
+
       <VariablesForm
         variables={variables}
         values={sql.values}
@@ -140,6 +175,14 @@ export function SqlView({ tab }: { tab: Tab }) {
         </button>
         <button
           type="button"
+          onClick={() => void runs.explain(tab.id)}
+          disabled={!explainable || run.explaining || run.running !== null}
+          title="EXPLAIN del SQL final, sin cambiar la nota"
+        >
+          {run.explaining ? 'Explicando…' : 'Explicar'}
+        </button>
+        <button
+          type="button"
           disabled={!result?.columns || rows.length === 0}
           onClick={() => result?.columns && void copy(toMarkdownTable(result.columns, rows), `Tabla (${number(rows.length)} filas)`)}
         >
@@ -154,6 +197,30 @@ export function SqlView({ tab }: { tab: Tab }) {
           {result.forbiddenClause ? `Cláusula no permitida: ${result.forbiddenClause}. ` : ''}
           {result.warning}
         </p>
+      )}
+
+      {run.explain?.columns && (
+        // Q-48: el plan va aparte y no sustituye los resultados.
+        <section className="cell-panel explain-panel" aria-label="Plan de ejecución">
+          <header>
+            <strong>Plan de ejecución</strong>
+            <span className="cell-panel-actions">
+              <button type="button" onClick={() => runs.closeExplain(tab.id)} aria-label="Cerrar el plan de ejecución">
+                ×
+              </button>
+            </span>
+          </header>
+          <ResultsTable
+            columns={run.explain.columns}
+            rows={run.explain.rows ?? []}
+            firstRowNumber={1}
+            truncatedCells={run.explain.truncatedCells ?? []}
+            sort={null}
+            onSort={null}
+            onOpenCell={() => {}}
+            onCopyCell={(value) => void copy(value ?? 'NULL', 'Valor')}
+          />
+        </section>
       )}
 
       {result?.columns && (
