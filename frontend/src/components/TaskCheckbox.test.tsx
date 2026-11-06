@@ -86,10 +86,13 @@ describe('N-31 casillas de tareas en consulta', () => {
     expect(useTabs.getState().tabs[0].mode).toBe('view');
     expect(screen.getByRole('status').textContent).toBe('Guardado');
 
+    // Con el teclado: la casilla conserva el foco aunque la vista se redibuje.
+    screen.getByRole('checkbox', { name: 'cerrar informe' }).focus();
     await act(async () => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'cerrar informe' }));
     });
     expect(mocked.saveNote.mock.calls[1][2]).toBe('# Hoy\n\n- [x] revisar préstamos\n- [ ] cerrar informe');
+    expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'cerrar informe' }));
   });
 
   it('N-31 N-46 con el guardado manual la nota queda con cambios sin guardar', async () => {

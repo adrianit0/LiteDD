@@ -40,6 +40,8 @@ export function MarkdownView({ content, onOpenNote, onToggleTask }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const ids = useMemo(() => attachmentIds(content), [content]);
   const [image, setImage] = useState<{ src: string; alt: string } | null>(null);
+  /** N-31: línea de la casilla que tenía el foco al marcarla. */
+  const refocusTask = useRef<number | null>(null);
 
   useEffect(() => {
     if (ids.length > 0) useAttachments.getState().load(ids);
@@ -73,6 +75,10 @@ export function MarkdownView({ content, onOpenNote, onToggleTask }: Props) {
   // N-30: los diagramas se dibujan después, con Mermaid cargado solo si hace falta.
   useEffect(() => {
     if (container.current) void renderMermaidBlocks(container.current);
+    // N-31: al redibujar tras marcar una tarea con el teclado, el foco vuelve a su casilla.
+    const line = refocusTask.current;
+    refocusTask.current = null;
+    if (line !== null) container.current?.querySelector<HTMLInputElement>(`input[data-task-line="${line}"]`)?.focus();
   }, [html]);
 
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -81,7 +87,10 @@ export function MarkdownView({ content, onOpenNote, onToggleTask }: Props) {
     if (target instanceof HTMLInputElement && target.type === 'checkbox') {
       e.preventDefault();
       const line = Number(target.dataset.taskLine);
-      if (onToggleTask && target.dataset.taskLine && Number.isInteger(line)) onToggleTask(line);
+      if (onToggleTask && target.dataset.taskLine && Number.isInteger(line)) {
+        if (document.activeElement === target) refocusTask.current = line;
+        onToggleTask(line);
+      }
       return;
     }
     const copy = target.closest('.code-copy');
