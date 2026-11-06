@@ -40,7 +40,7 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 | ID | Requisito |
 |---|---|
 | N-30 | Markdown GFM: tablas, listas de tareas, tachado y autoenlaces. Resaltado de bloques de código. Los bloques mermaid se dibujan como diagrama. |
-| N-31 | Las casillas de tareas son de solo lectura en consulta. |
+| N-31 | En consulta, pulsar una casilla de tareas la marca o desmarca: cambia `[ ]` por `[x]` (o al revés) en su línea del Markdown y la nota se guarda como cualquier edición, de inmediato con el guardado automático y con «Guardar» en el manual (N-46). No crea una versión del historial. Las casillas se pueden usar con el teclado (ADR-0044). |
 | N-32 | Los enlaces externos, con clic o con clic central, se abren en una pestaña nueva del Chrome habitual del usuario, fuera de la ventana de LiteDD; si Chrome no está, en el navegador por defecto (ADR-0036). Los enlaces a notas abren la nota; con clic central, en pestaña nueva. |
 | N-33 | Una tabla copiada desde un resultado SQL y pegada en una nota se ve como tabla. |
 | N-34 | En consulta, cada bloque de código tiene una cabecera con el lenguaje a la izquierda y un botón «Copiar» a la derecha, que copia el código sin los números de línea. Los números de línea se ven en el borde izquierdo y no se seleccionan con el texto. |

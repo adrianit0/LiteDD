@@ -52,14 +52,16 @@ describe('renderMarkdown', () => {
     expect(el.querySelector('.code-block')).toBeNull();
   });
 
-  it('N-30 N-31 listas de tareas con casillas de solo lectura', () => {
-    const el = dom('- [ ] pendiente\n- [x] hecha\n- normal');
+  it('N-30 N-31 listas de tareas con casillas que saben su línea del Markdown', () => {
+    const el = dom('- [ ] pendiente\n- [x] hecha\n- normal\n\n> 1. [ ] citada\n>    - [ ] anidada');
     const boxes = el.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    expect(boxes).toHaveLength(2);
-    expect([...boxes].every((b) => b.disabled)).toBe(true);
+    expect(boxes).toHaveLength(4);
+    expect([...boxes].some((b) => b.disabled)).toBe(false);
+    expect([...boxes].map((b) => b.dataset.taskLine)).toEqual(['0', '1', '4', '5']);
     expect(boxes[0].checked).toBe(false);
     expect(boxes[1].checked).toBe(true);
-    expect(el.querySelectorAll('li.task-list-item')).toHaveLength(2);
+    expect(boxes[0].getAttribute('aria-label')).toBe('pendiente');
+    expect(el.querySelectorAll('li.task-list-item')).toHaveLength(4);
     expect(el.textContent).toContain('pendiente');
     expect(el.textContent).not.toContain('[ ]');
   });

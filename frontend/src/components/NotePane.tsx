@@ -22,6 +22,7 @@ import { HistoryDialog } from './HistoryDialog';
 import { api } from '../api';
 import { imageProblem } from '../markdown/links';
 import { useAttachments } from '../markdown/attachments';
+import { toggleTask } from '../markdown/tasks';
 import { useUi } from '../stores/uiStore';
 
 export const STATUS_TEXT: Record<SaveStatus, string> = {
@@ -113,6 +114,14 @@ export function NotePane({ tab }: { tab: Tab }) {
       useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo guardar la imagen', 'error');
       return null;
     }
+  };
+
+  /** N-31, ADR-0044: marcar una tarea en consulta es una edición; con el guardado automático se guarda al momento. */
+  const toggleTaskAt = (line: number) => {
+    const next = toggleTask(content, line);
+    if (next === content) return;
+    store.edit(tab.id, { content: next });
+    if (autosave) void store.saveNow(tab.id);
   };
 
   const onRefresh = () => {
@@ -265,7 +274,7 @@ export function NotePane({ tab }: { tab: Tab }) {
             onImage={uploadImage}
           />
         ) : note.type === 'md' ? (
-          <MarkdownView content={content} onOpenNote={(id, newTab) => void openNote(id, newTab)} />
+          <MarkdownView content={content} onOpenNote={(id, newTab) => void openNote(id, newTab)} onToggleTask={toggleTaskAt} />
         ) : note.type === 'xml' ? (
           <MapperView note={note} content={content} />
         ) : (

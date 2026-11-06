@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "litedd-packaged",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "set XDG_DATA_HOME=C:\Users\adria\AppData\Local\Temp\claude\3ff9a2956d409673\4633412a-2542-4ac4-8a18-99acc980d830\scratchpad\xdg\data&& set XDG_CONFIG_HOME=C:\Users\adria\AppData\Local\Temp\claude\3ff9a2956d409673\4633412a-2542-4ac4-8a18-99acc980d830\scratchpad\xdg\config&& set XDG_STATE_HOME=C:\Users\adria\AppData\Local\Temp\claude\3ff9a2956d409673\4633412a-2542-4ac4-8a18-99acc980d830\scratchpad\xdg\state&& mvnw.cmd -q -Dskip.frontend compile exec:java -Dexec.mainClass=dev.litedd.Main -Dexec.args=--no-window"],
+      "port": 47600
+    }
+  ]
+}

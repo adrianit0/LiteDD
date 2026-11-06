@@ -703,6 +703,7 @@ input {
 
 .markdown .task-checkbox {
   margin: 0 6px 0 -18px;
+  cursor: pointer;
 }
 
 .markdown hr {

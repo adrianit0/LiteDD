@@ -28,10 +28,12 @@ interface Props {
   content: string;
   /** newTab: clic central (P-03). */
   onOpenNote: (id: string, newTab: boolean) => void;
+  /** N-31: se pulsó la casilla de tareas de esa línea del Markdown (desde 0). Sin ella, las casillas no cambian. */
+  onToggleTask?: (line: number) => void;
 }
 
 /** N-11, N-30 a N-35, N-91 a N-93, B-41 a B-43: vista renderizada de una nota Markdown. */
-export function MarkdownView({ content, onOpenNote }: Props) {
+export function MarkdownView({ content, onOpenNote, onToggleTask }: Props) {
   const nodes = useTree((s) => s.nodes);
   const urls = useAttachments((s) => s.urls);
   const boards = useBoards((s) => s.boards);
@@ -75,9 +77,11 @@ export function MarkdownView({ content, onOpenNote }: Props) {
 
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    // N-31: las casillas de tareas no se pueden marcar en consulta.
+    // N-31: la casilla no cambia por su cuenta; cambia el Markdown y la vista se dibuja desde él (ADR-0044).
     if (target instanceof HTMLInputElement && target.type === 'checkbox') {
       e.preventDefault();
+      const line = Number(target.dataset.taskLine);
+      if (onToggleTask && target.dataset.taskLine && Number.isInteger(line)) onToggleTask(line);
       return;
     }
     const copy = target.closest('.code-copy');

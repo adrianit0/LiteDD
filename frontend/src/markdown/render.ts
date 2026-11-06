@@ -87,14 +87,18 @@ md.core.ruler.push('litedd', (state: StateCore) => {
       }
     }
 
-    // Listas de tareas: «- [ ] texto» con casilla de solo lectura (N-31).
+    // Listas de tareas: «- [ ] texto» con casilla que sabe su línea del Markdown para marcarla (N-31, ADR-0044).
     if (t.type === 'inline' && tokens[i - 1]?.type === 'paragraph_open' && tokens[i - 2]?.type === 'list_item_open') {
       const first = t.children?.[0];
       const match = first?.type === 'text' ? TASK.exec(first.content) : null;
-      if (first && match) {
+      const line = tokens[i - 2].map?.[0];
+      if (first && match && line !== undefined) {
         first.content = first.content.slice(match[0].length);
+        const label = t.children!.map((c) => (c.type === 'text' || c.type === 'code_inline' ? c.content : '')).join('').trim();
         const checkbox = new state.Token('html_inline', '', 0);
-        checkbox.content = `<input type="checkbox" class="task-checkbox" disabled${match[1] === ' ' ? '' : ' checked'}> `;
+        checkbox.content =
+          `<input type="checkbox" class="task-checkbox" data-task-line="${line}" aria-label="${escapeHtml(label)}"` +
+          `${match[1] === ' ' ? '' : ' checked'}> `;
         t.children!.unshift(checkbox);
         tokens[i - 2].attrJoin('class', 'task-list-item');
       }
@@ -162,6 +166,6 @@ function resolveBoard(image: Token, id: string, options: RenderOptions) {
 
 export function renderMarkdown(source: string, options: RenderOptions = {}): string {
   return DOMPurify.sanitize(md.render(source, { ...options }), {
-    ADD_ATTR: ['data-note-id', 'data-attachment-id', 'data-board-id'],
+    ADD_ATTR: ['data-note-id', 'data-attachment-id', 'data-board-id', 'data-task-line'],
   });
 }
