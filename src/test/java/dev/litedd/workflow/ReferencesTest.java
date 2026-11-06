@@ -13,8 +13,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Referencias $Nombre.ruta (W-30 a W-35). */
+/** Referencias $Nombre.ruta (W-30 a W-35) y asignación de Cambiar valor (W-97 a W-99). */
 class ReferencesTest {
 
     private static final ObjectMapper JSON = References.JSON;
@@ -96,6 +97,58 @@ class ReferencesTest {
         Resolved inText = resolve("a=$Conn1.data.value&b=$Input1.value1");
         assertThat(inText.value()).isEqualTo("a=null&b=3");
         assertThat(inText.missing()).containsExactly("$Conn1.data.value");
+    }
+
+    @Test
+    void w93_w97_a_single_reference_is_the_whole_text() {
+        assertThat(References.single("$Conn1.data[\"user-id\"]")).contains(new Ref("$Conn1.data[\"user-id\"]", "Conn1", List.of("data", "user-id")));
+        assertThat(References.single("$Query1")).contains(new Ref("$Query1", "Query1", List.of()));
+        for (String notSingle : List.of("", "Conn1.data", " $Conn1", "$Conn1 ", "$Conn1.data x", "a$Conn1", "$1", "$$Conn1")) {
+            assertThat(References.single(notSingle)).as(notSingle).isEmpty();
+        }
+    }
+
+    @Test
+    void w98_a_value_is_read_as_json_when_it_is() {
+        assertThat(References.readValue("54").isNumber()).isTrue();
+        assertThat(References.readValue("1.50").toString()).isEqualTo("1.50");
+        assertThat(References.readValue("true").isBoolean()).isTrue();
+        assertThat(References.readValue("null").isNull()).isTrue();
+        assertThat(References.readValue(null).isNull()).isTrue();
+        assertThat(References.readValue("{\"a\":[1,2]}").get("a").get(1).asInt()).isEqualTo(2);
+        assertThat(References.readValue("\"54\"").textValue()).isEqualTo("54");
+        for (String text : List.of("abc", "", "54 abc", "007", "{\"a\":", "Ana López")) {
+            JsonNode v = References.readValue(text);
+            assertThat(v.isTextual()).as(text).isTrue();
+            assertThat(v.textValue()).as(text).isEqualTo(text);
+        }
+    }
+
+    @Test
+    void w99_assign_sets_a_key_or_an_existing_position() {
+        JsonNode conn = json("{\"data\":{\"test\":54,\"tags\":[\"a\",\"b\"]}}").deepCopy();
+        Ref value = References.single("$Conn1.data.test").orElseThrow();
+        assertThat(References.assign(conn, value, json("55")).get("data").get("test").asInt()).isEqualTo(55);
+        References.assign(conn, References.single("$Conn1.data.nueva").orElseThrow(), json("\"x\""));
+        References.assign(conn, References.single("$Conn1.data.tags[1]").orElseThrow(), json("\"z\""));
+        References.assign(conn, References.single("$Conn1[\"otra clave\"]").orElseThrow(), json("[]"));
+        assertThat(conn.toString()).isEqualTo("{\"data\":{\"test\":55,\"tags\":[\"a\",\"z\"],\"nueva\":\"x\"},\"otra clave\":[]}");
+        // Sin ruta, el valor entero.
+        assertThat(References.assign(conn, References.single("$Conn1").orElseThrow(), json("7")).asInt()).isEqualTo(7);
+    }
+
+    @Test
+    void w99_assign_says_which_step_does_not_exist() {
+        JsonNode conn = json("{\"data\":{\"test\":54,\"tags\":[\"a\"]}}").deepCopy();
+        Map<String, String> errors = Map.of(
+                "$Conn1.data.tags[3]", "`$Conn1.data.tags[3]` no existe",
+                "$Conn1.data.nada.x", "`$Conn1.data.nada` no existe",
+                "$Conn1.data.test.x", "`$Conn1.data.test` no es un objeto",
+                "$Conn1.data[0]", "`$Conn1.data` no es una lista",
+                "$Conn1.data.tags.x", "`$Conn1.data.tags` no es un objeto");
+        errors.forEach((target, message) -> assertThatThrownBy(
+                () -> References.assign(conn, References.single(target).orElseThrow(), json("1"))).as(target).hasMessage(message));
+        assertThat(conn.toString()).isEqualTo("{\"data\":{\"test\":54,\"tags\":[\"a\"]}}");
     }
 
     @Test

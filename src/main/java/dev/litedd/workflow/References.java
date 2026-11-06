@@ -3,9 +3,14 @@ package dev.litedd.workflow;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +49,8 @@ public final class References {
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .disable(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES)
             .build();
+    /** W-98: un texto solo es JSON si lo es entero, sin nada detrás. */
+    private static final ObjectReader STRICT = JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private References() {
     }
@@ -65,33 +72,53 @@ public final class References {
                 i += 2;
                 continue;
             }
-            int end = nameEnd(text, i + 1);
-            if (end == i + 1) {
+            Ref ref = refAt(text, i);
+            if (ref == null) {
                 literal.append('$');
                 i++;
                 continue;
-            }
-            String node = text.substring(i + 1, end);
-            List<Object> path = new ArrayList<>();
-            int pos = end;
-            while (true) {
-                int next = step(text, pos, path);
-                if (next == pos) {
-                    break;
-                }
-                pos = next;
             }
             if (!literal.isEmpty()) {
                 parts.add(new Text(literal.toString()));
                 literal.setLength(0);
             }
-            parts.add(new Ref(text.substring(i, pos), node, List.copyOf(path)));
-            i = pos;
+            parts.add(ref);
+            i += ref.source().length();
         }
         if (!literal.isEmpty()) {
             parts.add(new Text(literal.toString()));
         }
         return parts;
+    }
+
+    /**
+     * W-30: la referencia que empieza en el `$` de la posición from, o null si tras el `$` no hay una letra. Su source
+     * mide lo que ocupa en el texto.
+     */
+    static Ref refAt(String text, int from) {
+        int end = nameEnd(text, from + 1);
+        if (end == from + 1) {
+            return null;
+        }
+        List<Object> path = new ArrayList<>();
+        int pos = end;
+        while (true) {
+            int next = step(text, pos, path);
+            if (next == pos) {
+                break;
+            }
+            pos = next;
+        }
+        return new Ref(text.substring(from, pos), text.substring(from + 1, end), List.copyOf(path));
+    }
+
+    /** W-93, W-97: el texto es una referencia sola, sin nada antes ni después. */
+    public static Optional<Ref> single(String text) {
+        if (text == null || !text.startsWith("$")) {
+            return Optional.empty();
+        }
+        Ref ref = refAt(text, 0);
+        return ref != null && ref.source().length() == text.length() ? Optional.of(ref) : Optional.empty();
     }
 
     /** Las referencias de un campo. */
@@ -166,6 +193,74 @@ public final class References {
             return v.asText();
         }
         return v.toString();
+    }
+
+    /**
+     * W-98: un valor resuelto se lee como JSON si lo es (`54`, `true`, `null`, `{…}`, `"54"`); si no, es texto. null
+     * es null.
+     */
+    public static JsonNode readValue(String resolved) {
+        if (resolved == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        try {
+            JsonNode node = STRICT.readTree(resolved);
+            if (node != null && !node.isMissingNode()) {
+                return node;
+            }
+        } catch (IOException e) {
+            // No es JSON: es texto.
+        }
+        return JsonNodeFactory.instance.textNode(resolved);
+    }
+
+    /**
+     * W-99: pone value en la ruta de la referencia dentro de root y devuelve el valor resultante, que sin ruta es
+     * value. root se modifica: quien llama pasa una copia. En un objeto la clave se crea; en una lista la posición
+     * debe existir.
+     *
+     * @throws IllegalArgumentException con el motivo si un paso no existe o no se puede aplicar
+     */
+    public static JsonNode assign(JsonNode root, Ref ref, JsonNode value) {
+        List<Object> path = ref.path();
+        if (path.isEmpty()) {
+            return value;
+        }
+        StringBuilder at = new StringBuilder("$").append(ref.node());
+        JsonNode current = root;
+        for (int i = 0; i < path.size(); i++) {
+            Object step = path.get(i);
+            boolean last = i == path.size() - 1;
+            if (step instanceof String key) {
+                if (!(current instanceof ObjectNode object)) {
+                    throw new IllegalArgumentException("`" + at + "` no es un objeto");
+                }
+                if (last) {
+                    object.set(key, value);
+                    return root;
+                }
+                current = object.get(key);
+                at.append(key.matches("\\w+") ? "." + key : "[\"" + key + "\"]");
+            } else {
+                int index = (Integer) step;
+                if (!(current instanceof ArrayNode array)) {
+                    throw new IllegalArgumentException("`" + at + "` no es una lista");
+                }
+                if (index >= array.size()) {
+                    throw new IllegalArgumentException("`" + at + "[" + index + "]` no existe");
+                }
+                if (last) {
+                    array.set(index, value);
+                    return root;
+                }
+                current = array.get(index);
+                at.append('[').append(index).append(']');
+            }
+            if (current == null) {
+                throw new IllegalArgumentException("`" + at + "` no existe");
+            }
+        }
+        return root;
     }
 
     private static int nameEnd(String text, int from) {

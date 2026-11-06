@@ -30,6 +30,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
 import { acceptsChildren, isGenerated, writeMark } from '../mapper';
+import { dropNote, markDropTarget } from '../workflow/noteDrop';
 
 const ROW_HEIGHT = 28;
 /** N-07: fila con la descripción debajo del título. */
@@ -221,13 +222,23 @@ export function Tree() {
     return { id: String(over.id), zone, dest: dropDestination(nodes, String(activeId), String(over.id), zone) };
   };
 
+  /** Dónde está el puntero durante el arrastre. */
+  const pointerOf = (e: { activatorEvent: Event; delta: { x: number; y: number } }) => ({
+    clientX: (e.activatorEvent as PointerEvent).clientX + e.delta.x,
+    clientY: (e.activatorEvent as PointerEvent).clientY + e.delta.y,
+  });
+
   const onDragMove = (e: DragMoveEvent) => {
     const over = e.over;
     if (!over) {
       hover.current.clear();
       setDrop(null);
+      // W-19: fuera del árbol, el lienzo de un workflow en edición puede recibir la nota.
+      const type = nodes.find((n) => n.id === String(e.active.id))?.type;
+      markDropTarget(type ? { ...pointerOf(e), type } : null);
       return;
     }
+    markDropTarget(null);
     const targetId = String(over.id);
     const next = dropAt(e.active.id, over, e);
     setDrop((prev) => (prev?.id === next.id && prev.zone === next.zone && sameDest(prev.dest, next.dest) ? prev : next));
@@ -261,8 +272,15 @@ export function Tree() {
         endDrag();
         // N-62: un destino no válido no hace nada.
         if (target?.dest) void moveNote(String(e.active.id), target.dest);
+        // W-19: soltada fuera del árbol, la nota va al workflow en edición que haya debajo, sin moverse en el árbol.
+        const dragged = nodes.find((n) => n.id === String(e.active.id));
+        if (!e.over && dragged) dropNote({ noteId: dragged.id, type: dragged.type, ...pointerOf(e) });
+        else markDropTarget(null);
       }}
-      onDragCancel={endDrag}
+      onDragCancel={() => {
+        markDropTarget(null);
+        endDrag();
+      }}
     >
       <div className="tree" ref={scroller} role="tree" aria-label="Notas">
         <div className="tree-inner" style={{ height: virtualizer.getTotalSize() }}>

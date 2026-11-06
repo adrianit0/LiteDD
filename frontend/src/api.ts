@@ -350,14 +350,20 @@ export interface WorkflowRows {
 
 export type NodeStatus = 'running' | 'ok' | 'error' | 'cancelled';
 
-/** W-70 a W-72: un evento por línea de la ejecución en streaming (ADR-0031). */
+/** W-70 a W-72, W-78: un evento por línea de la ejecución en streaming (ADR-0031, ADR-0041). chain: los nodos del flujo. */
 export type WorkflowEvent =
   | { type: 'start'; chain: string[] }
   | {
       type: 'node';
       nodeId: string;
+      /** W-78: la vuelta de cada Bucle en curso, desde 1; sin valor, fuera de todo Bucle. */
+      iteration?: number[];
       status: NodeStatus;
       millis?: number;
+      /** W-70: la salida que tomó una Condición. */
+      branch?: 'yes' | 'no';
+      /** W-72: los elementos de un Bucle. */
+      items?: number;
       /** W-78: lo escrito en cada campo, con sus referencias. */
       raw?: Record<string, string>;
       values?: Record<string, string | null>;
@@ -367,6 +373,8 @@ export type WorkflowEvent =
       http?: HttpResult;
       sql?: WorkflowRows;
     }
+  /** W-78: empieza una vuelta de un Bucle; item es el elemento como texto. */
+  | { type: 'iteration'; nodeId: string; iteration: number[]; total: number; item: string }
   | { type: 'end'; status: 'finished' | 'stopped' | 'cancelled'; errors: number; millis: number; message: string }
   | { type: 'tick' };
 

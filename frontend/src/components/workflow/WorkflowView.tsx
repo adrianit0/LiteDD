@@ -1,43 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
+import { api } from '../../api';
 import { useTabs, type Tab } from '../../stores/tabsStore';
-import { useWorkflowRun, useWorkflowRuns, viewedExecution } from '../../stores/workflowRunStore';
+import { runOf, useWorkflowRun, useWorkflowRuns, viewedExecution, viewedIteration } from '../../stores/workflowRunStore';
 import { useUi } from '../../stores/uiStore';
 import { elapsedText } from '../../sql/results';
+import type { NoteType } from '../../types';
 import {
-  chain,
+  addNoteNode,
   connect,
+  editedValues,
+  flow,
   initialTabValues,
   insertNode,
   isEditableInView,
-  isNamed,
+  label,
   moveNode,
+  openOutputs,
   parseWorkflow,
   pruneValues,
-  reachesFinish,
   removeEdge,
   removeNode,
   savedValues,
   serializeWorkflow,
+  setEdgePoints,
   setTabValue,
   unifyFields,
-  editedValues,
+  wouldCycle,
   type FieldsByNode,
   type NodeKind,
   type NodeValues,
   type WfOptions,
   type Workflow,
 } from '../../workflow/model';
+import { droppable } from '../../workflow/noteDrop';
 import { useWorkflowAnalysis } from '../../workflow/useAnalysis';
 import { NodePanel } from './NodePanel';
-import { WorkflowCanvas, type NodeState } from './WorkflowCanvas';
-import { ExecutionSummary, executionTime } from './ExecutionSummary';
+import { WorkflowCanvas, type NodeStateView } from './WorkflowCanvas';
+import { ExecutionSummary, executionTime, loopProgress } from './ExecutionSummary';
 
-const ADD: [NodeKind, string][] = [
-  ['login', '+ Login'],
-  ['http', '+ HTTP'],
-  ['sql', '+ SQL'],
-  ['wait', '+ Espera'],
-  ['input', '+ Input'],
+/** W-14: los botones para añadir nodos, en dos grupos: llamadas y valores, y control del flujo. */
+const ADD: [NodeKind, string][][] = [
+  [
+    ['login', '+ Login'],
+    ['http', '+ HTTP'],
+    ['sql', '+ SQL'],
+    ['wait', '+ Espera'],
+    ['input', '+ Input'],
+  ],
+  [
+    ['condition', '+ Condición'],
+    ['foreach', '+ Bucle'],
+    ['break', '+ Break'],
+    ['set', '+ Cambiar valor'],
+  ],
 ];
 
 const OPTIONS: [keyof WfOptions, string][] = [
@@ -47,7 +62,7 @@ const OPTIONS: [keyof WfOptions, string][] = [
   ['lockValues', 'Fijar valores de input'],
 ];
 
-/** W-01 a W-78: un workflow en edición (diseño) o en consulta (valores, ejecución, resultados y ejecuciones). */
+/** W-01 a W-79, W-90 a W-99: un workflow en edición (diseño) o en consulta (valores, ejecución, resultados y ejecuciones). */
 export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean }) {
   const store = useTabs.getState();
   const workflow = useMemo(() => parseWorkflow(tab.content), [tab.content]);
@@ -107,19 +122,22 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
   }, [run.running, tab.id]);
 
   /** Cada cambio de edición se guarda como cualquier nota y pasa a la consulta de la pestaña (W-51). */
-  const change = (next: Workflow) => {
+  const change = (next: Workflow, before: Workflow = workflow) => {
     const pruned = pruneValues(next, fields);
+    const current = useTabs.getState().tabs.find((t) => t.id === tab.id);
     store.edit(tab.id, { content: serializeWorkflow(pruned) });
-    store.setWorkflow(tab.id, { values: editedValues(workflow, pruned, fields, tab.workflow?.values ?? {}) });
+    store.setWorkflow(tab.id, { values: editedValues(before, pruned, fields, current?.workflow?.values ?? {}) });
   };
 
   const setValue = (nodeId: string, field: string, value: string) =>
     store.setWorkflow(tab.id, { values: setTabValue(workflow, fields, values, nodeId, field, value) });
 
+  const tooMany = () => useUi.getState().notify('Un workflow tiene como máximo 100 nodos', 'error');
+
   const add = (kind: NodeKind) => {
     const result = insertNode(workflow, kind, selected);
     if (!result) {
-      useUi.getState().notify('Un workflow tiene como máximo 100 nodos', 'error');
+      tooMany();
       return;
     }
     change(result.workflow);
@@ -127,9 +145,39 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
     setSelectedEdge(null);
   };
 
+  /** W-12: una flecha que cerraría un ciclo no se crea y se avisa. */
+  const link = (current: Workflow, from: string, out: 'yes' | 'no' | undefined, to: string) => {
+    if (wouldCycle(current, from, to)) {
+      useUi.getState().notify('Esa flecha cerraría un ciclo: solo el Bucle repite', 'error');
+      return;
+    }
+    change(connect(current, from, out, to), current);
+  };
+
+  /** W-19: una nota HTTP o SQL soltada desde el árbol se convierte en un nodo donde se suelta. */
+  const dropNote = async (noteId: string, type: NoteType, x: number, y: number) => {
+    if (!editMode || !droppable(type)) return;
+    try {
+      const { notes: [picked] } = await api.workflowAnalyze([noteId]);
+      const initial = Object.fromEntries(Object.entries(picked?.values ?? {}).map(([f, v]) => [f, v ?? '']));
+      // Lo guardado puede haber cambiado mientras se analizaba la nota.
+      const latest = parseWorkflow(useTabs.getState().tabs.find((t) => t.id === tab.id)?.content ?? tab.content);
+      const result = addNoteNode(latest, type, noteId, picked?.title ?? '', initial, x, y);
+      if (!result) {
+        tooMany();
+        return;
+      }
+      change(result.workflow, latest);
+      setSelected(result.id);
+      setSelectedEdge(null);
+    } catch (e) {
+      useUi.getState().notify(e instanceof Error ? e.message : 'No se pudo leer la nota', 'error');
+    }
+  };
+
   const setOption = (key: keyof WfOptions, checked: boolean) => {
     const next = { ...workflow, options: { ...workflow.options, [key]: checked } };
-    // W-41: al marcarla, cada nombre toma el valor del primer nodo de la cadena.
+    // W-41: al marcarla, cada nombre toma el valor del primer nodo del flujo.
     change(key === 'sameInputs' && checked ? unifyFields(next, fields) : next);
   };
 
@@ -140,41 +188,43 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
 
   const execute = () => void useWorkflowRuns.getState().execute(tab.id, values);
 
-  /** W-75: la ejecución que se ve y si es la que está en curso. */
+  /** W-75, W-79: la ejecución y la vuelta que se ven, y si la ejecución es la que está en curso. */
   const viewed = viewedExecution(run);
+  const iteration = viewedIteration(run, viewed);
   const live = run.running !== null && viewed?.id === run.running.executionId;
+  const viewIteration = (key: string | null) => useWorkflowRuns.getState().viewIteration(tab.id, key);
 
-  /** W-70: estado de cada nodo de la cadena en la ejecución que se ve. */
+  /** W-70, W-79: estado de cada nodo del flujo en la vuelta que se ve. */
   const states = useMemo(() => {
-    const out: Record<string, { state: NodeState; millis?: number; startedAt?: number }> = {};
+    const out: Record<string, NodeStateView> = {};
     if (editMode || !viewed) return out;
     for (const id of viewed.chain) {
-      const r = viewed.nodes[id];
-      if (r) out[id] = { state: r.status, millis: r.millis, startedAt: r.startedAt };
-      else if (live) out[id] = { state: 'pending' };
-      else out[id] = { state: 'skipped' };
+      const r = runOf(viewed, id, iteration);
+      if (r) out[id] = { state: r.status, millis: r.millis, startedAt: r.startedAt, branch: r.branch };
+      else out[id] = { state: live ? 'pending' : 'skipped' };
     }
     return out;
-  }, [editMode, viewed, live]);
+  }, [editMode, viewed, live, iteration]);
 
-  const chainIds = viewed?.chain ?? [];
-  const named = chainIds.filter((id) => workflow.nodes.some((n) => n.id === id && isNamed(n)));
-  const current = named.findIndex((id) => viewed?.nodes[id]?.status === 'running');
-  const done = named.filter((id) => viewed?.nodes[id] && viewed.nodes[id].status !== 'running').length;
-  const inputs = chain(workflow).filter((n) => n.kind === 'input' && (n.rows ?? []).length > 0);
+  const open = openOutputs(workflow);
+  const canRun = open.length === 0;
+  const inputs = flow(workflow).filter((n) => n.kind === 'input' && (n.rows ?? []).length > 0);
   const node = selected ? workflow.nodes.find((n) => n.id === selected) : undefined;
+  const runningNode = live && viewed?.current ? workflow.nodes.find((n) => n.id === viewed.current!.nodeId) : undefined;
 
   return (
     <div className={`wf-view ${editMode ? 'editing' : 'viewing'}`}>
       {editMode ? (
         <div className="wf-toolbar" role="toolbar" aria-label="Workflow">
-          <div className="wf-add">
-            {ADD.map(([kind, text]) => (
-              <button key={kind} type="button" onClick={() => add(kind)}>
-                {text}
-              </button>
-            ))}
-          </div>
+          {ADD.map((group, i) => (
+            <div key={i} className="wf-add">
+              {group.map(([kind, text]) => (
+                <button key={kind} type="button" onClick={() => add(kind)}>
+                  {text}
+                </button>
+              ))}
+            </div>
+          ))}
           <div className="wf-options" role="group" aria-label="Casillas">
             {OPTIONS.map(([key, text]) => (
               <label key={key}>
@@ -218,8 +268,8 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
               type="button"
               className="primary"
               onClick={execute}
-              disabled={run.running !== null || !reachesFinish(workflow)}
-              title={reachesFinish(workflow) ? 'Ctrl+Intro' : 'La cadena no llega de Start a Finish'}
+              disabled={run.running !== null || !canRun}
+              title={canRun ? 'Ctrl+Intro' : 'El flujo tiene salidas sin flecha'}
               aria-keyshortcuts="Control+Enter"
             >
               Ejecutar
@@ -234,9 +284,10 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
                 {live ? elapsedText(performance.now() - run.running!.startedAt) : elapsedText(viewed!.end!.millis)}
               </span>
             )}
-            {live && named.length > 0 && (
-              <span className="muted">
-                Nodo {Math.min(named.length, current >= 0 ? current + 1 : done + 1)} de {named.length}
+            {runningNode && (
+              // W-71: el nodo en curso y la vuelta de cada Bucle.
+              <span className="muted wf-progress">
+                {[label(runningNode), ...loopProgress(workflow, viewed!, viewed!.current!.key)].join(' · ')}
               </span>
             )}
             {viewed?.end && (
@@ -283,9 +334,9 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
               )}
             </div>
           )}
-          {!reachesFinish(workflow) && (
+          {!canRun && (
             <p className="sql-warning" role="status">
-              La cadena no llega de Start a Finish. Pulsa «Editar» para unir los nodos.
+              El flujo tiene salidas sin flecha. Pulsa «Editar» para unirlas.
             </p>
           )}
         </>
@@ -302,18 +353,21 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
             selectedNode={selected}
             selectedEdge={selectedEdge}
             states={states}
+            openOutputs={open}
             onSelectNode={(id) => {
               setSelected(id);
               if (id) setSelectedEdge(null);
             }}
             onSelectEdge={setSelectedEdge}
             onMove={(id, x, y) => change(moveNode(workflow, id, x, y))}
-            onConnect={(from, to) => change(connect(workflow, from, to))}
+            onConnect={(from, out, to) => link(workflow, from, out, to)}
             onDeleteNode={remove}
-            onDeleteEdge={(from) => {
-              change(removeEdge(workflow, from));
+            onDeleteEdge={(from, out) => {
+              change(removeEdge(workflow, from, out));
               setSelectedEdge(null);
             }}
+            onEdgePoints={(from, out, points) => change(setEdgePoints(workflow, from, out, points))}
+            onNoteDrop={(noteId, type, x, y) => void dropNote(noteId, type, x, y)}
           />
         </div>
         {node && (
@@ -325,15 +379,19 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
             notes={analysis.notes}
             fields={fields}
             values={values}
-            run={editMode ? undefined : viewed?.nodes[node.id]}
+            execution={editMode ? undefined : viewed}
+            iteration={iteration}
+            onIteration={viewIteration}
             onChange={change}
+            onConnect={(from, out, to) => link(workflow, from, out, to)}
             onValue={setValue}
             onRemove={remove}
           />
         )}
         {!node && !editMode && viewed && (
           // W-77
-          <ExecutionSummary workflow={workflow} execution={viewed} live={live} onSelect={setSelected} />
+          <ExecutionSummary workflow={workflow} execution={viewed} live={live} iteration={iteration} onIteration={viewIteration}
+            onSelect={setSelected} />
         )}
       </div>
     </div>

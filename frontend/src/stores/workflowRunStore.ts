@@ -4,7 +4,7 @@ import { askConfirmKey } from './confirmKeyStore';
 import { profileOf, useHttpProfile } from './httpProfileStore';
 import { isDirty, useTabs } from './tabsStore';
 import { useUi } from './uiStore';
-import { chain, parseWorkflow, valuesToSend, type NodeValues } from '../workflow/model';
+import { flow, parseWorkflow, valuesToSend, type NodeValues } from '../workflow/model';
 
 /** W-70, W-72, W-76: el estado de un nodo en una ejecución, lo que entró y lo que salió. */
 export interface NodeRun {
@@ -19,15 +19,34 @@ export interface NodeRun {
   error?: { code: string; message: string };
   http?: HttpResult;
   sql?: WorkflowRows;
+  /** W-70: la salida que tomó una Condición. */
+  branch?: 'yes' | 'no';
+  /** W-72: los elementos de un Bucle. */
+  items?: number;
 }
 
-/** W-74: una ejecución del workflow, con su hora de inicio, su cadena, el estado de cada nodo y su final. */
+/** W-78, W-79: una vuelta de un Bucle. key: la vuelta de cada Bucle en curso, separadas por puntos («2.3»). */
+export interface IterationInfo {
+  key: string;
+  nodeId: string;
+  total: number;
+  /** El elemento como texto. */
+  item: string;
+}
+
+/** W-74: una ejecución del workflow, con su hora de inicio, su flujo, el estado de cada nodo en cada vuelta y su final. */
 export interface Execution {
   id: string;
   /** Hora de inicio (Date.now()). */
   at: number;
+  /** Los nodos del flujo (W-15). */
   chain: string[];
-  nodes: Record<string, NodeRun>;
+  /** Por nodo, su resultado en cada vuelta; '' es fuera de todo Bucle. */
+  nodes: Record<string, Record<string, NodeRun>>;
+  /** W-79: las vueltas, en el orden en que empezaron. */
+  iterations: IterationInfo[];
+  /** W-71: el nodo en curso y su vuelta. */
+  current: { nodeId: string; key: string } | null;
   end: { status: 'finished' | 'stopped' | 'cancelled'; errors: number; millis: number; message: string } | null;
 }
 
@@ -38,18 +57,49 @@ export interface WorkflowRun {
   executions: Execution[];
   /** W-75: la ejecución que se ve; null es la más reciente. */
   viewing: string | null;
+  /** W-79: la vuelta que se ve; null es la última. */
+  iteration: string | null;
   /** Error de la petición a LiteDD (A-02), con los motivos de W-61 en details. No es una ejecución. */
   error: { code: string; message: string; details?: string[] } | null;
 }
 
 /** W-74 */
 export const MAX_EXECUTIONS = 20;
-const EMPTY_RUN: WorkflowRun = { running: null, executions: [], viewing: null, error: null };
+const EMPTY_RUN: WorkflowRun = { running: null, executions: [], viewing: null, iteration: null, error: null };
 const controllers = new Map<string, AbortController>();
 
 /** W-75: la ejecución que se ve: la elegida o, si no, la más reciente. */
 export function viewedExecution(run: WorkflowRun): Execution | undefined {
   return (run.viewing ? run.executions.find((e) => e.id === run.viewing) : undefined) ?? run.executions[0];
+}
+
+/** W-78: la clave de una vuelta: [2, 3] es «2.3»; fuera de todo Bucle, ''. */
+export function iterationKey(iteration: number[] | undefined): string {
+  return iteration ? iteration.join('.') : '';
+}
+
+/** W-79: la vuelta que se ve: la elegida o, si no, la última que empezó; '' si no hay vueltas. */
+export function viewedIteration(run: WorkflowRun, execution: Execution | undefined): string {
+  if (!execution) return '';
+  if (run.iteration !== null && execution.iterations.some((i) => i.key === run.iteration)) return run.iteration;
+  return execution.iterations.at(-1)?.key ?? '';
+}
+
+/** W-79: el resultado de un nodo en la vuelta key o, si no se ejecutó en ella, en la que la contiene. */
+export function runOf(execution: Execution, nodeId: string, key: string): NodeRun | undefined {
+  const runs = execution.nodes[nodeId];
+  if (!runs) return undefined;
+  for (let k = key; ; k = k.includes('.') ? k.slice(0, k.lastIndexOf('.')) : '') {
+    if (runs[k]) return runs[k];
+    if (k === '') return undefined;
+  }
+}
+
+/** W-77, W-79: si algún nodo falló en la vuelta key o en las que contiene. */
+export function iterationFailed(execution: Execution, key: string): boolean {
+  return Object.values(execution.nodes).some((runs) =>
+    Object.entries(runs).some(([k, r]) => r.status === 'error' && (k === key || k.startsWith(`${key}.`))),
+  );
 }
 
 interface WorkflowRunState {
@@ -59,6 +109,8 @@ interface WorkflowRunState {
   cancel: (tabId: string) => Promise<void>;
   /** W-75 */
   view: (tabId: string, executionId: string | null) => void;
+  /** W-79 */
+  viewIteration: (tabId: string, key: string | null) => void;
 }
 
 export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
@@ -68,18 +120,27 @@ export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
   const patchExecution = (tabId: string, id: string, change: (e: Execution) => Execution) =>
     patch(tabId, { executions: run(tabId).executions.map((e) => (e.id === id ? change(e) : e)) });
 
-  /** W-70, W-71: cada evento cambia el estado de un nodo o el final de su ejecución. */
+  /** W-70, W-71, W-79: cada evento cambia el estado de un nodo en una vuelta, empieza una vuelta o termina la ejecución. */
   const apply = (tabId: string, id: string, e: WorkflowEvent) => {
     if (!get().runs[tabId]) return;
-    if (e.type === 'start') patchExecution(tabId, id, (x) => ({ ...x, chain: e.chain, nodes: {} }));
-    else if (e.type === 'node') {
+    if (e.type === 'start') patchExecution(tabId, id, (x) => ({ ...x, chain: e.chain, nodes: {}, iterations: [], current: null }));
+    else if (e.type === 'iteration') {
+      const info: IterationInfo = { key: iterationKey(e.iteration), nodeId: e.nodeId, total: e.total, item: e.item };
+      patchExecution(tabId, id, (x) => ({ ...x, iterations: [...x.iterations, info] }));
+    } else if (e.type === 'node') {
+      const key = iterationKey(e.iteration);
       patchExecution(tabId, id, (x) => {
+        const before = x.nodes[e.nodeId]?.[key];
         const next: NodeRun =
           e.status === 'running'
             ? { status: 'running', startedAt: performance.now() }
             : { status: e.status, millis: e.millis, raw: e.raw, values: e.values, missing: e.missing, error: e.error,
-                http: e.http, sql: e.sql, startedAt: x.nodes[e.nodeId]?.startedAt };
-        return { ...x, nodes: { ...x.nodes, [e.nodeId]: next } };
+                http: e.http, sql: e.sql, branch: e.branch, items: e.items, startedAt: before?.startedAt };
+        return {
+          ...x,
+          nodes: { ...x.nodes, [e.nodeId]: { ...x.nodes[e.nodeId], [key]: next } },
+          current: e.status === 'running' ? { nodeId: e.nodeId, key } : null,
+        };
       });
     } else if (e.type === 'end') {
       patchExecution(tabId, id, (x) => ({ ...x, end: e }));
@@ -103,7 +164,7 @@ export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
         return;
       }
       const workflow = parseWorkflow(tab.note.content);
-      const anyHttp = chain(workflow).some((n) => n.kind === 'http' || n.kind === 'login');
+      const anyHttp = flow(workflow).some((n) => n.kind === 'http' || n.kind === 'login');
       // W-63: el perfil que se ve; si pide la clave, se pide una sola vez para toda la ejecución.
       const profile = profileOf(useUi.getState().config.http, useHttpProfile.getState().active);
       let askKey = anyHttp && profile.requireKey;
@@ -119,11 +180,12 @@ export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
         const controller = new AbortController();
         controllers.set(tabId, controller);
         // W-74, W-75: la ejecución nueva va la primera y es la que se ve.
-        const execution: Execution = { id: executionId, at: Date.now(), chain: [], nodes: {}, end: null };
+        const execution: Execution = { id: executionId, at: Date.now(), chain: [], nodes: {}, iterations: [], current: null, end: null };
         patch(tabId, {
           running: { executionId, startedAt: performance.now() },
           executions: [execution, ...run(tabId).executions].slice(0, MAX_EXECUTIONS),
           viewing: null,
+          iteration: null,
           error: null,
         });
         const forget = () => patch(tabId, { executions: run(tabId).executions.filter((x) => x.id !== executionId) });
@@ -166,7 +228,11 @@ export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
     },
 
     view(tabId, executionId) {
-      patch(tabId, { viewing: executionId });
+      patch(tabId, { viewing: executionId, iteration: null });
+    },
+
+    viewIteration(tabId, key) {
+      patch(tabId, { iteration: key });
     },
   };
 });

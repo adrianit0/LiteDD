@@ -1,13 +1,27 @@
 /**
- * Contenido de un workflow y operaciones puras sobre él (W-10 a W-52, ADR-0031). El formato es el mismo que
- * guarda y valida el servidor (W-80, W-81).
+ * Contenido de un workflow y operaciones puras sobre él (W-10 a W-52, W-90 a W-99, ADR-0031, ADR-0041). El formato
+ * es el mismo que guarda y valida el servidor (W-80, W-81).
  */
 
-export type NodeKind = 'start' | 'finish' | 'login' | 'http' | 'sql' | 'wait' | 'input';
+export type NodeKind = 'start' | 'finish' | 'login' | 'http' | 'sql' | 'wait' | 'input' | 'condition' | 'foreach' | 'break' | 'set';
+
+/** W-12, W-90: la salida de una flecha. Sin valor, la salida normal; la Condición tiene «Sí» y «No». */
+export type Out = 'yes' | 'no' | undefined;
 
 export interface WfRow {
   name: string;
   value: string;
+}
+
+/** W-97: una fila de Cambiar valor. */
+export interface WfAssignment {
+  target: string;
+  value: string;
+}
+
+export interface WfPoint {
+  x: number;
+  y: number;
 }
 
 export interface WfNode {
@@ -23,11 +37,21 @@ export interface WfNode {
   seconds?: string;
   /** Input */
   rows?: WfRow[];
+  /** Condición */
+  condition?: string;
+  /** Bucle */
+  list?: string;
+  /** Cambiar valor */
+  assignments?: WfAssignment[];
 }
 
 export interface WfEdge {
   from: string;
+  /** W-12: la salida de la que parte; sin valor, la normal. */
+  out?: 'yes' | 'no';
   to: string;
+  /** W-18: los codos. */
+  points?: WfPoint[];
 }
 
 export interface WfOptions {
@@ -62,6 +86,23 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   wait: 'Espera',
   input: 'Input',
   login: 'Login',
+  condition: 'Condición',
+  foreach: 'Bucle',
+  break: 'Break',
+  set: 'Cambiar valor',
+};
+
+/** W-22: nombre propuesto de cada tipo de nodo; en HTTP y SQL, si el título no da uno. */
+const DEFAULT_NAME: Partial<Record<NodeKind, string>> = {
+  http: 'Http1',
+  sql: 'Sql1',
+  wait: 'Espera1',
+  login: 'Login1',
+  input: 'Input1',
+  condition: 'Condicion1',
+  foreach: 'Bucle1',
+  break: 'Break1',
+  set: 'Cambiar1',
 };
 
 /** W-40: un workflow nuevo solo tiene marcada «Parar si error». */
@@ -93,7 +134,7 @@ export function parseWorkflow(content: string): Workflow {
         lockValues: o.lockValues === true,
       },
       nodes: (raw.nodes ?? []).map((n) => ({ ...n, x: n.x ?? 0, y: n.y ?? 0 })),
-      edges: raw.edges ?? [],
+      edges: (raw.edges ?? []).map((e) => edge(e.from, e.out || undefined, e.to, e.points)),
     };
   } catch {
     return initialWorkflow();
@@ -104,6 +145,14 @@ export function serializeWorkflow(w: Workflow): string {
   return JSON.stringify(w);
 }
 
+/** Una flecha sin claves vacías, para que el contenido guardado no cambie al leerlo y escribirlo. */
+function edge(from: string, out: Out, to: string, points?: WfPoint[]): WfEdge {
+  const e: WfEdge = { from, to };
+  if (out) e.out = out;
+  if (points && points.length > 0) e.points = points;
+  return e;
+}
+
 export function isNamed(n: WfNode): boolean {
   return n.kind !== 'start' && n.kind !== 'finish';
 }
@@ -112,38 +161,95 @@ export function label(n: WfNode): string {
   return isNamed(n) && n.name ? n.name : KIND_LABEL[n.kind];
 }
 
-function nextOf(w: Workflow, id: string): string | undefined {
-  return w.edges.find((e) => e.from === id)?.to;
+/** W-12: las salidas de un nodo: ninguna en Finish, «Sí» y «No» en la Condición y una en los demás. */
+export function outsOf(n: WfNode): Out[] {
+  if (n.kind === 'finish') return [];
+  if (n.kind === 'condition') return ['yes', 'no'];
+  return [undefined];
 }
 
-function previousOf(w: Workflow, id: string): string | undefined {
-  return w.edges.find((e) => e.to === id)?.from;
+/** La clave de una flecha: su origen y su salida, que solo tiene una flecha. */
+export function edgeKey(from: string, out: Out): string {
+  return `${from}:${out ?? ''}`;
 }
 
-/** W-15: el camino desde Start siguiendo las flechas. */
-export function chain(w: Workflow): WfNode[] {
+export function findEdge(w: Workflow, from: string, out: Out): WfEdge | undefined {
+  return w.edges.find((e) => e.from === from && e.out === out);
+}
+
+export function nextOf(w: Workflow, id: string, out?: Out): string | undefined {
+  return findEdge(w, id, out)?.to;
+}
+
+/** W-15, W-17: los nodos a los que se llega desde Start, en anchura y con «Sí» antes que «No». */
+export function flow(w: Workflow): WfNode[] {
   const byId = new Map(w.nodes.map((n) => [n.id, n]));
+  const start = w.nodes.find((n) => n.kind === 'start');
   const out: WfNode[] = [];
   const seen = new Set<string>();
-  let current = w.nodes.find((n) => n.kind === 'start');
-  while (current && !seen.has(current.id)) {
-    out.push(current);
-    seen.add(current.id);
-    const to = nextOf(w, current.id);
-    current = to ? byId.get(to) : undefined;
+  const queue = start ? [start] : [];
+  while (queue.length > 0) {
+    const n = queue.shift()!;
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    for (const o of outsOf(n)) {
+      const to = nextOf(w, n.id, o);
+      const next = to ? byId.get(to) : undefined;
+      if (next) queue.push(next);
+    }
   }
   return out;
 }
 
-export function reachesFinish(w: Workflow): boolean {
-  return chain(w).at(-1)?.kind === 'finish';
+/** W-15, W-61: las salidas de los nodos del flujo que no tienen flecha. */
+export function openOutputs(w: Workflow): { id: string; out: Out }[] {
+  const open: { id: string; out: Out }[] = [];
+  for (const n of flow(w)) {
+    for (const o of outsOf(n)) if (!findEdge(w, n.id, o)) open.push({ id: n.id, out: o });
+  }
+  return open;
 }
 
-/** W-17: la cadena primero y, al final, los nodos que están fuera de ella. */
+/** W-17: el flujo primero y, al final, los nodos que están fuera de él. */
 export function tabOrder(w: Workflow): WfNode[] {
-  const inChain = chain(w);
-  const ids = new Set(inChain.map((n) => n.id));
-  return [...inChain, ...w.nodes.filter((n) => !ids.has(n.id))];
+  const inFlow = flow(w);
+  const ids = new Set(inFlow.map((n) => n.id));
+  return [...inFlow, ...w.nodes.filter((n) => !ids.has(n.id))];
+}
+
+/** Los nodos a los que se llega desde id siguiendo las flechas, id incluido. */
+function reachable(w: Workflow, id: string): Set<string> {
+  const seen = new Set<string>();
+  const queue = [id];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const e of w.edges) if (e.from === current) queue.push(e.to);
+  }
+  return seen;
+}
+
+/** W-36: los nodos desde los que se llega a id: los que pueden ir antes que él. */
+function ancestors(w: Workflow, id: string): Set<string> {
+  const seen = new Set<string>();
+  const queue = [id];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const e of w.edges) {
+      if (e.to === current && !seen.has(e.from)) {
+        seen.add(e.from);
+        queue.push(e.from);
+      }
+    }
+  }
+  return seen;
+}
+
+/** W-12: una flecha de from a to cerraría un ciclo si desde to ya se llega a from. */
+export function wouldCycle(w: Workflow, from: string, to: string): boolean {
+  return reachable(w, to).has(from);
 }
 
 function newId(w: Workflow): string {
@@ -164,7 +270,7 @@ export function nameFromTitle(title: string): string {
 /** W-22: el nombre propuesto, libre en el workflow sin distinguir mayúsculas. */
 export function proposeName(w: Workflow, kind: NodeKind, title = '', exceptId?: string): string {
   const used = new Set(w.nodes.filter((n) => n.id !== exceptId && n.name).map((n) => n.name!.toLowerCase()));
-  const fallback = kind === 'http' ? 'Http1' : kind === 'sql' ? 'Sql1' : kind === 'wait' ? 'Espera1' : kind === 'login' ? 'Login1' : 'Input1';
+  const fallback = DEFAULT_NAME[kind] ?? 'Nodo1';
   const base = (kind === 'http' || kind === 'sql') && title ? nameFromTitle(title) || fallback : fallback;
   if (!used.has(base.toLowerCase())) return base;
   const stem = base.replace(/\d+$/, '').slice(0, 36);
@@ -181,66 +287,121 @@ function snap(v: number): number {
 /** W-14: distancia vertical de un nodo suelto respecto al nodo más bajo. */
 const STEP_Y = 128;
 
-/**
- * W-14: con un nodo seleccionado, inserta el nuevo tras él (con Finish, justo antes de Finish): se coloca a la derecha
- * de su predecesor y los que lo siguen en la cadena se desplazan lo justo. Sin selección, el nodo queda suelto, sin
- * flechas, debajo de los demás (ADR-0032).
- */
-export function insertNode(w: Workflow, kind: NodeKind, selectedId: string | null): { workflow: Workflow; id: string } | null {
-  if (w.nodes.length >= MAX_NODES || kind === 'start' || kind === 'finish') return null;
-  const id = newId(w);
+/** Un nodo nuevo con los valores de serie de su tipo. */
+function blankNode(w: Workflow, kind: NodeKind, id: string): WfNode {
   const node: WfNode = { id, kind, name: proposeName(w, kind), x: 0, y: 0 };
   if (kind === 'wait') node.seconds = '1';
   if (kind === 'input') node.rows = [];
   if (kind === 'http' || kind === 'sql') node.values = {};
   if (kind === 'login') node.values = { user: '' };
+  if (kind === 'condition') node.condition = '';
+  if (kind === 'foreach') node.list = '';
+  if (kind === 'set') node.assignments = [];
+  return node;
+}
+
+/**
+ * W-14: con un nodo seleccionado, inserta el nuevo tras él, y tras una Condición en su salida «Sí»: se coloca a su
+ * derecha y lo que lo sigue se desplaza lo justo. Con Finish seleccionado, el nuevo recibe las flechas que llegaban a
+ * Finish. Sin selección, el nodo queda suelto, sin flechas, debajo de los demás (ADR-0032).
+ */
+export function insertNode(w: Workflow, kind: NodeKind, selectedId: string | null): { workflow: Workflow; id: string } | null {
+  if (w.nodes.length >= MAX_NODES || kind === 'start' || kind === 'finish') return null;
+  const id = newId(w);
+  const node = blankNode(w, kind, id);
   const selected = selectedId ? w.nodes.find((n) => n.id === selectedId) : undefined;
+  const start = w.nodes.find((n) => n.kind === 'start')!;
   if (!selected) {
-    const start = w.nodes.find((n) => n.kind === 'start');
-    node.x = snap((start?.x ?? 0) + STEP_X);
+    node.x = snap(start.x + STEP_X);
     node.y = snap(Math.max(...w.nodes.map((n) => n.y)) + STEP_Y);
     return { workflow: { ...w, nodes: [...w.nodes, node] }, id };
   }
-  const afterId = selected.kind === 'finish' ? previousOf(w, selected.id) : selected.id;
-  const after = w.nodes.find((n) => n.id === afterId) ?? w.nodes.find((n) => n.kind === 'start')!;
-  node.x = snap(after.x + STEP_X);
-  node.y = after.y;
-  const next = nextOf(w, after.id);
-  // Los que siguen en la cadena se desplazan a la derecha lo justo para dejarle sitio.
-  const following = new Set<string>();
-  for (let cur = next; cur && !following.has(cur); cur = nextOf(w, cur)) following.add(cur);
+  // Las flechas que pasan a llegar al nodo nuevo y el nodo al que sale.
+  let incoming: { from: string; out: Out }[];
+  let next: string | undefined;
+  if (selected.kind === 'finish') {
+    incoming = w.edges.filter((e) => e.to === selected.id).map((e) => ({ from: e.from, out: e.out }));
+    next = selected.id;
+  } else {
+    const out = outsOf(selected)[0];
+    incoming = [{ from: selected.id, out }];
+    next = nextOf(w, selected.id, out);
+  }
+  const anchor = w.nodes.find((n) => n.id === incoming[0]?.from) ?? start;
+  node.x = snap(anchor.x + STEP_X);
+  node.y = anchor.y;
+  // Lo que sigue se desplaza a la derecha lo justo para dejarle sitio.
+  const following = next ? reachable(w, next) : new Set<string>();
   const nextX = w.nodes.find((n) => n.id === next)?.x ?? Infinity;
   const shift = Math.max(0, node.x + STEP_X - nextX);
   const nodes = w.nodes.map((n) => (following.has(n.id) ? { ...n, x: n.x + shift } : n));
-  const edges = w.edges.filter((e) => e.from !== after.id);
-  edges.push({ from: after.id, to: id });
-  if (next) edges.push({ from: id, to: next });
+  const replaced = new Set(incoming.map((i) => edgeKey(i.from, i.out)));
+  const edges = w.edges.filter((e) => !replaced.has(edgeKey(e.from, e.out)));
+  for (const i of incoming) edges.push(edge(i.from, i.out, id));
+  if (next) edges.push(edge(id, outsOf(node)[0], next));
   return { workflow: { ...w, nodes: [...nodes, node], edges }, id };
 }
 
-/** W-13: Start y Finish no se borran; un nodo intermedio deja unidos a sus vecinos. */
+/**
+ * W-19: un nodo HTTP o SQL con una nota, suelto donde se soltó la nota, con el nombre y los valores de W-22 a W-24.
+ */
+export function addNoteNode(
+  w: Workflow,
+  kind: 'http' | 'sql',
+  noteId: string,
+  title: string,
+  values: Record<string, string>,
+  x: number,
+  y: number,
+): { workflow: Workflow; id: string } | null {
+  if (w.nodes.length >= MAX_NODES) return null;
+  const id = newId(w);
+  const node: WfNode = { id, kind, name: proposeName(w, kind, title), x: snap(x), y: snap(y), noteId, values };
+  return { workflow: { ...w, nodes: [...w.nodes, node] }, id };
+}
+
+/**
+ * W-13: Start y Finish no se borran. Si la salida del nodo tenía flecha, los que llegaban a él quedan unidos a su
+ * sucesor; una Condición, con dos salidas, solo pierde sus flechas.
+ */
 export function removeNode(w: Workflow, id: string): Workflow {
   const node = w.nodes.find((n) => n.id === id);
   if (!node || !isNamed(node)) return w;
-  const prev = previousOf(w, id);
-  const next = nextOf(w, id);
+  const outs = outsOf(node);
+  const next = outs.length === 1 ? nextOf(w, id, outs[0]) : undefined;
   const edges = w.edges.filter((e) => e.from !== id && e.to !== id);
-  if (prev && next) edges.push({ from: prev, to: next });
+  if (next) {
+    for (const e of w.edges) if (e.to === id && e.from !== next) edges.push(edge(e.from, e.out, next));
+  }
   return { ...w, nodes: w.nodes.filter((n) => n.id !== id), edges };
 }
 
-/** W-12: una flecha por salida y por entrada; la nueva sustituye a las que hubiera. */
-export function connect(w: Workflow, from: string, to: string): Workflow {
+/**
+ * W-12: una flecha por salida, que sustituye a la que hubiera; una entrada admite varias. No se une un nodo consigo
+ * mismo ni se cierra un ciclo.
+ */
+export function connect(w: Workflow, from: string, out: Out, to: string): Workflow {
   const a = w.nodes.find((n) => n.id === from);
   const b = w.nodes.find((n) => n.id === to);
-  if (!a || !b || from === to || a.kind === 'finish' || b.kind === 'start') return w;
-  const edges = w.edges.filter((e) => e.from !== from && e.to !== to);
-  edges.push({ from, to });
+  if (!a || !b || from === to || a.kind === 'finish' || b.kind === 'start' || !outsOf(a).includes(out)) return w;
+  if (wouldCycle(w, from, to)) return w;
+  const edges = w.edges.filter((e) => !(e.from === from && e.out === out));
+  edges.push(edge(from, out, to));
   return { ...w, edges };
 }
 
-export function removeEdge(w: Workflow, from: string): Workflow {
-  return { ...w, edges: w.edges.filter((e) => e.from !== from) };
+export function removeEdge(w: Workflow, from: string, out?: Out): Workflow {
+  return { ...w, edges: w.edges.filter((e) => !(e.from === from && e.out === out)) };
+}
+
+/** W-18: los codos de una flecha, ajustados a la rejilla. Sin codos, la flecha vuelve a ser una curva. */
+export function setEdgePoints(w: Workflow, from: string, out: Out, points: WfPoint[]): Workflow {
+  return {
+    ...w,
+    edges: w.edges.map((e) =>
+      e.from === from && e.out === out ? edge(e.from, e.out, e.to, points.map((p) => ({ x: snap(p.x), y: snap(p.y) }))) : e,
+    ),
+  };
 }
 
 /** W-11: ajustado a la rejilla. */
@@ -271,6 +432,163 @@ export function rowProblem(rows: WfRow[], index: number): string | null {
   return null;
 }
 
+const isLetter = (c: string | undefined) => c !== undefined && /[A-Za-z]/.test(c);
+const isWord = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_]/.test(c);
+const isDigit = (c: string | undefined) => c !== undefined && c >= '0' && c <= '9';
+
+/** Un paso de una ruta desde pos (`.clave`, `[n]` o `["clave"]`), como en el servidor. Devuelve pos si no hay paso. */
+function step(text: string, pos: number): number {
+  const c = text[pos];
+  if (c === '.') {
+    let i = pos + 1;
+    while (isWord(text[i])) i++;
+    return i === pos + 1 ? pos : i;
+  }
+  if (c !== '[') return pos;
+  if (isDigit(text[pos + 1])) {
+    let i = pos + 1;
+    while (isDigit(text[i])) i++;
+    return text[i] === ']' && i - pos - 1 <= 9 ? i + 1 : pos;
+  }
+  if (text[pos + 1] === '"') {
+    let i = pos + 2;
+    while (i < text.length) {
+      if (text[i] === '\\' && i + 1 < text.length) i += 2;
+      else if (text[i] === '"') return text[i + 1] === ']' ? i + 2 : pos;
+      else i++;
+    }
+  }
+  return pos;
+}
+
+/** W-30: lo que ocupa la referencia que empieza en el `$` de from, o 0 si tras el `$` no hay una letra. */
+function referenceLength(text: string, from: number): number {
+  if (!isLetter(text[from + 1])) return 0;
+  let pos = from + 2;
+  while (isWord(text[pos])) pos++;
+  for (let next = step(text, pos); next !== pos; next = step(text, pos)) pos = next;
+  return pos - from;
+}
+
+/** W-93, W-97: el texto es una referencia sola, sin nada antes ni después. */
+export function isSingleReference(text: string): boolean {
+  return text.startsWith('$') && referenceLength(text, 0) === text.length;
+}
+
+/** W-97: problema del destino de una fila de Cambiar valor, o null. */
+export function assignmentProblem(rows: WfAssignment[], index: number): string | null {
+  const target = rows[index].target;
+  if (!isSingleReference(target)) return 'El destino es una referencia sola, como $Http1.data.valor';
+  if (rows.some((r, i) => i !== index && r.target === target)) return 'Repetido';
+  return null;
+}
+
+/** W-91: el motivo por el que la condición no es válida, o null. Los mismos mensajes que el servidor. */
+export function conditionProblem(text: string): string | null {
+  if (text.trim() === '') return 'La condición está vacía';
+  let pos = 0;
+  const fail = (message: string): never => {
+    throw new Error(message);
+  };
+  const skip = () => {
+    while (pos < text.length && /\s/.test(text[pos])) pos++;
+  };
+  const rest = () => {
+    const r = text.slice(pos).trim();
+    return r.length > 20 ? `${r.slice(0, 20)}…` : r;
+  };
+  const accept = (token: string) => {
+    skip();
+    if (text.startsWith(token, pos)) {
+      pos += token.length;
+      return true;
+    }
+    return false;
+  };
+  const comparison = (): boolean => {
+    skip();
+    for (const op of ['==', '!=', '>=', '<=', '>', '<']) {
+      if (text.startsWith(op, pos)) {
+        pos += op.length;
+        return true;
+      }
+    }
+    return false;
+  };
+  const primary = (): void => {
+    skip();
+    if (pos >= text.length) fail('Falta un valor al final');
+    const c = text[pos];
+    if (c === '(') {
+      pos++;
+      or();
+      if (!accept(')')) fail('Falta un paréntesis de cierre');
+      return;
+    }
+    if (c === '$') {
+      const length = referenceLength(text, pos);
+      if (length === 0) fail('Tras «$» va el nombre de un nodo');
+      pos += length;
+      return;
+    }
+    if (c === '"') {
+      let i = pos + 1;
+      while (i < text.length) {
+        if (text[i] === '\\' && i + 1 < text.length) i += 2;
+        else if (text[i] === '"') {
+          pos = i + 1;
+          return;
+        } else i++;
+      }
+      fail('Falta la comilla de cierre de un texto');
+    }
+    if (c === '-' || isDigit(c)) {
+      const m = /^-?\d+(\.\d+)?([eE][+-]?\d+)?/.exec(text.slice(pos));
+      if (!m) fail('Número no válido');
+      pos += m![0].length;
+      return;
+    }
+    for (const word of ['true', 'false', 'null']) {
+      if (text.startsWith(word, pos) && !/[\p{L}\p{N}_]/u.test(text[pos + word.length] ?? '')) {
+        pos += word.length;
+        return;
+      }
+    }
+    fail(c === ')' ? 'Sobra «)»' : `No se esperaba «${rest()}»: los textos van entre comillas`);
+  };
+  const unary = (): void => {
+    skip();
+    if (text[pos] === '!' && !text.startsWith('!=', pos)) {
+      pos++;
+      unary();
+      return;
+    }
+    primary();
+  };
+  const compare = () => {
+    unary();
+    if (!comparison()) return;
+    unary();
+    if (comparison()) fail('Dos comparaciones seguidas necesitan paréntesis');
+  };
+  const and = () => {
+    compare();
+    while (accept('&&')) compare();
+  };
+  const or = () => {
+    and();
+    while (accept('||')) and();
+  };
+  try {
+    or();
+    skip();
+    if (pos < text.length) fail(`Sobra «${rest()}»`);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
 /** W-30, W-31: los nombres de nodo de las referencias de un texto. `$$` es un `$`. */
 export function referencedNames(text: string): string[] {
   const out: string[] = [];
@@ -289,10 +607,10 @@ export function referencedNames(text: string): string[] {
   return out;
 }
 
-/** W-36: avisos de las referencias a nombres que no existen o a nodos que no van antes en la cadena. */
+/** W-36: avisos de las referencias a nombres que no existen o a nodos que no van antes en el flujo. */
 export function referenceWarnings(w: Workflow, nodeId: string, text: string): string[] {
-  const order = chain(w);
-  const position = order.findIndex((n) => n.id === nodeId);
+  const inFlow = new Set(flow(w).map((n) => n.id));
+  const before = ancestors(w, nodeId);
   const warnings: string[] = [];
   for (const name of referencedNames(text)) {
     const target = w.nodes.find((n) => n.name === name);
@@ -300,8 +618,9 @@ export function referenceWarnings(w: Workflow, nodeId: string, text: string): st
       warnings.push(`No hay ningún nodo llamado ${name}`);
       continue;
     }
-    const at = order.findIndex((n) => n.id === target.id);
-    if (position < 0 || at < 0 || at >= position) warnings.push(`${name} no va antes en la cadena: valdrá null`);
+    if (!inFlow.has(nodeId) || !inFlow.has(target.id) || !before.has(target.id)) {
+      warnings.push(`${name} no va antes en el flujo: valdrá null`);
+    }
   }
   return [...new Set(warnings)];
 }
@@ -321,7 +640,7 @@ export function setFieldValue(w: Workflow, fields: FieldsByNode, nodeId: string,
   return { ...w, nodes: w.nodes.map((n) => (ids.has(n.id) ? { ...n, values: { ...n.values, [field]: value } } : n)) };
 }
 
-/** W-41: al marcar la casilla, cada nombre toma el valor del primer nodo de la cadena que lo tiene. */
+/** W-41: al marcar la casilla, cada nombre toma el valor del primer nodo del flujo que lo tiene. */
 export function unifyFields(w: Workflow, fields: FieldsByNode): Workflow {
   const first = new Map<string, string>();
   for (const n of tabOrder(w)) {
@@ -374,7 +693,10 @@ export function setTabValue(
   return out;
 }
 
-/** Los campos de un nodo: variables de su nota, usuario del Login, segundos o filas del Input. */
+/**
+ * Los campos de consulta de un nodo: variables de su nota, usuario del Login, segundos o filas del Input. Condición,
+ * Bucle y Cambiar valor no tienen: solo se cambian en edición (W-50).
+ */
 export function fieldsOf(n: WfNode, fields: FieldsByNode): string[] {
   if (n.kind === 'http' || n.kind === 'sql') return fields[n.id] ?? [];
   if (n.kind === 'login') return ['user'];
@@ -400,9 +722,10 @@ export function savedValues(w: Workflow, fields: FieldsByNode): NodeValues {
   return out;
 }
 
-/** W-44: con «Fijar valores de input», en consulta solo se cambian los Input. */
+/** W-44, W-50: en consulta se cambian los Input y, sin «Fijar valores de input», Login, HTTP, SQL y Espera. */
 export function isEditableInView(w: Workflow, n: WfNode): boolean {
-  return n.kind === 'input' || (!w.options.lockValues && n.kind !== 'start' && n.kind !== 'finish');
+  if (n.kind === 'input') return true;
+  return !w.options.lockValues && (n.kind === 'login' || n.kind === 'http' || n.kind === 'sql' || n.kind === 'wait');
 }
 
 /**

@@ -235,7 +235,227 @@ class WorkflowRunnerTest {
         return "{\"id\":\"" + id + "\",\"kind\":\"login\",\"name\":\"" + name + "\",\"values\":{\"user\":" + quote(user) + "}}";
     }
 
+    // --- Nodos de control del flujo (ADR-0041) ---
+
+    private static String condition(String id, String name, String condition) {
+        return "{\"id\":\"" + id + "\",\"kind\":\"condition\",\"name\":\"" + name + "\",\"condition\":" + quote(condition) + "}";
+    }
+
+    private static String foreach(String id, String name, String list) {
+        return "{\"id\":\"" + id + "\",\"kind\":\"foreach\",\"name\":\"" + name + "\",\"list\":" + quote(list) + "}";
+    }
+
+    private static String breakNode(String id, String name) {
+        return "{\"id\":\"" + id + "\",\"kind\":\"break\",\"name\":\"" + name + "\"}";
+    }
+
+    /** Filas destino, valor, destino, valor… */
+    private static String set(String id, String name, String... rows) {
+        List<Map<String, String>> assignments = new ArrayList<>();
+        for (int i = 0; i < rows.length; i += 2) {
+            assignments.add(Map.of("target", rows[i], "value", rows[i + 1]));
+        }
+        try {
+            return "{\"id\":\"" + id + "\",\"kind\":\"set\",\"name\":\"" + name + "\",\"assignments\":"
+                    + JSON.writeValueAsString(assignments) + "}";
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Un workflow con Start, los nodos dados y Finish, y flechas escritas como «a>b» o «c:yes>a». */
+    private static String graph(String options, List<String> nodes, String... arrows) {
+        List<String> edges = new ArrayList<>();
+        for (String arrow : arrows) {
+            String[] parts = arrow.split(">");
+            String[] from = parts[0].split(":");
+            edges.add("{\"from\":\"" + from[0] + "\"" + (from.length > 1 ? ",\"out\":\"" + from[1] + "\"" : "")
+                    + ",\"to\":\"" + parts[1] + "\"}");
+        }
+        return "{\"options\":" + options + ",\"nodes\":[{\"id\":\"start\",\"kind\":\"start\"}," + String.join(",", nodes)
+                + ",{\"id\":\"finish\",\"kind\":\"finish\"}],\"edges\":[" + String.join(",", edges) + "]}";
+    }
+
+    /** Los eventos de un nodo terminado, en orden: uno por vuelta. */
+    private static List<JsonNode> nodeEvents(List<JsonNode> events, String nodeId) {
+        return events.stream().filter(e -> e.get("type").asText().equals("node") && e.get("nodeId").asText().equals(nodeId)
+                && !e.get("status").asText().equals("running")).toList();
+    }
+
+    private static List<String> iterations(List<JsonNode> events) {
+        return events.stream().filter(e -> e.get("type").asText().equals("iteration"))
+                .map(e -> e.get("nodeId").asText() + e.get("iteration") + "/" + e.get("total").asInt()).toList();
+    }
+
     // --- Pruebas ---
+
+    @Test
+    void w90_w92_w78_a_condition_follows_yes_or_no() {
+        Note wf = workflow(graph("{}", List.of(
+                        input("n1", "Input1", "tipo", "A"),
+                        condition("c", "Condicion1", "$Input1.tipo == \"A\""),
+                        node("a", "http", "SiA", echo, Map.of("t", "1", "w", "$Condicion1")),
+                        node("b", "http", "NoA", echo, Map.of("t", "2", "w", "$Condicion1"))),
+                "start>n1", "n1>c", "c:yes>a", "c:no>b", "a>finish", "b>finish"));
+
+        List<JsonNode> yes = run(wf, Map.of());
+        assertThat(yes.getFirst().get("chain")).extracting(JsonNode::asText).containsExactly("start", "n1", "c", "a", "b", "finish");
+        assertThat(statuses(yes)).containsExactly("start:ok", "n1:ok", "c:ok", "a:ok", "finish:ok");
+        JsonNode c = nodeEvent(yes, "c");
+        assertThat(c.get("branch").asText()).isEqualTo("yes");
+        assertThat(c.get("raw").get("condition").asText()).isEqualTo("$Input1.tipo == \"A\"");
+        assertThat(c.get("values").get("condition").asText()).isEqualTo("true");
+        // W-32: su valor es true o false.
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": 1, \"who\": \"true\"}");
+
+        List<JsonNode> no = run(wf, Map.of("n1", Map.of("tipo", "B")));
+        assertThat(statuses(no)).containsExactly("start:ok", "n1:ok", "c:ok", "b:ok", "finish:ok");
+        assertThat(nodeEvent(no, "c").get("branch").asText()).isEqualTo("no");
+        assertThat(bodies("/demo/echo")).last().isEqualTo("{\"task\": 2, \"who\": \"false\"}");
+    }
+
+    @Test
+    void w43_w92_a_missing_reference_in_a_condition_stops_with_stop_on_missing() {
+        List<String> nodes = List.of(condition("c", "Condicion1", "$Input1.nada == null"), waitNode("a", "Espera1", "0"));
+        List<JsonNode> going = run(workflow(graph("{}", nodes, "start>c", "c:yes>a", "c:no>finish", "a>finish")), Map.of());
+        assertThat(statuses(going)).containsExactly("start:ok", "c:ok", "a:ok", "finish:ok");
+        assertThat(nodeEvent(going, "c").get("missing")).extracting(JsonNode::asText).containsExactly("$Input1.nada");
+
+        List<JsonNode> stopped = run(workflow(graph("{\"stopOnMissing\":true}", nodes, "start>c", "c:yes>a", "c:no>finish", "a>finish")),
+                Map.of());
+        assertThat(statuses(stopped)).containsExactly("start:ok", "c:error");
+        assertThat(end(stopped).get("message").asText()).isEqualTo("Detenido: $Input1.nada no existe");
+    }
+
+    @Test
+    void w93_w94_w78_a_loop_runs_its_body_once_per_element() {
+        Note query = sqlNote("Libros", "SELECT col1, col2 FROM t");
+        List<JsonNode> events = run(workflow(flow("{}",
+                node("q", "sql", "Query1", query, Map.of()),
+                foreach("f", "Bucle1", "$Query1"),
+                node("e", "http", "Eco", echo, Map.of("t", "$Bucle1.col1", "w", "$Bucle1.col2")))), Map.of());
+
+        assertThat(statuses(events)).containsExactly("start:ok", "q:ok", "f:ok", "e:ok", "finish:ok", "e:ok", "finish:ok");
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": 1, \"who\": \"test\"}", "{\"task\": 3, \"who\": \"null\"}");
+        assertThat(nodeEvent(events, "f").get("items").asInt()).isEqualTo(2);
+        assertThat(nodeEvent(events, "f").has("iteration")).isFalse();
+        assertThat(nodeEvents(events, "e")).extracting(e -> e.get("iteration").toString()).containsExactly("[1]", "[2]");
+        assertThat(iterations(events)).containsExactly("f[1]/2", "f[2]/2");
+        assertThat(events.stream().filter(e -> e.get("type").asText().equals("iteration")).findFirst().orElseThrow()
+                .get("item").asText()).isEqualTo("{\"col1\":\"1\",\"col2\":\"test\"}");
+        assertThat(end(events).get("message").asText()).isEqualTo("Terminado");
+    }
+
+    @Test
+    void w93_a_value_that_is_not_a_list_is_one_element_and_empty_or_null_lists_give_no_rounds() {
+        String in = input("n1", "Input1", "id", "5", "lista", "x");
+        String loop = foreach("f", "Bucle1", "$Input1.lista");
+        String body = node("e", "http", "Eco", echo, Map.of("t", "0", "w", "$Bucle1"));
+
+        run(workflow(flow("{}", in, loop, body)), Map.of());
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": 0, \"who\": \"x\"}");
+
+        List<JsonNode> empty = run(workflow(flow("{}", in, set("s", "Cambiar1", "$Input1.lista", "[]"), loop, body)), Map.of());
+        assertThat(statuses(empty)).containsExactly("start:ok", "n1:ok", "s:ok", "f:ok", "finish:ok");
+        assertThat(nodeEvent(empty, "f").get("items").asInt()).isZero();
+
+        String toNull = set("s", "Cambiar1", "$Input1.lista", "null");
+        assertThat(statuses(run(workflow(flow("{}", in, toNull, loop, body)), Map.of())))
+                .containsExactly("start:ok", "n1:ok", "s:ok", "f:ok", "finish:ok");
+        List<JsonNode> stopped = run(workflow(flow("{\"stopOnMissing\":true}", in, toNull, loop, body)), Map.of());
+        assertThat(end(stopped).get("message").asText()).isEqualTo("Detenido: la lista de Bucle1 vale null");
+        List<JsonNode> missingList = run(workflow(flow("{\"stopOnMissing\":true}", in, foreach("f", "Bucle1", "$Input1.nada"), body)),
+                Map.of());
+        assertThat(end(missingList).get("message").asText()).isEqualTo("Detenido: $Input1.nada no existe");
+        assertThat(bodies("/demo/echo")).hasSize(1);
+    }
+
+    @Test
+    void w42_w93_a_list_of_more_than_ten_thousand_elements_is_an_error() {
+        List<Integer> big = new ArrayList<>();
+        for (int i = 0; i <= WorkflowRunner.MAX_ITEMS; i++) {
+            big.add(i);
+        }
+        List<JsonNode> events = run(workflow(flow("{}",
+                input("n1", "Input1", "lista", "x"),
+                set("s", "Cambiar1", "$Input1.lista", big.toString()),
+                foreach("f", "Bucle1", "$Input1.lista"),
+                waitNode("w", "Espera1", "0"))), Map.of());
+        assertThat(nodeEvent(events, "f").get("error").get("message").asText())
+                .isEqualTo("La lista tiene 10001 elementos: un Bucle recorre como máximo 10 000");
+        assertThat(end(events).get("message").asText()).isEqualTo("Detenido por error en Bucle1");
+    }
+
+    @Test
+    void w94_finish_returns_to_the_innermost_loop_and_then_to_the_outer_one() {
+        routes.put("/demo/items", (ex, body) -> reply(ex, 200, "{\"items\":[{\"id\":1,\"tags\":[\"a\",\"b\"]},{\"id\":2,\"tags\":[\"c\"]}]}"));
+        Note items = httpNote("Items", "{\"endpoint\":\"/items\",\"login\":\"none\"}");
+        List<JsonNode> events = run(workflow(flow("{}",
+                node("i", "http", "Items", items, Map.of()),
+                foreach("f1", "Bucle1", "$Items.items"),
+                foreach("f2", "Bucle2", "$Bucle1.tags"),
+                node("e", "http", "Eco", echo, Map.of("t", "$Bucle1.id", "w", "$Bucle2")))), Map.of());
+
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": 1, \"who\": \"a\"}", "{\"task\": 1, \"who\": \"b\"}",
+                "{\"task\": 2, \"who\": \"c\"}");
+        assertThat(iterations(events)).containsExactly("f1[1]/2", "f2[1,1]/2", "f2[1,2]/2", "f1[2]/2", "f2[2,1]/1");
+        assertThat(nodeEvents(events, "f2")).extracting(e -> e.get("iteration").toString()).containsExactly("[1]", "[2]");
+        assertThat(end(events).get("message").asText()).isEqualTo("Terminado");
+    }
+
+    @Test
+    void w95_w96_body_values_reset_each_round_and_break_ends_the_loop() {
+        routes.put("/demo/numbers", (ex, body) -> reply(ex, 200, "[1,2,3]"));
+        Note numbers = httpNote("Numeros", "{\"endpoint\":\"/numbers\",\"login\":\"none\"}");
+        List<JsonNode> events = run(workflow(graph("{}", List.of(
+                        node("n", "http", "Numeros", numbers, Map.of()),
+                        foreach("f", "Bucle1", "$Numeros"),
+                        condition("c", "Condicion1", "$Bucle1 == 2"),
+                        breakNode("k", "Break1"),
+                        node("e", "http", "Eco", echo, Map.of("t", "$Bucle1", "w", "uno")),
+                        node("after", "http", "Despues", echo, Map.of("t", "$Numeros[2]", "w", "$Eco.who"))),
+                "start>n", "n>f", "f>c", "c:yes>k", "c:no>e", "k>after", "e>finish", "after>finish")), Map.of());
+
+        // Vuelta 1: Eco. Vuelta 2: Break y Despues, donde $Eco ya no tiene valor. No hay vuelta 3.
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": 1, \"who\": \"uno\"}", "{\"task\": 3, \"who\": \"null\"}");
+        assertThat(nodeEvent(events, "after").get("missing")).extracting(JsonNode::asText).containsExactly("$Eco.who");
+        assertThat(iterations(events)).containsExactly("f[1]/3", "f[2]/3");
+        assertThat(statuses(events)).containsExactly("start:ok", "n:ok", "f:ok", "c:ok", "e:ok", "finish:ok", "c:ok", "k:ok",
+                "after:ok", "finish:ok");
+        assertThat(end(events).get("message").asText()).isEqualTo("Terminado");
+    }
+
+    @Test
+    void w97_w98_w99_set_value_changes_a_result_before_sending_it_again() {
+        List<JsonNode> events = run(workflow(flow("{}",
+                input("n1", "Input1", "nuevo", "54"),
+                node("n2", "http", "Conn1", tasks, Map.of("id", "5")),
+                set("s", "Cambiar1", "$Conn1[0].title", "$Input1.nuevo", "$Conn1[0].extra", "{\"a\":[1]}"),
+                node("e", "http", "Eco", echo, Map.of("t", "$Conn1", "w", "x")))), Map.of());
+
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": [{\"id\":1,\"title\":54,\"extra\":{\"a\":[1]}}], \"who\": \"x\"}");
+        JsonNode s = nodeEvent(events, "s");
+        assertThat(s.get("raw").get("$Conn1[0].title").asText()).isEqualTo("$Input1.nuevo");
+        assertThat(s.get("values").get("$Conn1[0].title").asText()).isEqualTo("54");
+        // W-99: la respuesta que muestra el nodo no cambia.
+        assertThat(nodeEvent(events, "n2").get("http").get("response").get("text").asText()).isEqualTo("[{\"id\":1,\"title\":\"Tarea\"}]");
+    }
+
+    @Test
+    void w99_a_target_that_cannot_change_is_a_node_error_and_nothing_is_applied() {
+        List<JsonNode> events = run(workflow(flow("{\"stopOnError\":false}",
+                node("n2", "http", "Conn1", tasks, Map.of("id", "5")),
+                set("s", "Cambiar1", "$Conn1[0].title", "\"X\"", "$Conn1[5].x", "1"),
+                set("s2", "Cambiar2", "$Nadie.x", "1"),
+                node("e", "http", "Eco", echo, Map.of("t", "$Conn1", "w", "x")))), Map.of());
+
+        assertThat(statuses(events)).containsExactly("start:ok", "n2:ok", "s:error", "s2:error", "e:ok", "finish:ok");
+        assertThat(nodeEvent(events, "s").get("error").get("message").asText())
+                .isEqualTo("No se puede cambiar `$Conn1[5].x`: `$Conn1[5]` no existe");
+        assertThat(nodeEvent(events, "s2").get("error").get("message").asText())
+                .isEqualTo("No se puede cambiar `$Nadie.x`: `$Nadie` no tiene valor");
+        assertThat(bodies("/demo/echo")).containsExactly("{\"task\": [{\"id\":1,\"title\":\"Tarea\"}], \"who\": \"x\"}");
+    }
 
     @Test
     void w29_w69_the_login_node_logs_in_once_and_later_http_nodes_use_its_session() {

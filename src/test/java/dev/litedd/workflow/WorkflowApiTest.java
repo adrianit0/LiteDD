@@ -176,7 +176,7 @@ class WorkflowApiTest {
         assertThat(r.statusCode()).isEqualTo(400);
         JsonNode body = JSON.readTree(r.body());
         assertThat(body.get("code").asText()).isEqualTo("workflow_invalid");
-        assertThat(body.get("details").get(0).asText()).contains("no llega de Start a Finish");
+        assertThat(body.get("details").get(0).asText()).isEqualTo("La salida de «Espera1» no tiene flecha");
     }
 
     @Test

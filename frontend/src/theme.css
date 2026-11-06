@@ -2859,6 +2859,11 @@ mark {
   cursor: pointer;
 }
 
+/* El navegador dibujaría el foco como un rectángulo alrededor de toda la flecha; se marca el trazo. */
+.wf-edge-hit:focus {
+  outline: none;
+}
+
 .wf-edge-hit:focus-visible {
   stroke: var(--selection);
   outline: none;
@@ -3176,4 +3181,94 @@ mark {
 
 .wf-node.wf-kind-login .wf-node-kind {
   color: var(--green);
+}
+
+/* W-12 a W-19, W-90 a W-99: control del flujo, codos y notas arrastradas (ADR-0041). */
+.wf-node.wf-kind-condition,
+.wf-node.wf-kind-foreach,
+.wf-node.wf-kind-break,
+.wf-node.wf-kind-set {
+  border-style: dashed;
+}
+
+.wf-node.wf-kind-condition {
+  min-height: 64px;
+}
+
+.wf-node.wf-kind-condition .wf-node-kind,
+.wf-node.wf-kind-foreach .wf-node-kind,
+.wf-node.wf-kind-break .wf-node-kind,
+.wf-node.wf-kind-set .wf-node-kind {
+  color: var(--warning);
+}
+
+.wf-node-sub code {
+  font-size: 11px;
+}
+
+/* W-15: una salida del flujo sin flecha. */
+.wf-port.out.open {
+  border-color: var(--error);
+}
+
+.wf-port-label {
+  position: absolute;
+  left: 14px;
+  top: -4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* W-18: los codos de la flecha seleccionada. */
+.wf-bend {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: all;
+  cursor: move;
+}
+
+.wf-canvas.editable .wf-edge-hit {
+  cursor: move;
+}
+
+/* W-19: el lienzo que recibiría la nota arrastrada desde el árbol. */
+.wf-canvas.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+.wf-field input.wf-code {
+  font-family: var(--font-mono);
+}
+
+/* W-71, W-79: avance, vuelta elegida y vueltas con error. */
+.wf-progress {
+  font-size: 13px;
+}
+
+.wf-iterations {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.wf-iterations select {
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+
+.wf-item {
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
