@@ -2332,6 +2332,18 @@ mark {
   overflow: auto;
 }
 
+/* H-75, ADR-0042: «Nuevo → Desde cURL…». */
+.curl-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 96vw);
+  min-width: min(420px, 96vw);
+  min-height: 320px;
+  max-height: 94vh;
+  overflow: hidden;
+  resize: both;
+}
+
 .constants-table {
   width: 100%;
   border-collapse: collapse;

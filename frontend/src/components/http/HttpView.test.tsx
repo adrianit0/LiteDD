@@ -122,6 +122,38 @@ describe('nota HTTP', () => {
     expect(screen.getByText('http://127.0.0.1:8080/demo/')).toBeTruthy();
   });
 
+  it('H-79 «Copiar como cURL» copia la llamada con la URL base, sin cookies ni contraseñas, y avisa de variables vacías', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await mount(
+      JSON.stringify({
+        method: 'POST',
+        endpoint: '/user/#{id}/tasks',
+        pathValues: { id: '5' },
+        headers: [
+          { key: 'Cookie', value: 'JSESSIONID=abc', enabled: true },
+          { key: 'X-Requested-With', value: 'XMLHttpRequest', enabled: true },
+        ],
+        body: { mode: 'raw', rawType: 'json', raw: '{"q":"#{q}"}' },
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copiar como cURL' }));
+    });
+    const command = writeText.mock.calls[0][0] as string;
+    expect(command.startsWith("curl 'http://127.0.0.1:8080/demo/user/5/tasks' \\\n  -X POST")).toBe(true);
+    expect(command).toContain("-H 'X-Requested-With: XMLHttpRequest'");
+    expect(command).toContain(`--data-raw '{"q":"#{q}"}'`);
+    expect(command).not.toMatch(/cookie|csrf|userid|authorization/i);
+    expect(useUi.getState().notices.map((n) => n.text)).toContain('Copiado como cURL; falta el valor de q');
+  });
+
+  it('H-79 sin URL base no se puede copiar como cURL', async () => {
+    useUi.setState({ config: { ...DEFAULT_CONFIG } });
+    await mount();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Copiar como cURL' }).disabled).toBe(true);
+  });
+
   it('H-02 H-03 P-14 modificar el formulario lo guarda en la nota y fija la pestaña', async () => {
     await mount();
     fireEvent.change(screen.getByLabelText('Método'), { target: { value: 'DELETE' } });

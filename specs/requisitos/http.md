@@ -38,6 +38,18 @@ Tercer tipo de nota: una llamada HTTP al servidor local de pruebas o, si el usua
 | H-73 | Content-Type, X-USERID, X-CSRF-TOKEN y Authorization las calcula LiteDD en cada llamada y no se pueden añadir a la lista; tampoco Host, Content-Length, Connection, Expect y Upgrade (H-16). No se admiten nombres repetidos ni no válidos, ni saltos de línea o caracteres de control en los valores. Una fila Cookie activa se añade a las cookies del login, separada por `; `; sin login se envía sola. |
 | H-74 | «Restablecer básicas» vuelve a poner Accept, User-Agent y Cache-Control al principio de la lista, activas y con el valor de serie, y conserva las demás filas. Como el resto de «Ajustes», se aplica al pulsar «Guardar ajustes». |
 
+## cURL
+
+Pasar llamadas entre LiteDD, el navegador y la terminal (ADR-0042). Los ejemplos usan direcciones inventadas (S-32).
+
+| ID | Requisito |
+|---|---|
+| H-75 | «Nuevo → Desde cURL…» abre un diálogo donde se pega un comando cURL, como el de «Copy as cURL (bash)» o «Copy as cURL (cmd)» de Chrome. «Crear» hace una nota HTTP con el método, el endpoint, los params, las cabeceras y el cuerpo, y la abre. El título es el método y el endpoint. Si el texto no es un cURL o no tiene URL, no se crea nada y el diálogo dice por qué. |
+| H-76 | Endpoint: si la URL empieza por la URL base de algún perfil (H-61), se quita la más larga que coincida; si no, se queda la ruta y se avisa. La consulta pasa a params, decodificada y en su orden. |
+| H-77 | Cabeceras: se descartan las que LiteDD calcula o pone por su cuenta (Cookie, X-CSRF-TOKEN, X-USERID, Authorization y Content-Type), las del cliente HTTP (H-16), Accept-Encoding, las `sec-*` y Priority del navegador y las que ya están en «Ajustes → Cabeceras» (H-72). Las demás pasan a cabeceras propias. `-b`/`--cookie` y `-u`/`--user` se descartan. Un aviso nombra lo descartado. |
+| H-78 | Cuerpo: `-d`, `--data-raw`, `--data-binary` y similares dan un cuerpo raw; con `-G`, van a params. JSON y XML según el Content-Type; cualquier otro, texto, y si su Content-Type no es `text/plain` se guarda como valor cambiado de la cabecera generada Content-Type. `-F`, `--form-string` y un cuerpo `multipart/form-data` dan form-data; los ficheros se descartan y se avisa. Sin `-X`, el método es POST con cuerpo y GET sin él. |
+| H-79 | «Copiar como cURL» copia la llamada como un comando cURL para bash: URL base del perfil activo, endpoint, params activos, cabeceras generadas y propias activas con los cambios de la nota, y cuerpo, con los valores de las variables puestos. Nunca lleva contraseñas, cookies ni cabeceras del login: ni Authorization, Cookie, X-CSRF-TOKEN ni X-USERID. Sin URL base no se puede copiar; una variable sin valor queda como `#{nombre}` y se avisa. |
+
 ## Login
 
 | ID | Requisito |

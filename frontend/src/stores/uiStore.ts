@@ -47,6 +47,9 @@ interface UiState {
   /** M-65 */
   constantsOpen: boolean;
   setConstantsOpen: (open: boolean) => void;
+  /** H-75: diálogo «Desde cURL…»; parentId es la madre de la nota nueva (null, la raíz). */
+  curlImport: { parentId: string | null } | null;
+  setCurlImport: (value: { parentId: string | null } | null) => void;
   /** M-67: cambia al guardar las constantes, para volver a analizar las notas SQL abiertas. */
   constantsVersion: number;
   constantsSaved: () => void;
@@ -117,6 +120,8 @@ export const useUi = create<UiState>((set, get) => ({
   setSettingsOpen: (open, category = 'general') => set({ settingsOpen: open, settingsCategory: category }),
   constantsOpen: false,
   setConstantsOpen: (open) => set({ constantsOpen: open }),
+  curlImport: null,
+  setCurlImport: (value) => set({ curlImport: value }),
   constantsVersion: 0,
   constantsSaved: () => set({ constantsVersion: get().constantsVersion + 1 }),
   contactLost: false,

@@ -122,7 +122,7 @@ describe('App', () => {
     expect(screen.queryByText(/Sin conexión configurada/)).toBeNull();
   });
 
-  it('N-05 B-01 W-01 el botón «+ Nuevo» abre un menú flotante con los seis tipos de nota', async () => {
+  it('N-05 B-01 W-01 el botón «+ Nuevo» abre un menú flotante con los tipos de nota y «Desde cURL…»', async () => {
     render(<App />);
     await act(async () => {});
     const button = screen.getByRole('button', { name: '+ Nuevo' });
@@ -132,6 +132,7 @@ describe('App', () => {
       'Nota Markdown',
       'Nota SQL',
       'Nota HTTP',
+      'Desde cURL…',
       'Nota MyBatis',
       'Nota Pizarra',
       'Nota Workflow',
@@ -162,6 +163,43 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: 'N', altKey: true, shiftKey: true });
     });
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'sql');
+  });
+
+  it('H-75 H-77 «Nuevo → Desde cURL…» crea la nota HTTP rellena, la abre y avisa de lo descartado', async () => {
+    const httpNote = { ...created, type: 'http' as const };
+    mocked.createNote.mockResolvedValue(httpNote);
+    mocked.saveNote.mockImplementation(async (id, title, content, baseVersion) => ({ ...httpNote, id, title, content, version: baseVersion + 1 }));
+    (api as unknown as { appVersion: () => Promise<string> }).appVersion = () => Promise.resolve('0.1.0');
+    render(<App />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '+ Nuevo' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Desde cURL…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Nota HTTP desde cURL' });
+    const text = within(dialog).getByRole('textbox', { name: 'Comando cURL' });
+    expect(document.activeElement).toBe(text);
+
+    // Un texto que no es cURL no crea nada y dice por qué.
+    fireEvent.change(text, { target: { value: 'wget http://127.0.0.1/' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Crear' }));
+    });
+    expect(within(dialog).getByRole('alert').textContent).toContain('debe empezar por curl');
+    expect(mocked.createNote).not.toHaveBeenCalled();
+
+    fireEvent.change(text, {
+      target: { value: `curl 'http://127.0.0.1:8080/x/tasks?page=2' -H 'cookie: a=1' -H 'x-csrf-token: t' --data-raw '{"name":"renovación"}'` },
+    });
+    await act(async () => {
+      fireEvent.keyDown(text, { key: 'Enter', ctrlKey: true });
+    });
+    expect(mocked.createNote).toHaveBeenCalledWith(null, 'http');
+    const [, title, content] = mocked.saveNote.mock.calls[0];
+    expect(title).toBe('POST /x/tasks');
+    expect(JSON.parse(content)).toMatchObject({ method: 'POST', endpoint: '/x/tasks', body: { mode: 'raw', raw: '{"name":"renovación"}' } });
+    expect(screen.queryByRole('dialog', { name: 'Nota HTTP desde cURL' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Endpoint').value).toBe('/x/tasks');
+    expect(screen.getByText(/Descartado: cookie, x-csrf-token\./)).toBeTruthy();
+    expect(screen.getByText(/se usa solo la ruta/)).toBeTruthy();
   });
 
   it('N-05 H-01 «Nuevo → Nota HTTP» crea una nota HTTP sin modos; Ctrl+E no hace nada y Ctrl+Intro la envía', async () => {
@@ -397,7 +435,7 @@ describe('App', () => {
     nuevo.focus();
     fireEvent.keyDown(nuevo, { key: 'ArrowRight' });
     const submenu = screen.getByRole('menu', { name: 'Nuevo' });
-    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Nota MyBatis', 'Nota Pizarra', 'Nota Workflow']);
+    expect(within(submenu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Nota Markdown', 'Nota SQL', 'Nota HTTP', 'Desde cURL…', 'Nota MyBatis', 'Nota Pizarra', 'Nota Workflow']);
     fireEvent.keyDown(within(submenu).getAllByRole('menuitem')[0], { key: 'ArrowLeft' });
     expect(screen.queryByRole('menu', { name: 'Nuevo' })).toBeNull();
     expect(screen.getByRole('menu')).toBeTruthy();

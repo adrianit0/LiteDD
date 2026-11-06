@@ -18,6 +18,7 @@ import { useWorkflowRuns } from './stores/workflowRunStore';
 import { QuickSearch } from './components/QuickSearch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ConstantsDialog } from './components/ConstantsDialog';
+import { CurlImportDialog } from './components/http/CurlImportDialog';
 import { startPresence } from './presence';
 
 /** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
@@ -28,6 +29,7 @@ export function App() {
   const quickSearch = useUi((s) => s.quickSearchOpen);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const constantsOpen = useUi((s) => s.constantsOpen);
+  const curlImport = useUi((s) => s.curlImport);
   const contactLost = useUi((s) => s.contactLost);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -182,6 +184,7 @@ export function App() {
       </div>
       {settingsOpen && <SettingsDialog />}
       {constantsOpen && <ConstantsDialog />}
+      {curlImport && <CurlImportDialog parentId={curlImport.parentId} />}
       <DialogHost />
       <ConfirmKeyDialog />
       {quickSearch && <QuickSearch />}

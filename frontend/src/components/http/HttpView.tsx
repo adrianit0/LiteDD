@@ -21,6 +21,8 @@ import {
   type RawType,
   type Row,
 } from '../../http/content';
+import { exportCurl } from '../../http/curl';
+import { copyText } from '../../clipboard';
 import { elapsedText } from '../../sql/results';
 import { NoteEditor } from '../../editor/NoteEditor';
 import { KeyValueTable } from './KeyValueTable';
@@ -84,6 +86,16 @@ export function HttpView({ tab }: { tab: Tab }) {
 
   const missing = variables.filter((v) => !(content.pathValues[v] ?? '').trim());
   const send = () => void runs.execute(tab.id);
+
+  // H-79: sin contraseñas, cookies ni cabeceras del login.
+  const copyCurl = () => {
+    if (!profile.baseUrl) return;
+    const { command, missing: empty } = exportCurl(content, profile.baseUrl, version, http.headers);
+    void copyText(
+      command,
+      empty.length > 0 ? `Copiado como cURL; falta el valor de ${empty.join(', ')}` : 'Copiado como cURL, sin contraseñas ni cookies',
+    );
+  };
 
   // H-15, H-72: sin cambios en la nota, la cabecera se envía como dice «Ajustes».
   const setGenerated = (g: GeneratedHeader, change: { value?: string | null; enabled?: boolean }) => {
@@ -168,6 +180,14 @@ export function HttpView({ tab }: { tab: Tab }) {
           aria-keyshortcuts="Control+Enter"
         >
           Enviar
+        </button>
+        <button
+          type="button"
+          onClick={copyCurl}
+          disabled={!profile.baseUrl}
+          title={profile.baseUrl ? 'Sin contraseñas ni cookies' : `Falta la URL base del perfil «${profile.name}»`}
+        >
+          Copiar como cURL
         </button>
         {run.running && (
           <>

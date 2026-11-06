@@ -34,6 +34,15 @@ export async function createAndOpen(parentId: string | null, type: NoteType): Pr
   }
 }
 
+/** H-75: nota HTTP hecha a partir de un comando cURL; la crea al final y la abre. */
+export async function createFromCurl(parentId: string | null, title: string, content: string): Promise<void> {
+  if (parentId) useUi.getState().expand(parentId);
+  const note = await useTree.getState().create(parentId, 'http');
+  const saved = await api.saveNote(note.id, title, content, note.version);
+  useTree.getState().applyNote(saved);
+  await useTabs.getState().open(saved.id, { newTab: true, note: saved });
+}
+
 /** N-04, N-05: tipos del menú «Nuevo», en la raíz o como hijas (ADR-0026). */
 export function newNoteItems(parentId: string | null): MenuItem[] {
   const root = parentId === null;
@@ -41,6 +50,7 @@ export function newNoteItems(parentId: string | null): MenuItem[] {
     { label: 'Nota Markdown', shortcut: root ? 'Alt+N' : undefined, onSelect: () => void createAndOpen(parentId, 'md') },
     { label: 'Nota SQL', shortcut: root ? 'Alt+Mayús+N' : undefined, onSelect: () => void createAndOpen(parentId, 'sql') },
     { label: 'Nota HTTP', onSelect: () => void createAndOpen(parentId, 'http') },
+    { label: 'Desde cURL…', onSelect: () => useUi.getState().setCurlImport({ parentId }) },
     { label: 'Nota MyBatis', onSelect: () => void createAndOpen(parentId, 'xml') },
     { label: 'Nota Pizarra', onSelect: () => void createAndOpen(parentId, 'board') },
     { label: 'Nota Workflow', onSelect: () => void createAndOpen(parentId, 'workflow') },
