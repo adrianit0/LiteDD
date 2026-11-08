@@ -25,7 +25,7 @@ import {
   type DropZone,
   type KeyboardMove,
 } from '../treeOps';
-import { deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, toggleFavorite } from '../actions';
+import { copyNoteLink, deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
@@ -125,7 +125,7 @@ export function Tree() {
     if (row) setFocusId(row.node.id);
   };
 
-  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita y etiquetas. */
+  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita, etiquetas y copiar el enlace (N-94). */
   const menuItems = (id: string): MenuItem[] => {
     const node = nodes.find((n) => n.id === id);
     const generated = isGenerated(node);
@@ -141,6 +141,8 @@ export function Tree() {
         onSelect: () => void toggleFavorite(id),
       },
       { label: 'Etiquetas…', onSelect: () => void editTags(id) },
+      // N-94: para pegarlo fuera de LiteDD (N-95).
+      { label: 'Copiar enlace', onSelect: () => void copyNoteLink(id) },
     );
     if (!generated) {
       items.push(

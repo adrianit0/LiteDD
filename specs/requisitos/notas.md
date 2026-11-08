@@ -100,3 +100,6 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 | N-91 | Un enlace a una nota inexistente o en la papelera se muestra tachado. |
 | N-92 | Pegar o arrastrar una imagen al editor la guarda como adjunto e inserta `![](litedd://attachment/<id>)`. Tipos PNG, JPEG, GIF y WebP; máximo 10 MB. |
 | N-93 | Las direcciones `litedd://` se resuelven antes de sanear el HTML. |
+| N-94 | El menú contextual del árbol ofrece «Copiar enlace», que copia `litedd://note/<id>` para pegarlo fuera de LiteDD (ADR-0045). |
+| N-95 | Abrir un enlace `litedd://note/<id>` fuera de LiteDD (en otra aplicación o con `xdg-open`) trae la ventana de LiteDD al frente con esa nota abierta; si LiteDD no está en marcha, arranca y la abre. `scripts/install.sh` registra el esquema `litedd` en el lanzador. Si la nota no existe o está en la papelera, LiteDD lo avisa (ADR-0045). |
+| N-96 | `litedd --open "título"` hace lo mismo con la nota cuyo título coincide entero, sin distinguir mayúsculas ni acentos. Si no hay ninguna o hay varias, abre la búsqueda rápida (N-73) con ese texto (ADR-0045). |

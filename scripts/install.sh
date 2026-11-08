@@ -2,7 +2,7 @@
 # Instala LiteDD para el usuario actual, sin sudo:
 #   ~/.local/opt/litedd/                          aplicación
 #   ~/.local/bin/litedd                           comando
-#   ~/.local/share/applications/litedd.desktop    lanzador con icono
+#   ~/.local/share/applications/litedd.desktop    lanzador con icono, que abre los enlaces litedd:// (N-95)
 #
 # Uso:
 #   scripts/install.sh               instala la imagen de ./mvnw -Pdist package (target/dist/litedd)
@@ -106,6 +106,8 @@ install -m 644 packaging/litedd.png "$ICONS/litedd.png"
 sed -e "s|@BIN@|$OPT/bin/litedd|" -e "s|@ICON@|$ICONS/litedd.png|" packaging/litedd.desktop > "$APPS/litedd.desktop"
 chmod 644 "$APPS/litedd.desktop"
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" >/dev/null 2>&1 || true
+# N-95: los enlaces litedd://note/<id> de otras aplicaciones abren LiteDD (ADR-0045).
+command -v xdg-mime >/dev/null && xdg-mime default litedd.desktop x-scheme-handler/litedd >/dev/null 2>&1 || true
 
 echo "LiteDD instalado en $OPT"
 case ":$PATH:" in

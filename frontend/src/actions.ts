@@ -3,7 +3,9 @@ import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import { ask } from './stores/dialogStore';
-import type { Destination } from './treeOps';
+import { normalize, type Destination } from './treeOps';
+import { copyText } from './clipboard';
+import { noteUrl } from './markdown/links';
 import type { NoteType } from './types';
 import type { MenuItem } from './components/ContextMenu';
 
@@ -21,6 +23,61 @@ export async function openNote(id: string, newTab = false): Promise<void> {
   } catch (e) {
     fail(e, 'No se pudo abrir la nota');
   }
+}
+
+/** ADR-0045: lo que llega en el evento open del canal de presencia. */
+export interface OpenRequest {
+  noteId?: string | null;
+  title?: string | null;
+}
+
+/** El árbol y las pestañas restauradas, para no abrir la nota antes de tiempo. */
+function whenLoaded(): Promise<void> {
+  const ready = () => useTree.getState().loaded && useTabs.getState().restored;
+  if (ready()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!ready()) return;
+      stopTree();
+      stopTabs();
+      resolve();
+    };
+    const stopTree = useTree.subscribe(check);
+    const stopTabs = useTabs.subscribe(check);
+  });
+}
+
+/**
+ * N-95: un enlace litedd://note/<id> pulsado fuera abre la nota como un clic en el árbol. N-96: un título abre
+ * la única nota que se llama así, sin distinguir mayúsculas ni acentos; si no la hay, la búsqueda rápida.
+ */
+export async function openFromOutside(request: OpenRequest): Promise<void> {
+  await whenLoaded();
+  const nodes = useTree.getState().nodes;
+  if (request.noteId) {
+    if (!nodes.some((n) => n.id === request.noteId)) {
+      useUi.getState().notify('La nota del enlace no existe o está en la papelera', 'error');
+      return;
+    }
+    useUi.getState().setQuickSearch(false);
+    await openNote(request.noteId);
+    return;
+  }
+  const title = request.title?.trim();
+  if (!title) return;
+  const wanted = normalize(title);
+  const matches = nodes.filter((n) => normalize(n.title.trim()) === wanted);
+  if (matches.length === 1) {
+    useUi.getState().setQuickSearch(false);
+    await openNote(matches[0].id);
+  } else {
+    useUi.getState().setQuickSearch(true, title);
+  }
+}
+
+/** N-94: copia litedd://note/<id> para pegarlo fuera de LiteDD. */
+export function copyNoteLink(id: string): Promise<void> {
+  return copyText(noteUrl(id), 'Enlace copiado');
 }
 
 /** N-05, N-06: crea la nota al final y la abre en edición con el título seleccionado. */

@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import { api, request } from './api';
-import { RETRY_DELAY, startPresence } from './presence';
+import { parseEvents, RETRY_DELAY, startPresence } from './presence';
+import { openFromOutside } from './actions';
 import { useTabs } from './stores/tabsStore';
 import { useUi } from './stores/uiStore';
 
@@ -8,6 +9,9 @@ vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
   return { ...actual, api: { health: vi.fn(), bye: vi.fn(), refreshToken: vi.fn().mockResolvedValue(undefined), appBuild: vi.fn().mockResolvedValue(5) } };
 });
+
+// ADR-0045: lo que hace la ventana con la nota pedida se prueba en App.test.tsx.
+vi.mock('./actions', () => ({ openFromOutside: vi.fn() }));
 
 const mocked = vi.mocked(api);
 
@@ -154,5 +158,44 @@ describe('presencia y contacto', () => {
       await restartWith(null);
       expect(reload).not.toHaveBeenCalled();
     });
+  });
+});
+
+/** Canal que entrega esos trozos de texto y después sigue abierto. */
+function chunkedStream(chunks: string[]) {
+  const queue = chunks.map((c) => new TextEncoder().encode(c));
+  const reader = {
+    read: vi.fn(async () => {
+      const value = queue.shift();
+      return value ? { done: false, value } : await new Promise<never>(() => {});
+    }),
+  };
+  return { ok: true, status: 200, body: { getReader: () => reader } };
+}
+
+describe('N-95 N-96 notas pedidas desde fuera (ADR-0045)', () => {
+  it('N-95 los eventos del canal se separan, sin comentarios, y lo incompleto queda para después', () => {
+    expect(parseEvents(': conectado\n\nevent: open\ndata: {"noteId":"a"}\n\n: latido\n\nevent: op')).toEqual({
+      events: [{ event: 'open', data: '{"noteId":"a"}' }],
+      rest: 'event: op',
+    });
+    expect(parseEvents('id: 1\r\nevent: open\r\ndata:{"title":"x"}\r\n\r\ndata: a\ndata: b\n\n')).toEqual({
+      events: [
+        { event: 'open', data: '{"title":"x"}' },
+        { event: 'message', data: 'a\nb' },
+      ],
+      rest: '',
+    });
+  });
+
+  it('N-95 el evento open abre la nota aunque llegue partido entre lecturas', async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      chunkedStream([': conectado\n\n', 'event: open\nda', 'ta: {"noteId":"a","title":null}\n\n: latido\n\n', 'event: open\ndata: {roto}\n\n']),
+    );
+    stop = startPresence();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(openFromOutside).toHaveBeenCalledTimes(1);
+    expect(openFromOutside).toHaveBeenCalledWith({ noteId: 'a', title: null });
+    expect(useUi.getState().contactLost).toBe(false);
   });
 });

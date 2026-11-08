@@ -4,10 +4,15 @@ import type { TreeNode } from '../types';
 export const NOTE_PREFIX = 'litedd://note/';
 export const ATTACHMENT_PREFIX = 'litedd://attachment/';
 
+/** N-94: litedd://note/<id>, la dirección de una nota, que también vale fuera de LiteDD (N-95). */
+export function noteUrl(id: string): string {
+  return `${NOTE_PREFIX}${id}`;
+}
+
 /** N-90: [Título](litedd://note/<id>), con los corchetes del título escapados. */
 export function noteLink(node: Pick<TreeNode, 'id' | 'title'>): string {
   const title = node.title.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-  return `[${title}](${NOTE_PREFIX}${node.id})`;
+  return `[${title}](${noteUrl(node.id)})`;
 }
 
 /** Notas que encajan con lo escrito tras «[[», sin distinguir mayúsculas ni acentos. */

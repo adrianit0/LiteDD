@@ -106,7 +106,7 @@ describe('notas XML MyBatis', () => {
     expect(mocked.createNote).toHaveBeenCalledWith(null, 'xml');
   });
 
-  it('N-04 M-20 M-22 menú de la nota XML sin nuevas hijas y de la hija solo duplicar, favorita y etiquetas', async () => {
+  it('N-04 M-20 M-22 menú de la nota XML sin nuevas hijas y de la hija solo duplicar, favorita, etiquetas y copiar el enlace', async () => {
     render(<App />);
     const parentMenu = await menuOf(/Libros/);
     expect(parentMenu.some((l) => l.startsWith('Nuevo'))).toBe(false);
@@ -114,7 +114,8 @@ describe('notas XML MyBatis', () => {
     expect(parentMenu.some((l) => l.startsWith('Eliminar'))).toBe(true);
 
     const childMenu = await menuOf(/byAuthor/);
-    expect(childMenu).toEqual(['Duplicar', 'Marcar como favorita', 'Etiquetas…']);
+    // N-94: copiar el enlace no modifica la hija.
+    expect(childMenu).toEqual(['Duplicar', 'Marcar como favorita', 'Etiquetas…', 'Copiar enlace']);
   });
 
   it('M-24 la hija de escritura lleva la marca en el árbol', async () => {

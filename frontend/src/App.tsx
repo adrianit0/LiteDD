@@ -27,6 +27,7 @@ export function App() {
   const notices = useUi((s) => s.notices);
   const activeTab = useActiveTab();
   const quickSearch = useUi((s) => s.quickSearchOpen);
+  const quickSearchQuery = useUi((s) => s.quickSearchQuery);
   const settingsOpen = useUi((s) => s.settingsOpen);
   const constantsOpen = useUi((s) => s.constantsOpen);
   const curlImport = useUi((s) => s.curlImport);
@@ -187,7 +188,7 @@ export function App() {
       {curlImport && <CurlImportDialog parentId={curlImport.parentId} />}
       <DialogHost />
       <ConfirmKeyDialog />
-      {quickSearch && <QuickSearch />}
+      {quickSearch && <QuickSearch key={quickSearchQuery} />}
       <div className="notices" aria-live="polite">
         {notices.map((n) => (
           <div key={n.id} className={`notice notice-${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>

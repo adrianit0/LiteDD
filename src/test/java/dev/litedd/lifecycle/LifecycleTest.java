@@ -1,5 +1,6 @@
 package dev.litedd.lifecycle;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.HttpServer;
@@ -17,19 +18,26 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -54,6 +62,8 @@ class LifecycleTest {
     AtomicReference<Path> openedFolder = new AtomicReference<>();
     List<String> openedLinks = new CopyOnWriteArrayList<>();
     volatile boolean linksFail;
+    AtomicInteger windowsOpened = new AtomicInteger();
+    AtomicInteger windowsRaised = new AtomicInteger();
 
     @BeforeEach
     void start() throws Exception {
@@ -72,7 +82,7 @@ class LifecycleTest {
                         throw new IllegalStateException("sin navegador");
                     }
                     openedLinks.add(url);
-                }),
+                }, windowsOpened::incrementAndGet, windowsRaised::incrementAndGet),
                 new DataApi(new Exporter(store, clock), new Importer(store, backups, clock, Importer.MAX_BYTES), backups,
                         dir.resolve("data"), openedFolder::set, clock))).start();
     }
@@ -224,12 +234,94 @@ class LifecycleTest {
 
     @Test
     void lifecycle_command_line_options() {
-        assertThat(CommandLine.parse(new String[0])).isEqualTo(new Options(false, null, false));
-        assertThat(CommandLine.parse(new String[]{"--no-window", "--port", "47700"})).isEqualTo(new Options(true, 47700, false));
-        assertThat(CommandLine.parse(new String[]{"--stop"})).isEqualTo(new Options(false, null, true));
+        assertThat(CommandLine.parse(new String[0])).isEqualTo(new Options(false, null, false, null));
+        assertThat(CommandLine.parse(new String[]{"--no-window", "--port", "47700"})).isEqualTo(new Options(true, 47700, false, null));
+        assertThat(CommandLine.parse(new String[]{"--stop"})).isEqualTo(new Options(false, null, true, null));
         assertThatThrownBy(() -> CommandLine.parse(new String[]{"--port"})).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> CommandLine.parse(new String[]{"--port", "x"})).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> CommandLine.parse(new String[]{"--otra"})).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // --- N-95, N-96 (ADR-0045) ---
+
+    @Test
+    void n95_command_line_accepts_a_note_link_as_the_launcher_passes_it() {
+        String id = "3f2b8c1e-0d4a-4b7e-9c55-1a2b3c4d5e6f";
+        assertThat(CommandLine.parse(new String[]{"litedd://note/" + id}).open()).isEqualTo(OpenRequest.note(id));
+        for (String link : List.of("litedd://note/" + id + "/", "litedd://note/" + id + "?x=1", "litedd://note/" + id + "#a",
+                "LITEDD://note/" + id, "litedd://note/" + id.replace("-", "%2D"))) {
+            assertThat(OpenRequest.fromLink(link)).as(link).isEqualTo(OpenRequest.note(id));
+        }
+        assertThat(CommandLine.parse(new String[]{"--port", "47700", "litedd://note/" + id}))
+                .isEqualTo(new Options(false, 47700, false, OpenRequest.note(id)));
+        for (String bad : List.of("litedd://note/", "litedd://note/a%20b", "litedd://note/a%2Fb", "litedd://note/%zz",
+                "litedd://attachment/" + id, "https://example.org/")) {
+            assertThatThrownBy(() -> CommandLine.parse(new String[]{bad})).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> CommandLine.parse(new String[]{"litedd://note/a", "litedd://note/b"}))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void n96_command_line_opens_by_title() {
+        assertThat(CommandLine.parse(new String[]{"--open", "  Plan de pruebas "}).open())
+                .isEqualTo(OpenRequest.title("Plan de pruebas"));
+        assertThat(OpenRequest.title("Plan de pruebas").title()).isEqualTo("Plan de pruebas");
+        for (String[] bad : List.of(new String[]{"--open"}, new String[]{"--open", "  "}, new String[]{"--open", "a\nb"},
+                new String[]{"--open", "x".repeat(OpenRequest.TITLE_MAX + 1)}, new String[]{"--open", "a", "litedd://note/b"})) {
+            assertThatThrownBy(() -> CommandLine.parse(bad)).as(String.join(" ", bad)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void n95_open_note_reaches_the_connected_window_and_brings_it_to_the_front() throws Exception {
+        try (BufferedReader events = events()) {
+            assertThat(post("/api/open-note", "{\"noteId\":\"nota-1\"}").statusCode()).isEqualTo(200);
+            assertThat(nextOpenEvent(events)).isEqualTo(Map.of("noteId", "nota-1"));
+            // N-96: el título viaja tal cual; la ventana busca la nota.
+            assertThat(post("/api/open-note", "{\"title\":\" Plan de pruebas \"}").statusCode()).isEqualTo(200);
+            assertThat(nextOpenEvent(events)).isEqualTo(Map.of("title", "Plan de pruebas"));
+        }
+        assertThat(windowsRaised.get()).isEqualTo(2);
+        assertThat(windowsOpened.get()).isZero();
+    }
+
+    @Test
+    void n95_without_a_window_opens_one_and_delivers_the_note_when_it_connects() throws Exception {
+        assertThat(post("/api/open-note", "{\"noteId\":\"nota-2\"}").statusCode()).isEqualTo(200);
+        assertThat(windowsOpened.get()).isEqualTo(1);
+        assertThat(windowsRaised.get()).isZero();
+        try (BufferedReader events = events()) {
+            assertThat(nextOpenEvent(events)).isEqualTo(Map.of("noteId", "nota-2"));
+        }
+        // Se entrega una sola vez.
+        try (BufferedReader again = events()) {
+            assertThat(post("/api/open-note", "{\"noteId\":\"nota-3\"}").statusCode()).isEqualTo(200);
+            assertThat(nextOpenEvent(again)).isEqualTo(Map.of("noteId", "nota-3"));
+        }
+    }
+
+    @Test
+    void n95_open_note_needs_the_token_and_exactly_one_valid_target() throws Exception {
+        HttpResponse<String> denied = client.send(HttpRequest.newBuilder(url("/api/open-note"))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"noteId\":\"a\"}")).build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(denied.statusCode()).isEqualTo(403);
+        for (String bad : List.of("{}", "{\"noteId\":\"a\",\"title\":\"b\"}", "{\"noteId\":\"a b\"}", "{\"noteId\":\"../a\"}",
+                "{\"title\":\"  \"}", "{\"title\":\"" + "x".repeat(OpenRequest.TITLE_MAX + 1) + "\"}")) {
+            HttpResponse<String> r = post("/api/open-note", bad);
+            assertThat(r.statusCode()).as(bad).isEqualTo(400);
+            assertThat(JSON.readTree(r.body()).get("code").asText()).isEqualTo("invalid_note");
+        }
+        assertThat(windowsOpened.get() + windowsRaised.get()).isZero();
+    }
+
+    @Test
+    void n95_the_launcher_and_the_installer_register_the_litedd_scheme() throws Exception {
+        String desktopFile = Files.readString(Path.of("packaging/litedd.desktop"));
+        assertThat(desktopFile).contains("Exec=@BIN@ %u", "MimeType=x-scheme-handler/litedd;");
+        assertThat(Files.readString(Path.of("scripts/install.sh")))
+                .contains("xdg-mime default litedd.desktop x-scheme-handler/litedd");
+        assertThat(Files.readString(Path.of("scripts/uninstall.sh"))).contains("x-scheme-handler\\/litedd=");
     }
 
     // --- U-10 ---
@@ -307,6 +399,42 @@ class LifecycleTest {
 
     private URI url(String path) {
         return URI.create("http://127.0.0.1:" + port + path);
+    }
+
+    /** Abre /api/events como la ventana y espera a quedar conectado. */
+    private BufferedReader events() throws Exception {
+        HttpResponse<InputStream> stream = client.send(HttpRequest.newBuilder(url("/api/events"))
+                .header("X-LiteDD-Token", TOKEN).header("Accept", "text/event-stream").GET().build(),
+                HttpResponse.BodyHandlers.ofInputStream());
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream.body(), StandardCharsets.UTF_8));
+        assertThat(readLine(reader)).contains("conectado");
+        return reader;
+    }
+
+    /** El JSON del siguiente evento open, sin los campos nulos. */
+    private Map<String, Object> nextOpenEvent(BufferedReader reader) throws Exception {
+        String line;
+        do {
+            line = readLine(reader);
+        } while (!line.equals("event: " + LifecycleApi.OPEN_EVENT));
+        do {
+            line = readLine(reader);
+        } while (!line.startsWith("data:"));
+        Map<String, Object> data = JSON.readValue(line.substring(5).strip(), new TypeReference<Map<String, Object>>() { });
+        data.values().removeIf(Objects::isNull);
+        return data;
+    }
+
+    private static String readLine(BufferedReader reader) throws Exception {
+        String line = CompletableFuture.supplyAsync(() -> {
+            try {
+                return reader.readLine();
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }).get(5, TimeUnit.SECONDS);
+        assertThat(line).as("el canal sigue abierto").isNotNull();
+        return line;
     }
 
     private JsonNode get(String path) throws Exception {

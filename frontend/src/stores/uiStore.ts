@@ -33,7 +33,9 @@ interface UiState {
   notices: Notice[];
   /** N-73 */
   quickSearchOpen: boolean;
-  setQuickSearch: (open: boolean) => void;
+  /** N-96: el texto con el que se abre; vacío con Ctrl+K. */
+  quickSearchQuery: string;
+  setQuickSearch: (open: boolean, query?: string) => void;
   /** N-80: el menú contextual «Etiquetas…» lleva el foco al editor de etiquetas de esa nota. */
   focusTagsFor: string | null;
   setFocusTags: (noteId: string | null) => void;
@@ -110,7 +112,8 @@ export const useUi = create<UiState>((set, get) => ({
   reveal: null,
   notices: [],
   quickSearchOpen: false,
-  setQuickSearch: (open) => set({ quickSearchOpen: open }),
+  quickSearchQuery: '',
+  setQuickSearch: (open, query = '') => set({ quickSearchOpen: open, quickSearchQuery: open ? query : '' }),
   focusTagsFor: null,
   setFocusTags: (noteId) => set({ focusTagsFor: noteId }),
   config: DEFAULT_CONFIG,

@@ -9,7 +9,8 @@ import { TypeIcon } from './TypeIcon';
 /** N-73: Ctrl+K busca por título; Intro abre la nota. */
 export function QuickSearch() {
   const nodes = useTree((s) => s.nodes);
-  const [query, setQuery] = useState('');
+  // N-96: abierta desde fuera, empieza con el título pedido.
+  const [query, setQuery] = useState(() => useUi.getState().quickSearchQuery);
   const [index, setIndex] = useState(0);
   const matches = useMemo(() => linkCandidates(nodes, query, 30), [nodes, query]);
   const close = () => useUi.getState().setQuickSearch(false);

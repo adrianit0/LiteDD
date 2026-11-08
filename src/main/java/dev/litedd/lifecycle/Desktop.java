@@ -42,6 +42,21 @@ public final class Desktop {
     }
 
     /**
+     * N-95, N-96: trae al frente la ventana de LiteDD (ADR-0045). Solo en Linux y en un hilo aparte; si no se
+     * puede, queda en el registro y la nota se abre igualmente.
+     */
+    public static void raiseWindow() {
+        if (!LINUX) {
+            return;
+        }
+        Thread.ofVirtual().name("litedd-raise").start(() -> {
+            if (!X11Activator.raise(WINDOW_CLASS)) {
+                log.info("No se pudo traer al frente la ventana de LiteDD");
+            }
+        });
+    }
+
+    /**
      * ADR-0019: un perfil propio arranca un proceso de Chrome aparte, de modo que la ventana no se une a un
      * Chrome ya abierto y conserva su clase. Con X11 (también bajo Wayland) la clase es la de --class y el
      * escritorio la asocia al lanzador de LiteDD y a su icono.

@@ -108,7 +108,7 @@ Las versiones no fijadas en la tabla se fijan en el Sprint 0 con la última esta
 
 ### Ciclo de vida
 
-1. Al lanzar, se comprueba si ya hay una instancia en el puerto configurado (por defecto 47600) con `GET /api/health`. Si la hay, solo se abre la ventana.
+1. Al lanzar, se comprueba si ya hay una instancia en el puerto configurado (por defecto 47600) con `GET /api/health`. Si la hay, solo se abre la ventana. Si se pide una nota (`litedd litedd://note/<id>` o `litedd --open "título"`), se le entrega a la instancia con `POST /api/open-note`, que la abre en la ventana y la trae al frente (ADR-0045).
 2. Si no la hay: se abre SQLite, se aplican migraciones, se hace la copia diaria si toca y se arranca el servidor.
 3. Se abre la ventana con `google-chrome --app=http://127.0.0.1:47600/`, con un perfil propio y la clase de ventana `litedd`, para que tenga su propio icono en la barra de aplicaciones (ADR-0019). Si Chrome no está, se usa `xdg-open`. Los enlaces externos de las notas no se abren en esa ventana: el servidor los entrega con `google-chrome <url>` al Chrome habitual del usuario, como pestaña nueva (ADR-0036).
 4. La interfaz mantiene abierto un canal SSE (`/api/events`) como señal de presencia.
@@ -116,7 +116,7 @@ Las versiones no fijadas en la tabla se fijan en el Sprint 0 con la última esta
 6. Si la presencia se pierde sin despedida (pestaña suspendida, fallo del navegador), el proceso sigue vivo. Un ajuste opcional permite apagarlo tras N minutos; por defecto está desactivado.
 7. Al actualizar, el proceso se apaga de forma ordenada y un proceso `sh` independiente sustituye el JAR y lo vuelve a arrancar con `--no-window`. La ventana abierta recupera el contacto y se recarga, sin ningún paso a mano (ADR-0033, ADR-0035).
 
-Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window`, `litedd --port N`, `litedd --stop`.
+Opciones de línea de comandos: `litedd` (arrancar y abrir), `litedd --no-window`, `litedd --port N`, `litedd --stop`, `litedd litedd://note/<id>` y `litedd --open "título"` (N-95, N-96).
 
 ### Memoria y sesiones largas
 

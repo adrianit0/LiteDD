@@ -1,12 +1,53 @@
 import { api, onNetworkFailure, sessionToken } from './api';
+import { openFromOutside, type OpenRequest } from './actions';
 import { useTabs } from './stores/tabsStore';
 import { useUi } from './stores/uiStore';
 
 /** U-11: cadencia del reintento mientras no hay contacto. */
 export const RETRY_DELAY = 3000;
 
+export interface ServerEvent {
+  event: string;
+  data: string;
+}
+
+/** Eventos SSE completos de un texto; lo que queda tras el último es el principio del siguiente. */
+export function parseEvents(text: string): { events: ServerEvent[]; rest: string } {
+  const blocks = text.replace(/\r\n?/g, '\n').split('\n\n');
+  const rest = blocks.pop() ?? '';
+  const events: ServerEvent[] = [];
+  for (const block of blocks) {
+    let event = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      // Los comentarios («: latido») no son eventos.
+      if (line === '' || line.startsWith(':')) continue;
+      const colon = line.indexOf(':');
+      const field = colon < 0 ? line : line.slice(0, colon);
+      const value = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
+      if (field === 'event') event = value;
+      else if (field === 'data') data.push(value);
+    }
+    if (data.length > 0) events.push({ event, data: data.join('\n') });
+  }
+  return { events, rest };
+}
+
+/** N-95, N-96: el evento open lleva la nota pedida desde fuera. */
+function onEvent(e: ServerEvent) {
+  if (e.event !== 'open') return;
+  let request: OpenRequest;
+  try {
+    request = JSON.parse(e.data) as OpenRequest;
+  } catch {
+    return;
+  }
+  void openFromOutside(request);
+}
+
 /**
- * Ciclo de vida (ADR-0017): la ventana mantiene abierto el canal /api/events y se despide al cerrarse.
+ * Ciclo de vida (ADR-0017): la ventana mantiene abierto el canal /api/events y se despide al cerrarse. Por
+ * el canal llegan también las notas que se piden desde fuera (N-95, N-96, ADR-0045).
  * U-11: si el canal o una petición fallan, aparece la banda, se reintenta solo y, al recuperar el
  * contacto, se guardan las pestañas pendientes.
  */
@@ -30,9 +71,15 @@ export function startPresence(): () => void {
       });
       if (!res.ok || !res.body) throw new Error(`Error ${res.status}`);
       const reader = res.body.getReader();
-      // Solo importa que el canal siga abierto; el contenido son latidos.
-      while (!(await reader.read()).done) {
-        /* latido */
+      const decoder = new TextDecoder();
+      let rest = '';
+      // Que el canal siga abierto es la presencia; trae latidos y las notas pedidas desde fuera (ADR-0045).
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const parsed = parseEvents(rest + decoder.decode(value, { stream: true }));
+        rest = parsed.rest;
+        parsed.events.forEach(onEvent);
       }
     } catch {
       // El servidor se ha ido o la ventana se cierra.

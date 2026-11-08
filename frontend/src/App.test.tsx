@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { App } from './App';
+import { openFromOutside } from './actions';
 import { api, ApiError, DEFAULT_CONFIG } from './api';
 import { useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
@@ -593,5 +594,81 @@ describe('App', () => {
     expect(tab.status).toBe('error');
     expect(tab.content).toBe('texto sin guardar');
     expect(useUi.getState().notices.filter((n) => n.kind === 'error')).toHaveLength(0);
+  });
+});
+
+describe('N-94 a N-96 abrir LiteDD desde fuera (ADR-0045)', () => {
+  const nodes = [
+    { ...created, id: 'a', title: 'Plan de pruebas' },
+    { ...created, id: 'b', title: 'Índice', position: 1 },
+    { ...created, id: 'c', title: 'Notas', position: 2 },
+    { ...created, id: 'd', title: 'notas', position: 3 },
+  ];
+
+  beforeEach(() => {
+    mocked.tree.mockResolvedValue(nodes);
+    mocked.getNote.mockImplementation(async (id: string) => ({ ...nodes.find((n) => n.id === id)! }));
+    useTree.setState({ nodes: [], loaded: false });
+    useUi.setState({ quickSearchOpen: false, quickSearchQuery: '', notices: [] });
+  });
+
+  it('N-94 «Copiar enlace» del menú contextual del árbol copia litedd://note/<id>', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    fireEvent.contextMenu(await screen.findByRole('treeitem', { name: /Plan de pruebas/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copiar enlace' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('litedd://note/a');
+    expect(useUi.getState().notices.at(-1)?.text).toBe('Enlace copiado');
+  });
+
+  it('N-95 un enlace abre la nota cuando ya están el árbol y las pestañas restauradas', async () => {
+    // Llega antes de que la ventana termine de cargar, como al arrancar desde un enlace.
+    const opening = openFromOutside({ noteId: 'a', title: null });
+    render(<App />);
+    await act(async () => {
+      await opening;
+    });
+    expect(screen.getByRole('tab', { name: /Plan de pruebas/ })).toBeTruthy();
+    expect(useTabs.getState().tabs).toHaveLength(1);
+  });
+
+  it('N-95 un enlace a una nota que no existe o está en la papelera avisa', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ noteId: 'borrada' });
+    });
+    expect(useTabs.getState().tabs).toHaveLength(0);
+    expect(useUi.getState().notices.at(-1)).toMatchObject({ text: 'La nota del enlace no existe o está en la papelera', kind: 'error' });
+  });
+
+  it('N-96 un título abre la única nota que se llama así, sin distinguir mayúsculas ni acentos', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ title: '  indice ' });
+    });
+    expect(screen.getByRole('tab', { name: /Índice/ })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Búsqueda rápida' })).toBeNull();
+  });
+
+  it('N-96 con varias notas o ninguna abre la búsqueda rápida con el título', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ title: 'Notas' });
+    });
+    const dialog = within(screen.getByRole('dialog', { name: 'Búsqueda rápida' }));
+    expect(dialog.getByRole<HTMLInputElement>('combobox', { name: 'Título de la nota' }).value).toBe('Notas');
+    expect(dialog.getAllByRole('option').map((o) => o.textContent).sort()).toEqual(['MD Notas', 'MD notas']);
+    expect(useTabs.getState().tabs).toHaveLength(0);
+
+    await act(async () => {
+      await openFromOutside({ title: 'Nada parecido' });
+    });
+    expect(screen.getByRole<HTMLInputElement>('combobox', { name: 'Título de la nota' }).value).toBe('Nada parecido');
   });
 });

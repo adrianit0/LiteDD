@@ -1,5 +1,6 @@
 package dev.litedd;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.litedd.http.HttpServer;
 import dev.litedd.httpnotes.CorporateCa;
 import dev.litedd.httpnotes.HttpApi;
@@ -11,6 +12,7 @@ import dev.litedd.lifecycle.CommandLine.Options;
 import dev.litedd.lifecycle.Desktop;
 import dev.litedd.lifecycle.InstanceFile;
 import dev.litedd.lifecycle.LifecycleApi;
+import dev.litedd.lifecycle.OpenRequest;
 import dev.litedd.lifecycle.Presence;
 import dev.litedd.mysql.ConnectionApi;
 import dev.litedd.mysql.ConnectionFile;
@@ -54,7 +56,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Punto de entrada y ciclo de vida: instancia única, ventana, presencia y apagado ordenado
- * (ADR-0017). Opciones: litedd [--no-window] [--port N] | litedd --stop.
+ * (ADR-0017). Opciones: litedd [--no-window] [--port N] [litedd://note/&lt;id&gt; | --open "título"] | litedd --stop
+ * (ADR-0045).
  */
 public final class Main {
 
@@ -93,16 +96,23 @@ public final class Main {
 
         // Ciclo de vida, paso 1: si ya hay una instancia, solo se abre la ventana.
         if (isRunning(port)) {
+            if (options.open() != null) {
+                // N-95, N-96: la instancia en marcha abre la nota y trae su ventana al frente.
+                System.exit(sendOpen(instance, port, options.open()));
+                return;
+            }
             System.out.println("LiteDD ya está en marcha en " + url);
             if (!options.noWindow()) {
                 Desktop.openWindow(url);
             }
             return;
         }
-        start(port, url, settings, instance, options.noWindow());
+        start(port, url, settings, instance, options.noWindow(), options.open());
     }
 
-    private static void start(int port, String url, AppSettings settings, InstanceFile instance, boolean noWindow) {
+    /** @param open nota pedida desde fuera, o null; con ella siempre se abre una ventana (ADR-0045) */
+    private static void start(int port, String url, AppSettings settings, InstanceFile instance, boolean noWindow,
+                              OpenRequest open) {
         Clock clock = Clock.systemDefaultZone();
         // Ciclo de vida, paso 2: SQLite, migraciones, copia diaria y servidor.
         Store store = Store.open(DataPaths.database(), DataPaths.backups());
@@ -156,6 +166,8 @@ public final class Main {
         HttpRunner httpRunner = new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller(corporateCa));
         WorkflowRunner workflowRunner = new WorkflowRunner(notes, httpRunner,
                 new SqlRunner(sqlEngine, gateway, settings::get, constants::values), sqlEngine, constants::values);
+        LifecycleApi lifecycle = new LifecycleApi(presence.value, exit, Desktop::openLink, () -> Desktop.openWindow(url),
+                Desktop::raiseWindow);
         try {
             server.value = new HttpServer(port, token, List.of(
                     new NotesApi(notes),
@@ -170,7 +182,7 @@ public final class Main {
                             DataPaths.dataDir(), Desktop::openFolder, clock),
                     new HttpApi(httpRunner, httpCredentials, corporateCa, settings::get),
                     new WorkflowApi(workflowRunner, variableValues, notes),
-                    new LifecycleApi(presence.value, exit, Desktop::openLink),
+                    lifecycle,
                     new UpdateApi(Updater.installed(() -> settings.get().updateRepository(), port), exit))).start();
         } catch (RuntimeException e) {
             System.err.println("No se pudo escuchar en el puerto " + port + ": " + e.getMessage());
@@ -184,7 +196,10 @@ public final class Main {
         // C-02: las notas funcionan mientras se comprueba la conexión, que puede tardar unos segundos.
         Thread.ofVirtual().name("litedd-mysql-start").start(() -> connectionFile.load().ifPresent(gateway::configure));
         log.info("{} {} escuchando en {}", AppInfo.NAME, AppInfo.VERSION, url);
-        if (!noWindow) {
+        if (open != null) {
+            // N-95, N-96: sin ventanas conectadas, abre una y le entrega la nota al conectarse.
+            lifecycle.open(open);
+        } else if (!noWindow) {
             // Ciclo de vida, paso 3.
             Desktop.openWindow(url);
         }
@@ -236,6 +251,31 @@ public final class Main {
                 return 1;
             }
             System.out.println("LiteDD se está apagando");
+            return 0;
+        } catch (Exception e) {
+            System.err.println("No se pudo contactar con LiteDD: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /** N-95, N-96: entrega la nota a la instancia en marcha con el token del fichero de instancia (ADR-0045). */
+    static int sendOpen(InstanceFile instance, int port, OpenRequest request) {
+        InstanceFile.Instance running = instance.read().filter(i -> i.port() == port).orElse(null);
+        if (running == null) {
+            System.err.println("LiteDD está en marcha, pero no se encontró su fichero de instancia");
+            return 1;
+        }
+        try {
+            HttpResponse<String> r = HttpClient.newHttpClient().send(
+                    HttpRequest.newBuilder(URI.create("http://" + HttpServer.HOST + ":" + port + "/api/open-note"))
+                            .header("X-LiteDD-Token", running.token())
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(new ObjectMapper().writeValueAsString(request))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (r.statusCode() != 200) {
+                System.err.println("LiteDD no pudo abrir la nota (" + r.statusCode() + ")");
+                return 1;
+            }
             return 0;
         } catch (Exception e) {
             System.err.println("No se pudo contactar con LiteDD: " + e.getMessage());

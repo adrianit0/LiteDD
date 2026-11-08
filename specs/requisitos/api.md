@@ -64,11 +64,12 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/data/backup | Crear copia ahora |
 | POST | /api/data/open-folder | Abrir la carpeta de datos (X-10, ADR-0017) |
 | POST | /api/open-link | Abrir un enlace externo `http:`, `https:` o `mailto:` en una pestaña del Chrome habitual (N-32, ADR-0036) |
+| POST | /api/open-note | Abrir en la ventana una nota pedida desde fuera, con `{"noteId"}` o `{"title"}`, y traerla al frente; sin ventana, abre una (N-95, N-96, ADR-0045) |
 | GET | /api/update | Versión, build y commit instalados, y si la actualización está disponible y por qué (R-10, R-14) |
 | POST | /api/update/check | Buscar una versión nueva (R-13) |
 | POST | /api/update/apply | Descargar y verificar el build indicado y reiniciar (R-32, R-42, R-43) |
 | GET | /api/health | Firma, versión y build de la aplicación |
-| GET | /api/events | Canal SSE de presencia |
+| GET | /api/events | Canal SSE de presencia; el evento `open` lleva la nota pedida desde fuera (ADR-0045) |
 | POST | /api/presence/bye | Aviso de cierre de ventana |
 | POST | /api/shutdown | Apagado ordenado |
 

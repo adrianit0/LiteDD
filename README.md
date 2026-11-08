@@ -46,7 +46,11 @@ litedd                 arranca LiteDD y abre la ventana; si ya está en marcha, 
 litedd --no-window     arranca sin abrir ventana
 litedd --port 47700    usa otro puerto (por defecto, el de «Ajustes», 47600)
 litedd --stop          apaga la instancia en marcha
+litedd litedd://note/<id>   trae LiteDD al frente con esa nota abierta (arranca si hace falta)
+litedd --open "título"      lo mismo con la nota que se llama así; si no hay una sola, abre la búsqueda rápida
 ```
+
+«Copiar enlace», en el menú contextual del árbol, copia la dirección `litedd://note/<id>` de una nota. Pegada en un ticket o en un comentario, al pulsarla se abre LiteDD con esa nota: el instalador registra el esquema `litedd` en el lanzador. En la terminal vale `xdg-open litedd://note/<id>`.
 
 LiteDD se apaga solo unos 15 segundos después de cerrar la última ventana. Los ajustes (⚙ en la barra superior) permiten además un apagado automático tras unos minutos sin ventanas.
 
