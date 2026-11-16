@@ -16,6 +16,8 @@ export interface TreeNode {
   /** M-12: id de la sentencia en el mapper de la madre; null en una nota normal. */
   statementId?: string | null;
   statementKind?: StatementKind | null;
+  /** N-82: marcada como obsoleta por el usuario. */
+  obsolete?: boolean;
 }
 
 export interface Note extends TreeNode {
@@ -23,6 +25,10 @@ export interface Note extends TreeNode {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** N-86: la nota que la sustituye, si está obsoleta y se ha elegido una. */
+  replacedBy?: string | null;
+  /** N-88: última ejecución correcta. */
+  lastRunAt?: string | null;
 }
 
 export interface TrashItem {

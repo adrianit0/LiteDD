@@ -74,6 +74,11 @@ export function SearchBox() {
             <input type="checkbox" checked={filters.favorite} onChange={(e) => store.setFilters({ favorite: e.target.checked })} />
             Solo favoritas
           </label>
+          <label className="search-check">
+            {/* N-84 */}
+            <input type="checkbox" checked={filters.obsolete} onChange={(e) => store.setFilters({ obsolete: e.target.checked })} />
+            Mostrar obsoletas
+          </label>
           {tags.length > 0 && (
             <div className="search-tags" role="group" aria-label="Etiquetas">
               {tags.map((t) => (
@@ -116,7 +121,8 @@ export function SearchResults() {
           <li key={hit.id}>
             <button
               type="button"
-              className="search-hit"
+              className={`search-hit${hit.obsolete ? ' obsolete' : ''}`}
+              title={hit.obsolete ? 'Nota obsoleta' : undefined}
               onClick={() => void openNote(hit.id)}
               onMouseDown={(e) => e.button === 1 && e.preventDefault()}
               onAuxClick={(e) => e.button === 1 && void openNote(hit.id, true)}

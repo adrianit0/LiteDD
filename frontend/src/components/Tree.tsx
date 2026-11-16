@@ -25,7 +25,7 @@ import {
   type DropZone,
   type KeyboardMove,
 } from '../treeOps';
-import { copyNoteLink, deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, toggleFavorite } from '../actions';
+import { copyNoteLink, deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, setObsolete, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
@@ -125,7 +125,7 @@ export function Tree() {
     if (row) setFocusId(row.node.id);
   };
 
-  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita, etiquetas y copiar el enlace (N-94). */
+  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita, obsoleta (N-82), etiquetas y copiar el enlace (N-94). */
   const menuItems = (id: string): MenuItem[] => {
     const node = nodes.find((n) => n.id === id);
     const generated = isGenerated(node);
@@ -139,6 +139,11 @@ export function Tree() {
       {
         label: node?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
         onSelect: () => void toggleFavorite(id),
+      },
+      {
+        // N-82
+        label: node?.obsolete ? 'Quitar la marca de obsoleta' : 'Marcar como obsoleta',
+        onSelect: () => void setObsolete(id, !node?.obsolete),
       },
       { label: 'Etiquetas…', onSelect: () => void editTags(id) },
       // N-94: para pegarlo fuera de LiteDD (N-95).
@@ -367,6 +372,8 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
   if (drag.isDragging) classes.push('dragging');
   if (dropZone) classes.push(`drop-${dropZone}`);
   if (node.description) classes.push('described');
+  // N-83
+  if (node.obsolete) classes.push('obsolete');
 
   return (
     <div
@@ -421,7 +428,9 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
         <RenameInput initial={node.title} onDone={onRenamed} />
       ) : (
         <span className="tree-text">
-          <span className="tree-title">{node.title}</span>
+          <span className="tree-title" title={node.obsolete ? 'Nota obsoleta' : undefined}>
+            {node.title}
+          </span>
           {/* N-07: una línea, cortada con «…» donde acabe el panel; el texto completo en el título emergente. */}
           {node.description && (
             <span className="tree-description" title={node.description}>

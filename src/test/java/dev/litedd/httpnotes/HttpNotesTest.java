@@ -684,4 +684,24 @@ class HttpNotesTest {
             appLog.setLevel(previous);
         }
     }
+
+    @Test
+    void n88_only_a_2xx_answer_of_the_note_counts_as_a_correct_run() {
+        Note ok = http("Tareas", "{\"endpoint\":\"/user/5/tasks\"}");
+        Note gone = http("Falta", "{\"endpoint\":\"/missing\"}");
+        Note denied = http("Otro usuario", "{\"endpoint\":\"/user/5/tasks\",\"user\":\"otro\"}");
+
+        assertThat(run(gone).response().status()).isEqualTo(404);
+        assertThat(run(denied).phase()).isEqualTo("login");
+        assertThat(notes.get(gone.id()).lastRunAt()).isNull();
+        assertThat(notes.get(denied.id()).lastRunAt()).isNull();
+
+        assertThat(run(ok).response().status()).isEqualTo(200);
+        Note after = notes.get(ok.id());
+        assertThat(after.lastRunAt()).isNotNull();
+        assertThat(after.version()).isEqualTo(ok.version());
+        assertThat(after.updatedAt()).isEqualTo(ok.updatedAt());
+        // El login que hace la nota no es una ejecución de la nota de login.
+        assertThat(notes.get(loginNote.id()).lastRunAt()).isNull();
+    }
 }

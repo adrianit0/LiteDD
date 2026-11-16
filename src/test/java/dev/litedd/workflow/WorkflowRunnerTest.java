@@ -788,4 +788,26 @@ class WorkflowRunnerTest {
             appLog.setLevel(previous);
         }
     }
+
+    @Test
+    void n88_a_workflow_without_errors_marks_itself_and_each_note_that_ran_well() {
+        Note query = sqlNote("Libros", "SELECT col1 FROM t");
+        Note wf = workflow(flow("{}", node("n1", "http", "Conn1", tasks, Map.of("id", "5")),
+                node("n2", "sql", "Query1", query, Map.of())));
+        assertThat(end(run(wf, Map.of())).get("status").asText()).isEqualTo("finished");
+        assertThat(notes.get(tasks.id()).lastRunAt()).isNotNull();
+        assertThat(notes.get(query.id()).lastRunAt()).isNotNull();
+        assertThat(notes.get(wf.id()).lastRunAt()).isNotNull();
+        assertThat(notes.get(wf.id()).version()).isEqualTo(wf.version());
+
+        Note failing = sqlNote("Mal", "SELECT * FROM FAIL");
+        Note broken = workflow(flow("{\"stopOnError\":false}", node("n1", "http", "Conn1", missing, Map.of()),
+                node("n2", "sql", "Query1", failing, Map.of()),
+                node("n3", "http", "Conn2", echo, Map.of("t", "1", "w", "x"))));
+        assertThat(end(run(broken, Map.of())).get("errors").asInt()).isEqualTo(2);
+        assertThat(notes.get(missing.id()).lastRunAt()).isNull();
+        assertThat(notes.get(failing.id()).lastRunAt()).isNull();
+        assertThat(notes.get(echo.id()).lastRunAt()).isNotNull();
+        assertThat(notes.get(broken.id()).lastRunAt()).isNull();
+    }
 }

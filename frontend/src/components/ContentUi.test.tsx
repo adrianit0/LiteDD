@@ -5,7 +5,7 @@ import { EditorView } from '@codemirror/view';
 import { api } from '../api';
 import { SearchBox, SearchResults } from './SearchPanel';
 import { QuickSearch } from './QuickSearch';
-import { FavoriteButton, TagEditor } from './NoteMeta';
+import { FavoriteButton, ObsoleteBanner, TagEditor } from './NoteMeta';
 import { HistoryDialog } from './HistoryDialog';
 import { MarkdownView } from './MarkdownView';
 import { useSearch, SEARCH_DELAY } from '../stores/searchStore';
@@ -29,6 +29,7 @@ vi.mock('../api', async (importOriginal) => {
       getNote: vi.fn(),
       saveNote: vi.fn(),
       setFavorite: vi.fn(),
+      setObsolete: vi.fn(),
       setTags: vi.fn(),
       versions: vi.fn(),
       restoreVersion: vi.fn(),
@@ -313,5 +314,80 @@ describe('Mermaid', () => {
     expect(prepared.root.getAttribute('style')).toBeNull();
     expect(prepared.inline.map(([, s]) => s)).toEqual(['max-width: 200px', 'opacity: 0.5']);
     expect(prepared.root.querySelector('a')?.getAttribute('href') ?? '').not.toContain('javascript');
+  });
+});
+
+describe('notas obsoletas (ADR-0046)', () => {
+  it('N-84 la búsqueda rápida no ofrece las notas obsoletas', () => {
+    useTree.setState({ nodes: [node('n1', 'Préstamos'), { ...node('n2', 'Préstamos antiguos'), obsolete: true }] });
+    useUi.setState({ quickSearchOpen: true });
+    render(<QuickSearch />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Título de la nota' }), { target: { value: 'presta' } });
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([expect.stringMatching(/Préstamos$/)]);
+  });
+
+  it('N-84 «Mostrar obsoletas» las pide en la búsqueda del panel', async () => {
+    vi.useFakeTimers();
+    try {
+      mocked.search.mockResolvedValue([]);
+      render(<SearchBox />);
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar en las notas' }), { target: { value: 'prest' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Mostrar obsoletas' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SEARCH_DELAY + 10);
+      });
+      expect(mocked.search).toHaveBeenLastCalledWith('q=prest&obsolete=true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('N-84 un resultado obsoleto se distingue en la lista', () => {
+    useSearch.setState({
+      query: 'presta',
+      results: [{ id: 'n1', parentId: 'root', type: 'md', title: 'Préstamos', favorite: false, updatedAt: '', fragment: null, titleMarked: null, obsolete: true }],
+    });
+    render(<SearchResults />);
+    expect(screen.getByRole('button', { name: /Préstamos/ }).className).toContain('obsolete');
+  });
+
+  it('N-85 N-86 la banda muestra la sustituta, la abre y permite quitarla o quitar la marca', async () => {
+    mocked.setObsolete.mockResolvedValue(note());
+    mocked.getNote.mockResolvedValue(note({ id: 'root', title: 'Guía' }));
+    render(<ObsoleteBanner note={note({ obsolete: true, replacedBy: 'root' })} />);
+    const banner = within(screen.getByRole('note', { name: 'Nota obsoleta' }));
+    await act(async () => {
+      fireEvent.click(banner.getByRole('button', { name: '«Guía»' }));
+    });
+    expect(mocked.getNote).toHaveBeenCalledWith('root');
+    await act(async () => {
+      fireEvent.click(banner.getByRole('button', { name: 'Quitar sustituta' }));
+    });
+    expect(mocked.setObsolete).toHaveBeenLastCalledWith('n1', true, null);
+    await act(async () => {
+      fireEvent.click(banner.getByRole('button', { name: 'Quitar la marca' }));
+    });
+    expect(mocked.setObsolete).toHaveBeenLastCalledWith('n1', false, null);
+  });
+
+  it('N-86 la sustituta se elige con el selector de notas, sin la propia nota ni las obsoletas', async () => {
+    useTree.setState({ nodes: [node('root', 'Guía'), node('n1', 'Préstamos', 'root'), { ...node('n3', 'Vieja'), obsolete: true }] });
+    mocked.setObsolete.mockResolvedValue(note({ obsolete: true, replacedBy: 'root' }));
+    render(<ObsoleteBanner note={note({ obsolete: true })} />);
+    expect(screen.queryByRole('button', { name: 'Quitar sustituta' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir sustituta…' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Elegir nota sustituta' }));
+    expect(dialog.getAllByRole('option').map((o) => o.textContent)).toEqual([expect.stringContaining('Guía')]);
+    await act(async () => {
+      fireEvent.click(dialog.getByRole('option'));
+    });
+    expect(mocked.setObsolete).toHaveBeenCalledWith('n1', true, 'root');
+  });
+
+  it('N-86 N-91 una sustituta que ya no está en el árbol se ve tachada', () => {
+    render(<ObsoleteBanner note={note({ obsolete: true, replacedBy: 'borrada' })} />);
+    expect(screen.getByText('una nota eliminada').className).toBe('obsolete-broken');
   });
 });

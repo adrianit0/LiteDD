@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { api, type TagCount } from '../api';
-import { saveTags, toggleFavorite } from '../actions';
+import { openNote, saveTags, setObsolete, toggleFavorite } from '../actions';
+import { useTree } from '../stores/treeStore';
+import { NotePicker } from './workflow/NotePicker';
 import { useUi } from '../stores/uiStore';
 import type { Note } from '../types';
 
@@ -17,6 +19,52 @@ export function FavoriteButton({ note }: { note: Note }) {
     >
       {note.favorite ? '★' : '☆'}
     </button>
+  );
+}
+
+/** N-85, N-86: aviso de nota obsoleta, con la nota que la sustituye y la forma de quitar la marca. */
+export function ObsoleteBanner({ note }: { note: Note }) {
+  const nodes = useTree((s) => s.nodes);
+  const [picking, setPicking] = useState(false);
+  const replacement = note.replacedBy ? nodes.find((n) => n.id === note.replacedBy) : undefined;
+  return (
+    <div className="obsolete-banner" role="note" aria-label="Nota obsoleta">
+      <span>
+        <strong>Nota obsoleta.</strong>
+        {note.replacedBy && (
+          <>
+            {' '}Sustituida por{' '}
+            {replacement ? (
+              <button type="button" className="link-button" onClick={() => void openNote(replacement.id)}>
+                «{replacement.title}»
+              </button>
+            ) : (
+              // N-91: la sustituta está en la papelera.
+              <span className="obsolete-broken" title="La nota sustituta está en la papelera">
+                una nota eliminada
+              </span>
+            )}
+            .
+          </>
+        )}
+      </span>
+      <span className="obsolete-actions">
+        <button type="button" onClick={() => setPicking(true)}>
+          {note.replacedBy ? 'Cambiar sustituta…' : 'Elegir sustituta…'}
+        </button>
+        {note.replacedBy && (
+          <button type="button" onClick={() => void setObsolete(note.id, true, null)}>
+            Quitar sustituta
+          </button>
+        )}
+        <button type="button" onClick={() => void setObsolete(note.id, false)}>
+          Quitar la marca
+        </button>
+      </span>
+      {picking && (
+        <NotePicker exclude={note.id} onPick={(id) => void setObsolete(note.id, true, id)} onClose={() => setPicking(false)} />
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { WorkflowNoteInfo } from '../../api';
-import type { NoteType } from '../../types';
+import type { NoteType, TreeNode } from '../../types';
+import { useTree } from '../../stores/treeStore';
 import {
   conditionProblem,
   edgeKey,
@@ -96,6 +97,11 @@ export function noteProblem(n: WfNode, notes: Record<string, WorkflowNoteInfo>):
   return null;
 }
 
+/** N-87: la nota del nodo está marcada como obsoleta. Es un aviso, no un problema: se ejecuta igual. */
+export function noteObsolete(n: WfNode, tree: TreeNode[]): boolean {
+  return (n.kind === 'http' || n.kind === 'sql') && !!n.noteId && tree.some((t) => t.id === n.noteId && t.obsolete);
+}
+
 /** La distancia de p al segmento a-b. */
 function distance(p: WfPoint, a: WfPoint, b: WfPoint): number {
   const dx = b.x - a.x;
@@ -132,6 +138,7 @@ interface Bend {
 
 /** W-10 a W-19, W-25, W-70, W-90: el lienzo con los nodos y las flechas. */
 export function WorkflowCanvas(props: Props) {
+  const tree = useTree((s) => s.nodes);
   const { workflow, editable, notes, fields, values, selectedNode, selectedEdge, states } = props;
   const canvas = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number; x: number; y: number } | null>(null);
@@ -421,6 +428,7 @@ export function WorkflowCanvas(props: Props) {
                   {n.kind === 'break' && 'Termina el bucle'}
                 </div>
                 {problem && <div className="wf-node-problem">{problem}</div>}
+                {noteObsolete(n, tree) && <div className="wf-node-warning">Nota obsoleta</div>}
                 {(n.kind === 'http' || n.kind === 'sql' || n.kind === 'input') && shown.length > 0 && (
                   <ul className="wf-node-fields">
                     {shown.map((f) => (

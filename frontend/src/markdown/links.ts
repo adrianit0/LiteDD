@@ -15,10 +15,10 @@ export function noteLink(node: Pick<TreeNode, 'id' | 'title'>): string {
   return `[${title}](${noteUrl(node.id)})`;
 }
 
-/** Notas que encajan con lo escrito tras «[[», sin distinguir mayúsculas ni acentos. */
+/** Notas que encajan con lo escrito tras «[[», sin distinguir mayúsculas ni acentos. N-84: sin las obsoletas. */
 export function linkCandidates(nodes: TreeNode[], typed: string, limit = 50): TreeNode[] {
   const q = normalize(typed.trim());
-  const matches = nodes.filter((n) => q === '' || normalize(n.title).includes(q));
+  const matches = nodes.filter((n) => !n.obsolete && (q === '' || normalize(n.title).includes(q)));
   // Primero las que empiezan por lo escrito.
   matches.sort((a, b) => Number(!normalize(a.title).startsWith(q)) - Number(!normalize(b.title).startsWith(q)) || a.title.localeCompare(b.title));
   return matches.slice(0, limit);

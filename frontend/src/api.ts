@@ -498,6 +498,9 @@ export const api = {
     request<Note>('POST', `/api/notes/${encodeURIComponent(id)}/versions/${versionId}/restore`, { baseVersion }),
   setTags: (id: string, tags: string[]) => request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/tags`, { tags }),
   setFavorite: (id: string, favorite: boolean) => request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/favorite`, { favorite }),
+  /** N-82, N-86 */
+  setObsolete: (id: string, obsolete: boolean, replacedBy: string | null) =>
+    request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/obsolete`, { obsolete, replacedBy }),
   tags: () => request<TagCount[]>('GET', '/api/tags'),
   search: (params: string) => request<SearchHit[]>('GET', `/api/search?${params}`),
   uploadAttachment: (noteId: string, file: Blob, name: string) =>

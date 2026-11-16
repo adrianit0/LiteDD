@@ -319,4 +319,34 @@ class MigratorTest {
             return rs.getString(1);
         }
     }
+
+    @Test
+    void n82_v008_adds_the_obsolete_columns_and_keeps_the_notes() throws Exception {
+        try (Connection c = connect()) {
+            try (Statement st = c.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON");
+            }
+            new Migrator(Migrator.MIGRATIONS.subList(0, 7), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('a', NULL, 0, 'sql', 'Vieja', 'SELECT 1', 'now', 'now')""");
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at)
+                        VALUES ('b', NULL, 1, 'sql', 'Nueva', 'SELECT 2', 'now', 'now')""");
+            }
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
+            assertThat(scalar(c, "SELECT count(*) FROM note WHERE obsolete = 0 AND replaced_by IS NULL AND last_run_at IS NULL"))
+                    .isEqualTo("2");
+            // N-86: al borrar la sustituta, la referencia se vacía.
+            try (Statement st = c.createStatement()) {
+                st.execute("UPDATE note SET obsolete = 1, replaced_by = 'b' WHERE id = 'a'");
+                st.execute("DELETE FROM note WHERE id = 'b'");
+            }
+            assertThat(scalar(c, "SELECT count(*) FROM note WHERE id = 'a' AND obsolete = 1 AND replaced_by IS NULL")).isEqualTo("1");
+        }
+    }
 }

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { api, DEFAULT_CONFIG, type WorkflowAnalysis, type WorkflowEvent } from '../../api';
 import { NotePane } from '../NotePane';
+import { noteObsolete } from './WorkflowCanvas';
 import { TypeIcon } from '../TypeIcon';
 import { newNoteItems } from '../../actions';
 import { useActiveTab, useTabs } from '../../stores/tabsStore';
@@ -8,7 +9,7 @@ import { useWorkflowRuns } from '../../stores/workflowRunStore';
 import { useHttpProfile } from '../../stores/httpProfileStore';
 import { useTree } from '../../stores/treeStore';
 import { useUi } from '../../stores/uiStore';
-import { flow, parseWorkflow } from '../../workflow/model';
+import { flow, parseWorkflow, type WfNode } from '../../workflow/model';
 import { NOTE_DROP } from '../../workflow/noteDrop';
 import type { Note, TreeNode } from '../../types';
 
@@ -477,5 +478,18 @@ describe('control del flujo, codos y notas arrastradas (ADR-0041)', () => {
     const loop = within(screen.getByRole('complementary', { name: 'Nodo Bucle1' }));
     expect(loop.getByText('{"id":1}', { selector: 'code' })).toBeTruthy();
     expect(loop.getByText('Se cambia en edición.')).toBeTruthy();
+  });
+});
+
+describe('N-87 nota obsoleta en un nodo (ADR-0046)', () => {
+  it('avisa solo en los nodos HTTP y SQL cuya nota está marcada como obsoleta', () => {
+    const tree = [
+      { id: 'h1', obsolete: true },
+      { id: 's1', obsolete: false },
+    ] as TreeNode[];
+    expect(noteObsolete({ id: 'n1', kind: 'http', noteId: 'h1' } as WfNode, tree)).toBe(true);
+    expect(noteObsolete({ id: 'n2', kind: 'sql', noteId: 's1' } as WfNode, tree)).toBe(false);
+    expect(noteObsolete({ id: 'n3', kind: 'sql', noteId: 'borrada' } as WfNode, tree)).toBe(false);
+    expect(noteObsolete({ id: 'n4', kind: 'input' } as WfNode, tree)).toBe(false);
   });
 });

@@ -16,13 +16,24 @@ describe('búsqueda', () => {
 
   it('N-72 filtros combinables en la petición', () => {
     expect(searchParams('  préstamo ', NO_FILTERS, now)).toBe('q=pr%C3%A9stamo');
-    const all = new URLSearchParams(searchParams('', { type: 'sql', tags: ['demo', 'libros'], favorite: true, since: '7d' }, now));
+    const all = new URLSearchParams(searchParams('', { type: 'sql', tags: ['demo', 'libros'], favorite: true, since: '7d', obsolete: false }, now));
     expect(all.get('type')).toBe('sql');
     expect(all.get('tags')).toBe('demo,libros');
     expect(all.get('favorite')).toBe('true');
     expect(new Date(all.get('since')!).getDate()).toBe(new Date(2026, 8, 27).getDate());
     expect(hasFilters(NO_FILTERS)).toBe(false);
     expect(hasFilters({ ...NO_FILTERS, favorite: true })).toBe(true);
+  });
+
+  it('N-84 «Mostrar obsoletas» va en la petición y por sí solo no activa la búsqueda', () => {
+    expect(searchParams('x', NO_FILTERS, now)).toBe('q=x');
+    expect(searchParams('x', { ...NO_FILTERS, obsolete: true }, now)).toBe('q=x&obsolete=true');
+    expect(hasFilters({ ...NO_FILTERS, obsolete: true })).toBe(false);
+  });
+
+  it('N-84 el autocompletado de notas no ofrece las obsoletas', () => {
+    const nodes = [node('a', 'Informe'), { ...node('b', 'Informe viejo'), obsolete: true }];
+    expect(linkCandidates(nodes, 'inf').map((n) => n.id)).toEqual(['a']);
   });
 
   it('N-72 «hoy» empieza a medianoche local', () => {

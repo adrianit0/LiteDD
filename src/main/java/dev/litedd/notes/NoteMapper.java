@@ -13,12 +13,17 @@ import java.util.List;
 public interface NoteMapper {
 
     record TreeRow(String id, String parentId, int position, String type, String title, String description, boolean favorite,
-                   String tags, String statementId, String statementKind) {
+                   String tags, String statementId, String statementKind, boolean obsolete) {
     }
 
-    /** @param statementId M-12: id de la sentencia en el mapper de la madre; null en una nota normal */
+    /**
+     * @param statementId M-12: id de la sentencia en el mapper de la madre; null en una nota normal
+     * @param replacedBy  N-86: la nota que la sustituye, o null
+     * @param lastRunAt   N-88: última ejecución correcta, o null
+     */
     record NoteRow(String id, String parentId, int position, String type, String title, String description, String content,
-                   boolean favorite, long version, String createdAt, String updatedAt, String statementId, String statementKind) {
+                   boolean favorite, long version, String createdAt, String updatedAt, String statementId, String statementKind,
+                   boolean obsolete, String replacedBy, String lastRunAt) {
     }
 
     /** M-12: hija generada de una nota XML. */
@@ -32,7 +37,7 @@ public interface NoteMapper {
                    (SELECT group_concat(name, char(31)) FROM (
                        SELECT t.name FROM note_tag nt JOIN tag t ON t.id = nt.tag_id
                        WHERE nt.note_id = n.id ORDER BY t.name)) AS tags,
-                   n.statement_id, n.statement_kind
+                   n.statement_id, n.statement_kind, n.obsolete
             FROM note n
             WHERE n.deleted_at IS NULL
             ORDER BY n.parent_id, n.position""")
@@ -40,7 +45,7 @@ public interface NoteMapper {
 
     @Select("""
             SELECT id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at,
-                   statement_id, statement_kind
+                   statement_id, statement_kind, obsolete, replaced_by, last_run_at
             FROM note WHERE id = #{id} AND deleted_at IS NULL""")
     NoteRow selectActive(@Param("id") String id);
 
@@ -54,9 +59,9 @@ public interface NoteMapper {
 
     @Insert("""
             INSERT INTO note (id, parent_id, position, type, title, description, content, favorite, version, created_at, updated_at,
-                              statement_id, statement_kind)
+                              statement_id, statement_kind, obsolete, replaced_by, last_run_at)
             VALUES (#{id}, #{parentId}, #{position}, #{type}, #{title}, #{description}, #{content}, #{favorite}, #{version},
-                    #{createdAt}, #{updatedAt}, #{statementId}, #{statementKind})""")
+                    #{createdAt}, #{updatedAt}, #{statementId}, #{statementKind}, #{obsolete}, #{replacedBy}, #{lastRunAt})""")
     void insert(NoteRow note);
 
     @Select("""

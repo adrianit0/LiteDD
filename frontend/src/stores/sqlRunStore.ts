@@ -125,6 +125,8 @@ export const useSqlRuns = create<SqlRunState>((set, get) => {
         const result = await api.execute(req);
         useTabs.getState().setSql(tabId, { page });
         patch(tabId, { result, page, elapsedMs: now() - startedAt, total: result.total ?? null });
+        // N-88
+        if (!result.warning) void useTabs.getState().refreshMeta(req.noteId);
       } catch (e) {
         const err = toRunError(e);
         if (err.code === 'invalid_values') {

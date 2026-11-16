@@ -3,6 +3,7 @@ import { api, type WorkflowNoteInfo } from '../../api';
 import { openNote } from '../../actions';
 import { copyText } from '../../clipboard';
 import { useUi } from '../../stores/uiStore';
+import { useTree } from '../../stores/treeStore';
 import { runOf, type Execution, type NodeRun } from '../../stores/workflowRunStore';
 import {
   assignmentProblem,
@@ -34,7 +35,7 @@ import { elapsedText, toMarkdownTable } from '../../sql/results';
 import { HttpResponseView } from '../http/HttpResponseView';
 import { ResultsTable } from '../sql/ResultsTable';
 import { NotePicker } from './NotePicker';
-import { noteProblem } from './WorkflowCanvas';
+import { noteObsolete, noteProblem } from './WorkflowCanvas';
 import { EnteredValue, enteredValue, fieldLabel, IterationPicker } from './ExecutionSummary';
 
 interface Props {
@@ -71,6 +72,7 @@ export function NodePanel(props: Props) {
   const [picking, setPicking] = useState(false);
   const info = node.noteId ? notes[node.noteId] : undefined;
   const problem = noteProblem(node, notes);
+  const obsolete = noteObsolete(node, useTree((s) => s.nodes));
   const update = (changes: Partial<WfNode>) => onChange(updateNode(workflow, node.id, changes));
   const run = execution ? runOf(execution, node.id, iteration) : undefined;
 
@@ -199,6 +201,8 @@ export function NodePanel(props: Props) {
             </code>
           )}
           {problem && <p className="wf-problem">{problem}</p>}
+          {/* N-87 */}
+          {obsolete && <p className="wf-node-warning">La nota está marcada como obsoleta.</p>}
         </div>
       )}
 

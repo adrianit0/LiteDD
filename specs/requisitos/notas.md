@@ -11,11 +11,11 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 | N-01 | El panel izquierdo muestra todas las notas activas en árbol. Cada nodo tiene icono de tipo, título y control de plegado si tiene hijas. El plegado se recuerda. |
 | N-02 | Cualquier nota puede tener hijas de cualquier tipo, sin límite de profundidad. Excepción: la nota XML MyBatis solo tiene sus hijas generadas, y estas no tienen hijas (M-20, M-22). |
 | N-03 | Clic abre la nota; clic central la abre en pestaña nueva (ver Pestañas). |
-| N-04 | Menú contextual: «Nuevo», renombrar, duplicar, favorita, etiquetas, mover a…, eliminar. «Nuevo» despliega a su derecha un submenú con «Nota Markdown», «Nota SQL», «Nota HTTP», «Desde cURL…», «Nota MyBatis», «Nota Pizarra» y «Nota Workflow», que crean la nota como hija (ADR-0026, B-01, W-01, H-75). En una nota XML MyBatis no aparece «Nuevo»; en una hija generada solo aparecen duplicar, favorita y etiquetas (M-20, M-22). |
+| N-04 | Menú contextual: «Nuevo», renombrar, duplicar, favorita, obsoleta (N-82), etiquetas, mover a…, eliminar. «Nuevo» despliega a su derecha un submenú con «Nota Markdown», «Nota SQL», «Nota HTTP», «Desde cURL…», «Nota MyBatis», «Nota Pizarra» y «Nota Workflow», que crean la nota como hija (ADR-0026, B-01, W-01, H-75). En una nota XML MyBatis no aparece «Nuevo»; en una hija generada solo aparecen duplicar, favorita, obsoleta y etiquetas (M-20, M-22). |
 | N-05 | El botón «+ Nuevo» del panel abre un menú flotante con «Nota Markdown», «Nota SQL», «Nota HTTP», «Desde cURL…», «Nota MyBatis», «Nota Pizarra» y «Nota Workflow», que crean la nota en la raíz, al final (ADR-0026, B-01, W-01, H-75). |
 | N-06 | Una nota nueva se llama «Sin título» y se abre en modo edición con el título seleccionado. |
 | N-07 | Cada nota tiene una descripción opcional de hasta 200 caracteres. En edición se escribe entre el título y las etiquetas; en consulta se ve bajo el título. En el árbol aparece bajo el nombre, en gris y más pequeña, en una línea que se corta con «…» donde acaba el panel (ADR-0020). |
-| N-08 | «Duplicar» crea una copia de la nota, sin sus hijas, justo debajo de la original: mismo tipo, contenido, descripción, etiquetas y favorita. El título lleva « (2)», o el siguiente número libre entre las hermanas: «Informe (3)», «Informe (4)»… Un «(n)» final solo cuenta como número de copia si hay una hermana con el nombre sin él. La copia se abre en una pestaña. Las notas XML MyBatis y sus hijas siguen M-31. |
+| N-08 | «Duplicar» crea una copia de la nota, sin sus hijas, justo debajo de la original: mismo tipo, contenido, descripción, etiquetas y favorita. El título lleva « (2)», o el siguiente número libre entre las hermanas: «Informe (3)», «Informe (4)»… Un «(n)» final solo cuenta como número de copia si hay una hermana con el nombre sin él. La copia nace sin la marca de obsoleta (N-82) y se abre en una pestaña. Las notas XML MyBatis y sus hijas siguen M-31. |
 | N-09 | Junto a «+ Nuevo», dos botones: «Contraer todo» pliega todas las notas con hijas; «Localizar nota abierta» despliega las madres de la nota de la pestaña activa, la desplaza a la vista y le da el foco en el árbol. Sin pestaña activa está desactivado; si hay una búsqueda en curso, la quita (ADR-0027). |
 
 ## Modos
@@ -86,8 +86,8 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 |---|---|
 | N-70 | El cuadro de búsqueda del panel busca en título, descripción y contenido, por prefijo, sin distinguir mayúsculas ni acentos. Responde mientras se escribe. |
 | N-71 | Con búsqueda o filtro activo, el panel muestra una lista plana con título, ruta y fragmento resaltado. Al limpiar, vuelve el árbol. |
-| N-72 | Filtros combinables: tipo, etiquetas, solo favoritas y fecha de modificación (hoy, 7 días, 30 días). |
-| N-73 | Ctrl+K abre una búsqueda rápida por título; Intro abre la nota. |
+| N-72 | Filtros combinables: tipo, etiquetas, solo favoritas y fecha de modificación (hoy, 7 días, 30 días). «Mostrar obsoletas» incluye las notas obsoletas, que si no quedan fuera (N-84). |
+| N-73 | Ctrl+K abre una búsqueda rápida por título; Intro abre la nota. No ofrece las notas obsoletas (N-84). |
 | N-74 | El texto buscado se escapa antes de pasarlo a FTS5; ningún carácter provoca un error. |
 
 ## Etiquetas, favoritas, enlaces e imágenes
@@ -96,10 +96,17 @@ Una nota tiene tipo (Markdown, SQL, HTTP, XML MyBatis, pizarra o workflow), tít
 |---|---|
 | N-80 | Etiquetas libres por nota, con autocompletado. Se crean al usarlas y desaparecen al quedar sin notas. |
 | N-81 | Favorita: estrella en la cabecera y en el menú contextual; visible en el árbol. |
-| N-90 | Escribir `[[` en el editor Markdown abre un autocompletado de notas e inserta `[Título](litedd://note/<id>)`. Con `![[` se insertan pizarras como imagen (B-40). |
+| N-82 | Cualquier nota puede marcarse como «Obsoleta» y desmarcarse, a mano, desde el menú contextual del árbol y desde la cabecera de la nota. La marca es de esa nota y no pasa a sus hijas. Marcar o desmarcar no cambia la versión ni la fecha de modificación (ADR-0046). |
+| N-83 | En el árbol, una nota obsoleta se ve atenuada y con el título tachado, en su mismo sitio. |
+| N-84 | Las notas obsoletas no se ofrecen en la búsqueda del panel (salvo con el filtro «Mostrar obsoletas», N-72), en la búsqueda rápida (N-73), en el autocompletado `[[` (N-90) ni en el selector de nota de un nodo de workflow (W-23, W-24). «Mover a…» (N-64) sí las ofrece. Un enlace `litedd://note/<id>` las abre igual. |
+| N-85 | Al abrir una nota obsoleta, una banda bajo la cabecera avisa de que lo está y permite quitar la marca. No impide editarla ni ejecutarla. |
+| N-86 | Una nota obsoleta puede indicar la nota que la sustituye. «Sustituida por» es opcional y se elige con un selector de notas con búsqueda, entre las notas activas que no sean ella misma. La banda la muestra como enlace que abre la sustituta; si esta está en la papelera, tachada (N-91). Al quitar la marca de obsoleta, o al eliminar definitivamente la sustituta, el campo se vacía. |
+| N-87 | En un workflow, el nodo HTTP o SQL cuya nota está obsoleta lo indica en el lienzo y en su panel. Es un aviso: el workflow se ejecuta igual. |
+| N-88 | Las notas SQL, HTTP y workflow guardan la fecha de su última ejecución correcta y la muestran en la cabecera, junto a la de modificación. Es correcta una nota SQL que se ejecuta sin error, una nota HTTP que responde 2xx y un workflow que termina sin errores; cuenta igual desde su pestaña que como nodo de un workflow. Una nota que no se ha ejecutado no muestra nada. Ejecutar no cambia la versión ni la fecha de modificación (ADR-0046). |
+| N-90 | Escribir `[[` en el editor Markdown abre un autocompletado de notas e inserta `[Título](litedd://note/<id>)`. Con `![[` se insertan pizarras como imagen (B-40). No ofrece las notas obsoletas (N-84). |
 | N-91 | Un enlace a una nota inexistente o en la papelera se muestra tachado. |
 | N-92 | Pegar o arrastrar una imagen al editor la guarda como adjunto e inserta `![](litedd://attachment/<id>)`. Tipos PNG, JPEG, GIF y WebP; máximo 10 MB. |
 | N-93 | Las direcciones `litedd://` se resuelven antes de sanear el HTML. |
 | N-94 | El menú contextual del árbol ofrece «Copiar enlace», que copia `litedd://note/<id>` para pegarlo fuera de LiteDD (ADR-0045). |
 | N-95 | Abrir un enlace `litedd://note/<id>` fuera de LiteDD (en otra aplicación o con `xdg-open`) trae la ventana de LiteDD al frente con esa nota abierta; si LiteDD no está en marcha, arranca y la abre. `scripts/install.sh` registra el esquema `litedd` en el lanzador. Si la nota no existe o está en la papelera, LiteDD lo avisa (ADR-0045). |
-| N-96 | `litedd --open "título"` hace lo mismo con la nota cuyo título coincide entero, sin distinguir mayúsculas ni acentos. Si no hay ninguna o hay varias, abre la búsqueda rápida (N-73) con ese texto (ADR-0045). |
+| N-96 | `litedd --open "título"` hace lo mismo con la nota cuyo título coincide entero, sin distinguir mayúsculas ni acentos. Si hay varias y solo una no es obsoleta, abre esa (ADR-0046). Si no hay ninguna o sigue habiendo varias, abre la búsqueda rápida (N-73) con ese texto (ADR-0045). |

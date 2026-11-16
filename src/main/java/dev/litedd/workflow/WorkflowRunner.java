@@ -450,6 +450,9 @@ public final class WorkflowRunner {
                 }
                 current = following(p, n, o, run, executionId, sink, bodies);
             }
+            if (errors == 0) {
+                notes.markRun(p.workflow().id()); // N-88
+            }
             end(run, executionId, sink, "finished", errors, start,
                     errors == 0 ? "Terminado" : "Terminado con " + errors + (errors == 1 ? " error" : " errores"));
         } finally {
@@ -767,6 +770,9 @@ public final class WorkflowRunner {
             String text = (r.response().status() + " " + r.response().statusText()).strip();
             return Outcome.of("error", resolved, new Failure("http_status", "Respondió " + text), r, null, value);
         }
+        if (HttpRunner.succeeded(r)) {
+            notes.markRun(note.id()); // N-88
+        }
         return Outcome.of("ok", resolved, null, r, null, value);
     }
 
@@ -795,6 +801,7 @@ public final class WorkflowRunner {
         } catch (ApiError e) {
             return Outcome.error(resolved, e.body().code(), e.getMessage());
         }
+        notes.markRun(note.id()); // N-88
         return Outcome.of("ok", resolved, null, null, rows, () -> Optional.of(rowsValue(rows)));
     }
 

@@ -2,17 +2,24 @@ import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useTree } from '../../stores/treeStore';
 import { ancestorsOf, visibleRows } from '../../tree';
 import { normalize } from '../../treeOps';
+import { TypeIcon } from '../TypeIcon';
 
 interface Props {
-  type: 'http' | 'sql';
+  /** Sin tipo, cualquier nota (N-86). */
+  type?: 'http' | 'sql';
+  /** Nota que no se ofrece: una nota no se sustituye a sí misma (N-86). */
+  exclude?: string;
   onPick: (noteId: string) => void;
   onClose: () => void;
 }
 
 const MAX_RESULTS = 200;
 
-/** W-23, W-24: selector de la nota de un nodo, con búsqueda, como el de «Mover a…» (N-64). */
-export function NotePicker({ type, onPick, onClose }: Props) {
+/**
+ * W-23, W-24: selector de la nota de un nodo, con búsqueda, como el de «Mover a…» (N-64). N-86: también elige la
+ * nota que sustituye a una obsoleta. N-84: no ofrece las notas obsoletas.
+ */
+export function NotePicker({ type, exclude, onPick, onClose }: Props) {
   const nodes = useTree((s) => s.nodes);
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
@@ -21,10 +28,10 @@ export function NotePicker({ type, onPick, onClose }: Props) {
     const q = normalize(query.trim());
     return visibleRows(nodes, new Set())
       .map((r) => r.node)
-      .filter((n) => n.type === type && (q === '' || normalize(n.title).includes(q)))
+      .filter((n) => !n.obsolete && n.id !== exclude && (!type || n.type === type) && (q === '' || normalize(n.title).includes(q)))
       .slice(0, MAX_RESULTS)
-      .map((n) => ({ id: n.id, title: n.title, path: ancestorsOf(nodes, n.id).map((a) => a.title).join(' / ') }));
-  }, [nodes, query, type]);
+      .map((n) => ({ id: n.id, type: n.type, title: n.title, path: ancestorsOf(nodes, n.id).map((a) => a.title).join(' / ') }));
+  }, [nodes, query, type, exclude]);
 
   const choose = (id: string | undefined) => {
     if (!id) return;
@@ -42,7 +49,7 @@ export function NotePicker({ type, onPick, onClose }: Props) {
     e.stopPropagation();
   };
 
-  const what = type === 'http' ? 'nota HTTP' : 'nota SQL';
+  const what = type === 'http' ? 'nota HTTP' : type === 'sql' ? 'nota SQL' : 'nota sustituta';
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog move-dialog" role="dialog" aria-modal="true" aria-labelledby="wf-pick-title" onKeyDown={onKeyDown}>
@@ -73,7 +80,9 @@ export function NotePicker({ type, onPick, onClose }: Props) {
               onPointerEnter={() => setIndex(i)}
               onClick={() => choose(o.id)}
             >
-              <span>{o.title}</span>
+              <span>
+                {!type && <TypeIcon type={o.type} />} {o.title}
+              </span>
               {o.path && <span className="move-path muted">{o.path}</span>}
             </li>
           ))}

@@ -22,7 +22,10 @@ CREATE TABLE note (
   updated_at  TEXT NOT NULL,
   deleted_at  TEXT,                          -- NULL = activa; fecha = papelera
   statement_id   TEXT,                       -- M-12: id de la sentencia en el mapper de la madre; NULL = nota normal
-  statement_kind TEXT CHECK (statement_kind IN ('select','insert','update','delete'))  -- M-24, V004
+  statement_kind TEXT CHECK (statement_kind IN ('select','insert','update','delete')),  -- M-24, V004
+  obsolete    INTEGER NOT NULL DEFAULT 0,    -- N-82, V008 (ADR-0046)
+  replaced_by TEXT REFERENCES note(id) ON DELETE SET NULL,  -- N-86: la nota que la sustituye
+  last_run_at TEXT                           -- N-88: última ejecución correcta, ISO-8601 UTC
 );
 CREATE INDEX idx_note_parent ON note(parent_id, position);
 CREATE UNIQUE INDEX idx_note_statement ON note(parent_id, statement_id) WHERE statement_id IS NOT NULL;

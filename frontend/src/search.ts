@@ -8,9 +8,11 @@ export interface SearchFilters {
   tags: string[];
   favorite: boolean;
   since: DateRange;
+  /** N-84: incluye las notas obsoletas. No es un filtro: por sí solo no activa la búsqueda. */
+  obsolete: boolean;
 }
 
-export const NO_FILTERS: SearchFilters = { type: '', tags: [], favorite: false, since: '' };
+export const NO_FILTERS: SearchFilters = { type: '', tags: [], favorite: false, since: '', obsolete: false };
 
 export interface SearchHit {
   id: string;
@@ -19,6 +21,7 @@ export interface SearchHit {
   title: string;
   favorite: boolean;
   updatedAt: string;
+  obsolete?: boolean;
   /** Lo encontrado va entre \u0002 y \u0003 (N-71). */
   fragment: string | null;
   titleMarked: string | null;
@@ -45,6 +48,7 @@ export function searchParams(query: string, f: SearchFilters, now: Date): string
   if (f.favorite) p.set('favorite', 'true');
   const since = sinceFor(f.since, now);
   if (since) p.set('since', since);
+  if (f.obsolete) p.set('obsolete', 'true');
   return p.toString();
 }
 

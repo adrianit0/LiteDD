@@ -452,3 +452,18 @@ describe('pestañas provisionales (P-14)', () => {
     expect(active().preview).toBe(true);
   });
 });
+
+describe('N-82 N-88 marca de obsoleta y última ejecución (ADR-0046)', () => {
+  it('refreshMeta trae la última ejecución correcta sin tocar lo que se está editando', async () => {
+    s().edit(active().id, { content: 'a medias' });
+    mocked.getNote.mockResolvedValue(note({ content: 'del servidor', lastRunAt: '2026-11-01T12:00:00Z', obsolete: true, replacedBy: 'n2' }));
+    await s().refreshMeta('n1');
+    expect(active().note).toMatchObject({ lastRunAt: '2026-11-01T12:00:00Z', obsolete: true, replacedBy: 'n2' });
+    expect(active().content).toBe('a medias');
+
+    // Si la lectura falla, la pestaña sigue como estaba.
+    mocked.getNote.mockRejectedValue(new Error('sin servidor'));
+    await s().refreshMeta('n1');
+    expect(active().note?.lastRunAt).toBe('2026-11-01T12:00:00Z');
+  });
+});

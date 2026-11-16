@@ -25,6 +25,9 @@ public final class NotesApi implements ApiRoutes {
     record FavoriteRequest(Boolean favorite) {
     }
 
+    record ObsoleteRequest(Boolean obsolete, String replacedBy) {
+    }
+
     record MoveRequest(String parentId, Integer position) {
     }
 
@@ -77,12 +80,18 @@ public final class NotesApi implements ApiRoutes {
             FavoriteRequest req = ctx.bodyAsClass(FavoriteRequest.class);
             ctx.json(notes.setFavorite(ctx.pathParam("id"), Boolean.TRUE.equals(req.favorite())));
         });
+        // N-82, N-86
+        routes.put("/api/notes/{id}/obsolete", ctx -> {
+            ObsoleteRequest req = ctx.bodyAsClass(ObsoleteRequest.class);
+            ctx.json(notes.setObsolete(ctx.pathParam("id"), Boolean.TRUE.equals(req.obsolete()), req.replacedBy()));
+        });
         routes.get("/api/tags", ctx -> ctx.json(notes.tags()));
         routes.get("/api/search", ctx -> {
             String tags = ctx.queryParam("tags");
             ctx.json(notes.search(new NoteService.SearchQuery(ctx.queryParam("q"), ctx.queryParam("type"),
                     tags == null || tags.isBlank() ? List.of() : Arrays.asList(tags.split(",")),
-                    "true".equals(ctx.queryParam("favorite")), ctx.queryParam("since"))));
+                    "true".equals(ctx.queryParam("favorite")), ctx.queryParam("since"),
+                    "true".equals(ctx.queryParam("obsolete")))));
         });
 
         // N-08

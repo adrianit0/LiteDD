@@ -49,7 +49,8 @@ function whenLoaded(): Promise<void> {
 
 /**
  * N-95: un enlace litedd://note/<id> pulsado fuera abre la nota como un clic en el árbol. N-96: un título abre
- * la única nota que se llama así, sin distinguir mayúsculas ni acentos; si no la hay, la búsqueda rápida.
+ * la única nota que se llama así, sin distinguir mayúsculas ni acentos; si no la hay, la búsqueda rápida. Una nota
+ * obsoleta se abre igual (N-84).
  */
 export async function openFromOutside(request: OpenRequest): Promise<void> {
   await whenLoaded();
@@ -67,9 +68,12 @@ export async function openFromOutside(request: OpenRequest): Promise<void> {
   if (!title) return;
   const wanted = normalize(title);
   const matches = nodes.filter((n) => normalize(n.title.trim()) === wanted);
-  if (matches.length === 1) {
+  // ADR-0046: entre varias con ese título, la única que no está obsoleta.
+  const current = matches.filter((n) => !n.obsolete);
+  const match = current.length === 1 ? current[0] : matches.length === 1 ? matches[0] : null;
+  if (match) {
     useUi.getState().setQuickSearch(false);
-    await openNote(matches[0].id);
+    await openNote(match.id);
   } else {
     useUi.getState().setQuickSearch(true, title);
   }
@@ -220,6 +224,17 @@ export async function toggleFavorite(id: string): Promise<void> {
     await useTree.getState().load();
   } catch (e) {
     fail(e, 'No se pudo cambiar la favorita');
+  }
+}
+
+/** N-82, N-86: marca o desmarca la nota como obsoleta; replacedBy es la nota que la sustituye, opcional. */
+export async function setObsolete(id: string, obsolete: boolean, replacedBy: string | null = null): Promise<void> {
+  try {
+    const note = await api.setObsolete(id, obsolete, obsolete ? replacedBy : null);
+    useTabs.getState().applyMeta(note);
+    await useTree.getState().load();
+  } catch (e) {
+    fail(e, 'No se pudo cambiar la marca de obsoleta');
   }
 }
 

@@ -195,6 +195,11 @@ export const useWorkflowRuns = create<WorkflowRunState>((set, get) => {
             (e) => apply(tabId, executionId, e),
             controller.signal,
           );
+          // N-88: el workflow y las notas de sus nodos que estén abiertas.
+          const ran = new Set([tab.noteId, ...workflow.nodes.map((n) => n.noteId)]);
+          for (const id of new Set(useTabs.getState().tabs.map((t) => t.noteId))) {
+            if (ran.has(id)) void useTabs.getState().refreshMeta(id);
+          }
           if (get().runs[tabId] && run(tabId).running) {
             // El flujo se cortó sin el evento final.
             patch(tabId, { running: null, error: { code: 'interrupted', message: 'Se perdió el contacto con la ejecución.' } });

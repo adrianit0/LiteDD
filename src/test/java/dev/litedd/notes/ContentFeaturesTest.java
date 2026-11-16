@@ -265,12 +265,12 @@ class ContentFeaturesTest {
         clock.advance(Duration.ofDays(10));
         md("D", "x");
 
-        assertThat(titles(new SearchQuery("", "sql", List.of(), false, null))).containsExactly("B");
-        assertThat(titles(new SearchQuery("", null, List.of("demo"), false, null))).containsExactlyInAnyOrder("A", "B");
-        assertThat(titles(new SearchQuery("", null, List.of("DEMO", "libros"), false, null))).containsExactly("A");
-        assertThat(titles(new SearchQuery("", null, List.of(), true, null))).containsExactly("A");
-        assertThat(titles(new SearchQuery("", null, List.of(), false, "2026-10-10T00:00:00Z"))).containsExactly("D");
-        assertThat(titles(new SearchQuery("x", "md", List.of("demo"), true, null))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", "sql", List.of(), false, null, false))).containsExactly("B");
+        assertThat(titles(new SearchQuery("", null, List.of("demo"), false, null, false))).containsExactlyInAnyOrder("A", "B");
+        assertThat(titles(new SearchQuery("", null, List.of("DEMO", "libros"), false, null, false))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", null, List.of(), true, null, false))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", null, List.of(), false, "2026-10-10T00:00:00Z", false))).containsExactly("D");
+        assertThat(titles(new SearchQuery("x", "md", List.of("demo"), true, null, false))).containsExactly("A");
         assertThat(c).isNotNull();
     }
 
@@ -317,5 +317,94 @@ class ContentFeaturesTest {
         assertThat(notes.tags()).extracting(NoteService.TagCount::name).containsExactly("solo");
         notes.purge(a.id());
         assertThat(notes.tags()).isEmpty();
+    }
+
+    // --- N-82 a N-88 (ADR-0046) ---
+
+    @Test
+    void n82_obsolete_is_set_by_hand_and_does_not_change_version_or_date() {
+        Note a = md("A", "");
+        Note child = notes.create(a.id(), "sql", "Hija");
+        clock.advance(Duration.ofHours(1));
+
+        Note marked = notes.setObsolete(a.id(), true, null);
+        assertThat(marked.obsolete()).isTrue();
+        assertThat(marked.version()).isEqualTo(a.version());
+        assertThat(marked.updatedAt()).isEqualTo(a.updatedAt());
+        // La marca es de esa nota: la hija sigue vigente.
+        assertThat(notes.tree()).filteredOn(TreeNode::obsolete).extracting(TreeNode::id).containsExactly(a.id());
+        assertThat(notes.get(child.id()).obsolete()).isFalse();
+        // Arreglar la nota no le quita la marca: la quita el usuario.
+        assertThat(notes.save(a.id(), "A", "arreglada", marked.version(), false).obsolete()).isTrue();
+        assertThat(notes.setObsolete(a.id(), false, null).obsolete()).isFalse();
+        assertThatThrownBy(() -> notes.setObsolete("nope", true, null)).isInstanceOf(ApiError.class);
+    }
+
+    @Test
+    void n84_search_leaves_obsolete_notes_out_unless_asked() {
+        Note old = md("Informe viejo", "x");
+        md("Informe nuevo", "x");
+        notes.setObsolete(old.id(), true, null);
+
+        assertThat(titles(SearchQuery.text("informe"))).containsExactly("Informe nuevo");
+        assertThat(titles(new SearchQuery("", "md", List.of(), false, null, false))).containsExactly("Informe nuevo");
+        List<NoteService.SearchHit> all = notes.search(new SearchQuery("informe", null, List.of(), false, null, true));
+        assertThat(all).extracting(NoteService.SearchHit::title).containsExactlyInAnyOrder("Informe viejo", "Informe nuevo");
+        assertThat(all).filteredOn(NoteService.SearchHit::obsolete).extracting(NoteService.SearchHit::title)
+                .containsExactly("Informe viejo");
+    }
+
+    @Test
+    void n86_replacement_is_optional_another_active_note_and_cleared_when_gone() {
+        Note old = md("Vieja", "");
+        Note next = md("Nueva", "");
+        assertThat(notes.setObsolete(old.id(), true, next.id()).replacedBy()).isEqualTo(next.id());
+        assertThat(notes.setObsolete(old.id(), true, " ").replacedBy()).isNull();
+        assertThatThrownBy(() -> notes.setObsolete(old.id(), true, old.id()))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(400));
+        assertThatThrownBy(() -> notes.setObsolete(old.id(), true, "nope"))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(404));
+
+        // Al quitar la marca se vacía, aunque llegue una sustituta.
+        notes.setObsolete(old.id(), true, next.id());
+        assertThat(notes.setObsolete(old.id(), false, next.id()).replacedBy()).isNull();
+
+        // En la papelera se conserva, pero ya no se puede elegir; al eliminarla definitivamente, se vacía.
+        notes.setObsolete(old.id(), true, next.id());
+        notes.delete(next.id(), false);
+        assertThat(notes.get(old.id()).replacedBy()).isEqualTo(next.id());
+        assertThatThrownBy(() -> notes.setObsolete(old.id(), true, next.id())).isInstanceOf(ApiError.class);
+        notes.purge(next.id());
+        Note after = notes.get(old.id());
+        assertThat(after.replacedBy()).isNull();
+        assertThat(after.obsolete()).isTrue();
+    }
+
+    @Test
+    void n08_n82_a_duplicate_is_not_obsolete() {
+        Note old = md("Vieja", "x");
+        Note next = md("Nueva", "x");
+        notes.setObsolete(old.id(), true, next.id());
+        notes.markRun(old.id());
+
+        Note copy = notes.duplicate(old.id());
+        assertThat(copy.obsolete()).isFalse();
+        assertThat(copy.replacedBy()).isNull();
+        assertThat(copy.lastRunAt()).isNull();
+    }
+
+    @Test
+    void n88_mark_run_keeps_the_date_of_the_last_correct_run_without_touching_the_note() {
+        Note a = notes.create(null, "sql", "A");
+        assertThat(a.lastRunAt()).isNull();
+        clock.advance(Duration.ofMinutes(5));
+
+        notes.markRun(a.id());
+        Note run = notes.get(a.id());
+        assertThat(run.lastRunAt()).isEqualTo("2026-10-04T08:05:00Z");
+        assertThat(run.version()).isEqualTo(a.version());
+        assertThat(run.updatedAt()).isEqualTo(a.updatedAt());
+        // Una nota que ya no está no es un error.
+        notes.markRun("nope");
     }
 }

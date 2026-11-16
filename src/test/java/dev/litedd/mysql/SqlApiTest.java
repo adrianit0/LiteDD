@@ -449,4 +449,16 @@ class SqlApiTest {
         HttpResponse<String> r = client.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Res(r.statusCode(), r.body().isEmpty() ? null : JSON.readTree(r.body()), r.body());
     }
+
+    @Test
+    void n88_a_statement_that_is_not_executed_or_fails_is_not_a_correct_run() throws Exception {
+        Note update = sqlNote("UPDATE book SET title = 'x' WHERE id = 1");
+        assertThat(call("POST", "/api/sql/execute", exec(update, "{}")).status).isEqualTo(200);
+        assertThat(notes.get(update.id()).lastRunAt()).isNull();
+
+        // Sin conexión, la consulta falla.
+        Note query = sqlNote("SELECT * FROM book");
+        assertThat(call("POST", "/api/sql/execute", exec(query, "{}")).status).isNotEqualTo(200);
+        assertThat(notes.get(query.id()).lastRunAt()).isNull();
+    }
 }

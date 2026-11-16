@@ -239,6 +239,54 @@ input {
   text-overflow: ellipsis;
 }
 
+/* N-83: la nota obsoleta sigue en su sitio, atenuada y tachada. */
+.tree-row.obsolete .tree-text,
+.tree-row.obsolete .type-icon {
+  opacity: 0.55;
+}
+
+.tree-row.obsolete .tree-title,
+.search-hit.obsolete .search-hit-title {
+  text-decoration: line-through;
+}
+
+.search-hit.obsolete {
+  opacity: 0.7;
+}
+
+/* N-85, N-86 */
+.obsolete-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  background: var(--surface-raised);
+  font-size: 13px;
+}
+
+.obsolete-banner strong {
+  color: var(--warning);
+}
+
+.obsolete-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.obsolete-broken {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* N-87 */
+.wf-node-warning {
+  color: var(--warning);
+}
+
 .twisty {
   flex: none;
   width: 18px;

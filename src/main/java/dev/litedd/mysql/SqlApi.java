@@ -153,6 +153,10 @@ public final class SqlApi implements ApiRoutes {
             ExecuteResponse response = execute(req, page, plan);
             // Q-24: se recuerdan los valores de una ejecución correcta.
             variableValues.save(req.noteId(), plan.variables().stream().map(Variable::name).toList(), req.values());
+            // N-88: una sentencia que no se ejecuta (Q-45) no cuenta.
+            if (response.warning() == null) {
+                notes.markRun(req.noteId());
+            }
             ctx.json(response);
         });
         routes.post("/api/sql/count", ctx -> ctx.json(Map.of("total", count(ctx.bodyAsClass(ExecuteRequest.class)))));

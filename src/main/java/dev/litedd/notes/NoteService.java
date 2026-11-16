@@ -44,18 +44,19 @@ public final class NoteService {
     /**
      * N-70, N-72. text vacío busca solo por filtros.
      *
-     * @param since fecha ISO-8601 UTC mínima de modificación, o null
+     * @param since    fecha ISO-8601 UTC mínima de modificación, o null
+     * @param obsolete N-84: incluye también las notas obsoletas
      */
-    public record SearchQuery(String text, String type, List<String> tags, boolean favorite, String since) {
+    public record SearchQuery(String text, String type, List<String> tags, boolean favorite, String since, boolean obsolete) {
 
         public static SearchQuery text(String text) {
-            return new SearchQuery(text, null, List.of(), false, null);
+            return new SearchQuery(text, null, List.of(), false, null, false);
         }
     }
 
     /** @param fragment y titleMarked con lo encontrado entre \u0002 y \u0003 (N-71) */
     public record SearchHit(String id, String parentId, String type, String title, boolean favorite, String updatedAt,
-                            String fragment, String titleMarked) {
+                            String fragment, String titleMarked, boolean obsolete) {
     }
 
     public record TagCount(String name, int count) {
@@ -77,7 +78,7 @@ public final class NoteService {
         return store.read(s -> s.getMapper(NoteMapper.class).selectTree().stream()
                 .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.favorite(),
                         r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR)),
-                        r.statementId(), r.statementKind()))
+                        r.statementId(), r.statementKind(), r.obsolete()))
                 .toList());
     }
 
@@ -107,7 +108,7 @@ public final class NoteService {
             }
             String now = now();
             NoteRow row = new NoteRow(UUID.randomUUID().toString(), parentId, m.countChildren(parentId), type,
-                    finalTitle, "", "", false, 1, now, now, null, null);
+                    finalTitle, "", "", false, 1, now, now, null, null, false, null, null);
             m.insert(row);
             return load(s, row.id());
         });
@@ -204,7 +205,7 @@ public final class NoteService {
             StatementRow row = existing.get(st.id());
             if (row == null) {
                 m.insert(new NoteRow(UUID.randomUUID().toString(), noteId, i, "sql", st.id(), "", st.body(), false, 1, now,
-                        now, st.id(), st.kind()));
+                        now, st.id(), st.kind(), false, null, null));
                 continue;
             }
             if (!row.content().equals(st.body()) || !row.statementKind().equals(st.kind())) {
@@ -303,7 +304,7 @@ public final class NoteService {
         }
         String finalMatch = match;
         String type = q.type() == null || q.type().isBlank() ? null : q.type();
-        return store.read(s -> s.getMapper(ContentMapper.class).search(finalMatch, type, q.favorite(),
+        return store.read(s -> s.getMapper(ContentMapper.class).search(finalMatch, type, q.favorite(), q.obsolete(),
                 q.since() == null || q.since().isBlank() ? null : q.since(), List.copyOf(tags.values()), tags.size()));
     }
 
@@ -311,7 +312,7 @@ public final class NoteService {
 
     /**
      * N-08: copia la nota (sin hijas) justo debajo de la original, con su contenido, descripción, tipo,
-     * etiquetas y favorita, y el título con el siguiente «(n)» libre entre sus hermanas. M-31: la copia de una
+     * etiquetas y favorita, pero sin la marca de obsoleta (N-82), y el título con el siguiente «(n)» libre entre sus hermanas. M-31: la copia de una
      * nota XML genera sus propias hijas; la de una hija es una nota SQL normal, justo debajo de la nota XML.
      */
     public Note duplicate(String id) {
@@ -324,7 +325,7 @@ public final class NoteService {
             String now = now();
             NoteRow copy = new NoteRow(UUID.randomUUID().toString(), anchor.parentId(), anchor.position() + 1,
                     original.type(), copyTitle(original.title(), m.selectChildTitles(anchor.parentId())),
-                    original.description(), original.content(), original.favorite(), 1, now, now, null, null);
+                    original.description(), original.content(), original.favorite(), 1, now, now, null, null, false, null, null);
             m.insert(copy);
             siblings.add(siblings.indexOf(anchor.id()) + 1, copy.id());
             renumber(m, siblings);
@@ -396,6 +397,31 @@ public final class NoteService {
             }
             return load(s, id);
         });
+    }
+
+    /**
+     * N-82, N-86: marca o desmarca la nota como obsoleta. replacedBy es la nota que la sustituye, opcional; al
+     * desmarcar se vacía.
+     */
+    public Note setObsolete(String id, boolean obsolete, String replacedBy) {
+        String replacement = obsolete && replacedBy != null && !replacedBy.isBlank() ? replacedBy : null;
+        if (id.equals(replacement)) {
+            throw new ApiError(400, "invalid_replacement", "Una nota no puede sustituirse a sí misma");
+        }
+        return store.write(s -> {
+            if (replacement != null && s.getMapper(NoteMapper.class).selectActive(replacement) == null) {
+                throw new ApiError(404, "replacement_not_found", "La nota sustituta no existe o está en la papelera");
+            }
+            if (s.getMapper(ContentMapper.class).updateObsolete(id, obsolete, replacement) == 0) {
+                throw notFound();
+            }
+            return load(s, id);
+        });
+    }
+
+    /** N-88: anota la ejecución correcta de una nota. Si ya no está activa, no hace nada. */
+    public void markRun(String id) {
+        store.write(s -> s.getMapper(ContentMapper.class).updateLastRun(id, now()));
     }
 
     /**
@@ -552,7 +578,8 @@ public final class NoteService {
             throw notFound();
         }
         return new Note(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.content(), r.favorite(),
-                r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id), r.statementId(), r.statementKind());
+                r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id), r.statementId(), r.statementKind(), r.obsolete(),
+                r.replacedBy(), r.lastRunAt());
     }
 
     private static ApiError notFound() {

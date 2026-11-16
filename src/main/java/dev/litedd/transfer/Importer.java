@@ -103,7 +103,7 @@ public final class Importer {
                 rootId = UUID.randomUUID().toString();
                 String title = "Importado " + LocalDateTime.now(clock).format(ROOT_STAMP);
                 notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", "", false, 1, now, now, null,
-                        null));
+                        null, false, null, null));
             }
 
             // Por niveles: una nota se inserta después de su madre (clave foránea).
@@ -130,12 +130,20 @@ public final class Importer {
                         }
                     }
                     notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
-                            orNow(n.createdAt(), now), orNow(n.updatedAt(), now), n.statementId(), n.statementKind()));
+                            orNow(n.createdAt(), now), orNow(n.updatedAt(), now), n.statementId(), n.statementKind(), n.obsolete(),
+                            null, n.lastRunAt()));
                     for (String tag : tags(n.tags())) {
                         content.insertTag(tag);
                         content.insertNoteTag(id, content.selectTagId(tag));
                     }
                     parents.add(n.id());
+                }
+            }
+            // N-86: la sustituta se enlaza al final, cuando todas las notas existen (clave foránea).
+            for (Manifest.Note n : manifest.notes()) {
+                String replacement = n.replacedBy() == null ? null : noteIds.get(n.replacedBy());
+                if (n.obsolete() && replacement != null && !replacement.equals(noteIds.get(n.id()))) {
+                    content.updateObsolete(noteIds.get(n.id()), true, replacement);
                 }
             }
             for (Manifest.Attachment a : safeList(manifest.attachments())) {

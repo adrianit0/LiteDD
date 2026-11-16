@@ -525,4 +525,44 @@ class TransferTest {
             st.execute("INSERT INTO note_fts(note_fts) VALUES ('integrity-check')");
         }
     }
+
+    @Test
+    void n82_n86_n88_x02_the_mark_the_replacement_and_the_last_run_travel_with_the_export() throws Exception {
+        Note old = note(null, "sql", "Vieja", "SELECT 1");
+        Note next = note(null, "sql", "Nueva", "SELECT 2");
+        Note lost = note(null, "sql", "Sin sustituta", "SELECT 3");
+        Note trashed = note(null, "sql", "Papelera", "SELECT 4");
+        notes.setObsolete(old.id(), true, next.id());
+        notes.setObsolete(lost.id(), true, trashed.id());
+        notes.delete(trashed.id(), false);
+        notes.markRun(old.id());
+        String ranAt = notes.get(old.id()).lastRunAt();
+
+        byte[] zip = exporter.export();
+        Map<String, JsonNode> manifest = new LinkedHashMap<>();
+        JSON.readTree(unzip(zip).get("manifest.json")).get("notes").forEach(n -> manifest.put(n.get("title").asText(), n));
+        assertThat(manifest.get("Vieja").get("obsolete").asBoolean()).isTrue();
+        assertThat(manifest.get("Vieja").get("replacedBy").asText()).isEqualTo(next.id());
+        assertThat(manifest.get("Vieja").get("lastRunAt").asText()).isEqualTo(ranAt);
+        assertThat(manifest.get("Nueva").get("obsolete").asBoolean()).isFalse();
+        assertThat(manifest.get("Nueva").has("replacedBy")).isFalse();
+        // La sustituta que está en la papelera no se exporta, y su referencia tampoco.
+        assertThat(manifest.get("Sin sustituta").has("replacedBy")).isFalse();
+
+        // X-05: en una rama, la sustituta es la nota importada.
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        List<TreeNode> imported = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId())).toList();
+        assertThat(imported).extracting(TreeNode::title).containsExactly("Vieja", "Nueva", "Sin sustituta");
+        Note newOld = notes.get(imported.get(0).id());
+        assertThat(newOld.obsolete()).isTrue();
+        assertThat(newOld.replacedBy()).isEqualTo(imported.get(1).id());
+        assertThat(newOld.lastRunAt()).isEqualTo(ranAt);
+        assertThat(notes.get(imported.get(2).id()).obsolete()).isTrue();
+        assertThat(notes.get(imported.get(2).id()).replacedBy()).isNull();
+
+        importer.importZip(new ByteArrayInputStream(zip), Mode.REPLACE);
+        assertThat(notes.get(old.id()).replacedBy()).isEqualTo(next.id());
+        assertThat(notes.get(old.id()).lastRunAt()).isEqualTo(ranAt);
+        assertThat(notes.get(next.id()).obsolete()).isFalse();
+    }
 }

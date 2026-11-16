@@ -29,6 +29,7 @@ vi.mock('./api', async (importOriginal) => {
       httpProfile: vi.fn(),
       setHttpProfile: vi.fn(),
       duplicateNote: vi.fn(),
+      setObsolete: vi.fn(),
       openLink: vi.fn(),
     },
   };
@@ -670,5 +671,71 @@ describe('N-94 a N-96 abrir LiteDD desde fuera (ADR-0045)', () => {
       await openFromOutside({ title: 'Nada parecido' });
     });
     expect(screen.getByRole<HTMLInputElement>('combobox', { name: 'Título de la nota' }).value).toBe('Nada parecido');
+  });
+});
+
+describe('N-82 a N-88 notas obsoletas (ADR-0046)', () => {
+  const nodes: Note[] = [
+    { ...created, id: 'a', title: 'Consulta vieja', obsolete: true, replacedBy: 'b', lastRunAt: '2026-11-01T12:00:00Z' },
+    { ...created, id: 'b', title: 'Consulta nueva', position: 1 },
+    { ...created, id: 'c', title: 'consulta vieja', position: 2 },
+  ];
+
+  beforeEach(() => {
+    mocked.tree.mockResolvedValue(nodes);
+    mocked.getNote.mockImplementation(async (id: string) => ({ ...nodes.find((n) => n.id === id)! }));
+    useTree.setState({ nodes: [], loaded: false });
+    useUi.setState({ quickSearchOpen: false, quickSearchQuery: '', notices: [] });
+  });
+
+  it('N-82 N-83 el árbol distingue la obsoleta y su menú la marca y la desmarca', async () => {
+    mocked.setObsolete.mockImplementation(async (id: string, obsolete: boolean) => ({ ...nodes.find((n) => n.id === id)!, obsolete }));
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const old = await screen.findByRole('treeitem', { name: /Consulta vieja/ });
+    expect(old.className).toContain('obsolete');
+    expect(screen.getByRole('treeitem', { name: /Consulta nueva/ }).className).not.toContain('obsolete');
+
+    fireEvent.contextMenu(old);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Quitar la marca de obsoleta' }));
+    });
+    expect(mocked.setObsolete).toHaveBeenLastCalledWith('a', false, null);
+
+    fireEvent.contextMenu(screen.getByRole('treeitem', { name: /Consulta nueva/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Marcar como obsoleta' }));
+    });
+    expect(mocked.setObsolete).toHaveBeenLastCalledWith('b', true, null);
+  });
+
+  it('N-85 N-86 N-88 la nota obsoleta se abre con su banda, su sustituta y la última ejecución correcta', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ noteId: 'a' });
+    });
+    const banner = within(screen.getByRole('note', { name: 'Nota obsoleta' }));
+    expect(banner.getByRole('button', { name: '«Consulta nueva»' })).toBeTruthy();
+    expect(screen.getByTitle('Última ejecución correcta').textContent).toMatch(/^Ejecutada: 01\/11\/2026/);
+    // N-82: la cabecera solo ofrece marcar la que no lo está.
+    expect(screen.queryByRole('button', { name: 'Obsoleta' })).toBeNull();
+
+    await act(async () => {
+      await openFromOutside({ noteId: 'b' });
+    });
+    expect(screen.queryByRole('note', { name: 'Nota obsoleta' })).toBeNull();
+    expect(screen.queryByTitle('Última ejecución correcta')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Obsoleta' })).toBeTruthy();
+  });
+
+  it('N-96 entre varias notas con el mismo título abre la única que no está obsoleta', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ title: 'Consulta Vieja' });
+    });
+    expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['c']);
+    expect(screen.queryByRole('dialog', { name: 'Búsqueda rápida' })).toBeNull();
   });
 });

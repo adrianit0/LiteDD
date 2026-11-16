@@ -60,6 +60,8 @@ export const useHttpRuns = create<HttpRunState>((set, get) => {
         try {
           const result = await api.httpExecute(tab.noteId, tab.note.version, executionId, profile.id, key);
           if (get().runs[tabId]) patch(tabId, { result, running: null });
+          // N-88
+          if (!result.error) void useTabs.getState().refreshMeta(tab.noteId);
           return;
         } catch (e) {
           if (!get().runs[tabId]) return;

@@ -14,22 +14,23 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | /api/tree | Árbol completo de notas activas: identidad, madre, posición, tipo, título, favorita, etiquetas y, en las hijas de una nota XML, statementId y statementKind |
+| GET | /api/tree | Árbol completo de notas activas: identidad, madre, posición, tipo, título, favorita, obsoleta, etiquetas y, en las hijas de una nota XML, statementId y statementKind |
 | POST | /api/notes | Crear nota: madre, tipo, título |
-| GET | /api/notes/{id} | Nota completa con contenido y versión |
+| GET | /api/notes/{id} | Nota completa con contenido, versión, sustituta (N-86) y última ejecución correcta (N-88) |
 | PUT | /api/notes/{id} | Guardar título y contenido con baseVersion; 409 si hay conflicto. En una pizarra, el contenido se valida según B-31 |
 | POST | /api/notes/{id}/duplicate | Duplicar una nota, sin hijas (N-08, M-31) |
 | POST | /api/notes/{id}/move | Mover: nueva madre y posición |
 | DELETE | /api/notes/{id} | A la papelera; 409 si tiene hijas, salvo children=promote |
 | PUT | /api/notes/{id}/tags | Sustituir etiquetas |
 | PUT | /api/notes/{id}/favorite | Marcar o desmarcar |
+| PUT | /api/notes/{id}/obsolete | Marcar o desmarcar como obsoleta y elegir la sustituta: obsolete y replacedBy (N-82, N-86) |
 | GET | /api/notes/{id}/versions | Historial |
 | POST | /api/notes/{id}/versions/{versionId}/restore | Restaurar una versión |
 | GET | /api/trash | Contenido de la papelera |
 | POST | /api/trash/{id}/restore | Restaurar |
 | DELETE | /api/trash/{id} | Eliminar definitivamente |
 | DELETE | /api/trash | Vaciar |
-| GET | /api/search | Parámetros q, type, tags, favorite, since |
+| GET | /api/search | Parámetros q, type, tags, favorite, since y obsolete, que incluye las obsoletas (N-84) |
 | GET | /api/tags | Etiquetas existentes |
 | POST | /api/attachments | Subir imagen |
 | GET | /api/attachments/{id} | Descargar imagen |

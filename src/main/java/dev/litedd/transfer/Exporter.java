@@ -27,6 +27,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -72,11 +74,14 @@ public final class Exporter {
         Map<String, String> files = new HashMap<>();
         assignFiles(children, null, "notes/", files);
 
+        // N-86: una sustituta que está en la papelera no se exporta, así que tampoco su referencia.
+        Set<String> exported = data.notes().stream().map(ExportNote::id).collect(Collectors.toSet());
         List<Manifest.Note> manifestNotes = new ArrayList<>();
         for (ExportNote n : data.notes()) {
             manifestNotes.add(new Manifest.Note(n.id(), n.parentId(), n.position(), n.type(), n.title(), n.description(),
                     tags.getOrDefault(n.id(), List.of()), n.favorite(), n.createdAt(), n.updatedAt(), files.get(n.id()),
-                    n.statementId(), n.statementKind()));
+                    n.statementId(), n.statementKind(), n.obsolete(),
+                    n.replacedBy() != null && exported.contains(n.replacedBy()) ? n.replacedBy() : null, n.lastRunAt()));
         }
         List<Manifest.Attachment> manifestAttachments = new ArrayList<>();
         for (ExportAttachment a : data.attachments()) {

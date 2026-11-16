@@ -141,7 +141,17 @@ public final class HttpRunner {
         if (profile.requireKey()) {
             checkConfirmKey(profile, confirmKey);
         }
-        return run(note, HttpNoteContent.parse(note.content()), profile, executionId, null).withProfile(profile);
+        Result result = run(note, HttpNoteContent.parse(note.content()), profile, executionId, null).withProfile(profile);
+        if (succeeded(result)) {
+            notes.markRun(noteId); // N-88
+        }
+        return result;
+    }
+
+    /** N-88: la llamada de la nota (no su login) respondió 2xx. */
+    public static boolean succeeded(Result r) {
+        return r.error() == null && "request".equals(r.phase()) && r.response() != null
+                && r.response().status() >= 200 && r.response().status() < 300;
     }
 
     /**

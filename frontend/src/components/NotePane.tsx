@@ -15,9 +15,9 @@ import { BoardEditor } from './board/BoardEditor';
 import { BoardView } from './board/BoardView';
 import { WorkflowView } from './workflow/WorkflowView';
 import { Dialog } from './Dialog';
-import { deleteNote, openNote } from '../actions';
+import { deleteNote, openNote, setObsolete } from '../actions';
 import { TypeIcon } from './TypeIcon';
-import { FavoriteButton, TagEditor } from './NoteMeta';
+import { FavoriteButton, ObsoleteBanner, TagEditor } from './NoteMeta';
 import { HistoryDialog } from './HistoryDialog';
 import { api } from '../api';
 import { imageProblem } from '../markdown/links';
@@ -198,6 +198,12 @@ export function NotePane({ tab }: { tab: Tab }) {
           <span className="muted note-date" title="Última modificación">
             {formatDateTime(note.updatedAt)}
           </span>
+          {note.lastRunAt && (
+            // N-88
+            <span className="muted note-date" title="Última ejecución correcta">
+              Ejecutada: {formatDateTime(note.lastRunAt)}
+            </span>
+          )}
           {!autosave && (
             // N-46
             <button
@@ -219,6 +225,12 @@ export function NotePane({ tab }: { tab: Tab }) {
           <button type="button" onClick={onRefresh} title="Recargar la nota desde el disco">
             Actualizar
           </button>
+          {!note.obsolete && (
+            // N-82: para quitar la marca, la banda (N-85).
+            <button type="button" onClick={() => void setObsolete(note.id, true)} title="Marcar la nota como obsoleta">
+              Obsoleta
+            </button>
+          )}
           {!generated && (
             <>
               <button type="button" onClick={() => setHistoryOpen(true)} title="Versiones guardadas de la nota">
@@ -231,6 +243,8 @@ export function NotePane({ tab }: { tab: Tab }) {
           )}
         </div>
       </header>
+
+      {note.obsolete && <ObsoleteBanner note={note} />}
 
       {editMode && note.type === 'md' && <FormatToolbar onFormat={(a) => editor.current?.format(a)} />}
       {editMode && (note.type === 'sql' || note.type === 'xml') && <SqlToolbar onInsert={(k) => editor.current?.snippet(k)} />}

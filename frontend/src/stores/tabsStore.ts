@@ -78,6 +78,8 @@ interface TabsState {
   applyRestored: (id: string, note: Note) => void;
   /** N-80, N-81: etiquetas y favorita sin cambiar la versión, en todas las pestañas de la nota. */
   applyMeta: (note: Note) => void;
+  /** N-88: tras ejecutar, trae la fecha de la última ejecución correcta de la nota. */
+  refreshMeta: (noteId: string) => Promise<void>;
   saveNote: (noteId: string) => Promise<void>;
   toggleMode: (id: string) => Promise<void>;
   reload: (id: string) => Promise<void>;
@@ -469,9 +471,30 @@ export const useTabs = create<TabsState>((set, get) => {
     applyMeta(note) {
       set({
         tabs: get().tabs.map((t) =>
-          t.noteId === note.id && t.note ? { ...t, note: { ...t.note, tags: note.tags, favorite: note.favorite } } : t,
+          t.noteId === note.id && t.note
+            ? {
+                ...t,
+                note: {
+                  ...t.note,
+                  tags: note.tags,
+                  favorite: note.favorite,
+                  obsolete: note.obsolete,
+                  replacedBy: note.replacedBy,
+                  lastRunAt: note.lastRunAt,
+                },
+              }
+            : t,
         ),
       });
+    },
+
+    async refreshMeta(noteId) {
+      try {
+        const note = await api.getNote(noteId);
+        if (note?.id === noteId) get().applyMeta(note);
+      } catch {
+        // La fecha es informativa: si no llega, se verá al recargar la nota.
+      }
     },
 
     async reload(id) {

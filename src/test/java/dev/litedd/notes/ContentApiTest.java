@@ -151,4 +151,33 @@ class ContentApiTest {
         HttpResponse<String> r = client.send(b.build(), HttpResponse.BodyHandlers.ofString());
         return new Res(r.statusCode(), r.body().isEmpty() ? null : JSON.readTree(r.body()));
     }
+
+    @Test
+    void n82_n84_n86_obsolete_is_marked_searched_and_replaced_through_the_api() throws Exception {
+        call("PUT", "/api/notes/" + noteId, "{\"title\":\"Préstamos\",\"content\":\"tabla loan\",\"baseVersion\":1}");
+        String other = call("POST", "/api/notes", "{\"type\":\"md\",\"title\":\"Nueva\"}").json.get("id").asText();
+
+        Res marked = call("PUT", "/api/notes/" + noteId + "/obsolete", "{\"obsolete\":true,\"replacedBy\":\"" + other + "\"}");
+        assertThat(marked.status).isEqualTo(200);
+        assertThat(marked.json.get("obsolete").asBoolean()).isTrue();
+        assertThat(marked.json.get("replacedBy").asText()).isEqualTo(other);
+        assertThat(marked.json.get("lastRunAt").isNull()).isTrue();
+        assertThat(marked.json.get("version").asInt()).isEqualTo(2);
+        for (JsonNode node : call("GET", "/api/tree", null).json) {
+            assertThat(node.get("obsolete").asBoolean()).isEqualTo(node.get("id").asText().equals(noteId));
+        }
+
+        assertThat(call("GET", "/api/search?q=" + enc("préstamo"), null).json).isEmpty();
+        JsonNode hits = call("GET", "/api/search?q=" + enc("préstamo") + "&obsolete=true", null).json;
+        assertThat(hits).hasSize(1);
+        assertThat(hits.get(0).get("obsolete").asBoolean()).isTrue();
+
+        assertThat(call("PUT", "/api/notes/" + noteId + "/obsolete", "{\"obsolete\":true,\"replacedBy\":\"" + noteId + "\"}").status)
+                .isEqualTo(400);
+        assertThat(call("PUT", "/api/notes/" + noteId + "/obsolete", "{\"obsolete\":true,\"replacedBy\":\"nope\"}").status)
+                .isEqualTo(404);
+        Res cleared = call("PUT", "/api/notes/" + noteId + "/obsolete", "{\"obsolete\":false}");
+        assertThat(cleared.json.get("obsolete").asBoolean()).isFalse();
+        assertThat(cleared.json.get("replacedBy").isNull()).isTrue();
+    }
 }
