@@ -4,6 +4,7 @@ import { openNote, saveTags, setObsolete, toggleFavorite } from '../actions';
 import { useTree } from '../stores/treeStore';
 import { NotePicker } from './workflow/NotePicker';
 import { useUi } from '../stores/uiStore';
+import { formatDay, isImportant } from '../important';
 import type { Note } from '../types';
 
 /** N-81: estrella de favorita en la cabecera. */
@@ -18,6 +19,21 @@ export function FavoriteButton({ note }: { note: Note }) {
       onClick={() => void toggleFavorite(note.id)}
     >
       {note.favorite ? '★' : '☆'}
+    </button>
+  );
+}
+
+/** N-89, N-98: abre «Importante…»; si la nota es importante hoy, dice hasta cuándo. */
+export function ImportantButton({ note }: { note: Note }) {
+  const until = isImportant(note) ? formatDay(note.importantUntil!) : null;
+  return (
+    <button
+      type="button"
+      className={until ? 'important-button on' : 'important-button'}
+      title={until ? 'Cambiar la fecha o quitar la marca de importante' : 'Marcar la nota como importante hasta una fecha'}
+      onClick={() => useUi.getState().setImportantFor(note.id)}
+    >
+      {until ? `Importante hasta ${until}` : 'Importante'}
     </button>
   );
 }

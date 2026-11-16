@@ -17,7 +17,7 @@ import { WorkflowView } from './workflow/WorkflowView';
 import { Dialog } from './Dialog';
 import { deleteNote, openNote, setObsolete } from '../actions';
 import { TypeIcon } from './TypeIcon';
-import { FavoriteButton, ObsoleteBanner, TagEditor } from './NoteMeta';
+import { FavoriteButton, ImportantButton, ObsoleteBanner, TagEditor } from './NoteMeta';
 import { HistoryDialog } from './HistoryDialog';
 import { api } from '../api';
 import { imageProblem } from '../markdown/links';
@@ -225,6 +225,7 @@ export function NotePane({ tab }: { tab: Tab }) {
           <button type="button" onClick={onRefresh} title="Recargar la nota desde el disco">
             Actualizar
           </button>
+          <ImportantButton note={note} />
           {!note.obsolete && (
             // N-82: para quitar la marca, la banda (N-85).
             <button type="button" onClick={() => void setObsolete(note.id, true)} title="Marcar la nota como obsoleta">

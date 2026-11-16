@@ -238,6 +238,17 @@ export async function setObsolete(id: string, obsolete: boolean, replacedBy: str
   }
 }
 
+/** N-89: marca la nota como importante hasta ese día (AAAA-MM-DD); con null quita la marca. */
+export async function setImportant(id: string, until: string | null): Promise<void> {
+  try {
+    const note = await api.setImportant(id, until);
+    useTabs.getState().applyMeta(note);
+    await useTree.getState().load();
+  } catch (e) {
+    fail(e, 'No se pudo cambiar la marca de importante');
+  }
+}
+
 /** N-80 */
 export async function saveTags(id: string, tags: string[]): Promise<void> {
   try {

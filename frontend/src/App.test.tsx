@@ -30,6 +30,7 @@ vi.mock('./api', async (importOriginal) => {
       setHttpProfile: vi.fn(),
       duplicateNote: vi.fn(),
       setObsolete: vi.fn(),
+      setImportant: vi.fn(),
       openLink: vi.fn(),
     },
   };
@@ -737,5 +738,62 @@ describe('N-82 a N-88 notas obsoletas (ADR-0046)', () => {
     });
     expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['c']);
     expect(screen.queryByRole('dialog', { name: 'Búsqueda rápida' })).toBeNull();
+  });
+});
+
+describe('N-89 N-97 N-98 notas importantes (ADR-0047)', () => {
+  const nodes: Note[] = [
+    { ...created, id: 'a', title: 'Análisis pendiente', importantUntil: '2999-12-31' },
+    { ...created, id: 'b', title: 'Tarea pasada', position: 1, importantUntil: '2000-01-01' },
+    { ...created, id: 'c', title: 'Consulta', position: 2, obsolete: true, importantUntil: '2999-12-31' },
+  ];
+
+  beforeEach(() => {
+    mocked.tree.mockResolvedValue(nodes);
+    mocked.getNote.mockImplementation(async (id: string) => ({ ...nodes.find((n) => n.id === id)! }));
+    useTree.setState({ nodes: [], loaded: false });
+    useUi.setState({ quickSearchOpen: false, quickSearchQuery: '', notices: [], importantFor: null });
+  });
+
+  it('N-98 N-97 el árbol resalta la importante vigente, no la caducada, y convive con obsoleta', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const task = await screen.findByRole('treeitem', { name: /Análisis pendiente/ });
+    expect(task.className).toContain('important');
+    expect(within(task).getByRole('img', { name: 'Importante hasta el 31/12/2999' })).toBeTruthy();
+    expect(screen.getByRole('treeitem', { name: /Tarea pasada/ }).className).not.toContain('important');
+    const both = screen.getByRole('treeitem', { name: /Consulta/ });
+    expect(both.className).toContain('important');
+    expect(both.className).toContain('obsolete');
+  });
+
+  it('N-89 «Importante…» del menú abre el diálogo, que quita la marca', async () => {
+    mocked.setImportant.mockImplementation(async (id: string, until: string | null) => ({ ...nodes.find((n) => n.id === id)!, importantUntil: until }));
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    fireEvent.contextMenu(await screen.findByRole('treeitem', { name: /Análisis pendiente/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Importante…' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Importante: «Análisis pendiente»' }));
+    await act(async () => {
+      fireEvent.click(dialog.getByRole('button', { name: 'Quitar la marca' }));
+    });
+    expect(mocked.setImportant).toHaveBeenLastCalledWith('a', null);
+    expect(screen.queryByRole('dialog', { name: /Importante/ })).toBeNull();
+  });
+
+  it('N-98 la cabecera de la nota dice hasta cuándo es importante', async () => {
+    render(<App />);
+    await act(async () => {
+      await openFromOutside({ noteId: 'a' });
+    });
+    expect(screen.getByRole('button', { name: 'Importante hasta 31/12/2999' })).toBeTruthy();
+    await act(async () => {
+      await openFromOutside({ noteId: 'b' });
+    });
+    expect(screen.getByRole('button', { name: 'Importante' })).toBeTruthy();
   });
 });

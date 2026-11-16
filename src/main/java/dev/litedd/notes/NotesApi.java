@@ -28,6 +28,9 @@ public final class NotesApi implements ApiRoutes {
     record ObsoleteRequest(Boolean obsolete, String replacedBy) {
     }
 
+    record ImportantRequest(String until) {
+    }
+
     record MoveRequest(String parentId, Integer position) {
     }
 
@@ -85,13 +88,16 @@ public final class NotesApi implements ApiRoutes {
             ObsoleteRequest req = ctx.bodyAsClass(ObsoleteRequest.class);
             ctx.json(notes.setObsolete(ctx.pathParam("id"), Boolean.TRUE.equals(req.obsolete()), req.replacedBy()));
         });
+        // N-89
+        routes.put("/api/notes/{id}/important",
+                ctx -> ctx.json(notes.setImportant(ctx.pathParam("id"), ctx.bodyAsClass(ImportantRequest.class).until())));
         routes.get("/api/tags", ctx -> ctx.json(notes.tags()));
         routes.get("/api/search", ctx -> {
             String tags = ctx.queryParam("tags");
             ctx.json(notes.search(new NoteService.SearchQuery(ctx.queryParam("q"), ctx.queryParam("type"),
                     tags == null || tags.isBlank() ? List.of() : Arrays.asList(tags.split(",")),
                     "true".equals(ctx.queryParam("favorite")), ctx.queryParam("since"),
-                    "true".equals(ctx.queryParam("obsolete")))));
+                    "true".equals(ctx.queryParam("obsolete")), ctx.queryParam("important"))));
         });
 
         // N-08

@@ -15,7 +15,7 @@ public record Manifest(int formatVersion, String appVersion, String exportedAt, 
     /**
      * description (N-07) falta en los archivos anteriores; se importa como vacía. statementId y statementKind solo
      * aparecen en las hijas de una nota XML MyBatis (M-50). obsolete, replacedBy y lastRunAt (N-82, N-86, N-88) faltan en
-     * los archivos anteriores a ADR-0046.
+     * los archivos anteriores a ADR-0046, e importantUntil (N-89) en los anteriores a ADR-0047.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Note(String id, String parentId, int position, String type, String title, String description, List<String> tags,
@@ -24,7 +24,8 @@ public record Manifest(int formatVersion, String appVersion, String exportedAt, 
                        @JsonInclude(JsonInclude.Include.NON_NULL) String statementKind,
                        boolean obsolete,
                        @JsonInclude(JsonInclude.Include.NON_NULL) String replacedBy,
-                       @JsonInclude(JsonInclude.Include.NON_NULL) String lastRunAt) {
+                       @JsonInclude(JsonInclude.Include.NON_NULL) String lastRunAt,
+                       @JsonInclude(JsonInclude.Include.NON_NULL) String importantUntil) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

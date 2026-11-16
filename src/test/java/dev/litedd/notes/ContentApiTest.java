@@ -180,4 +180,31 @@ class ContentApiTest {
         assertThat(cleared.json.get("obsolete").asBoolean()).isFalse();
         assertThat(cleared.json.get("replacedBy").isNull()).isTrue();
     }
+
+    @Test
+    void n89_n99_important_is_marked_filtered_and_cleared_through_the_api() throws Exception {
+        call("PUT", "/api/notes/" + noteId, "{\"title\":\"Análisis\",\"content\":\"pendiente\",\"baseVersion\":1}");
+        call("POST", "/api/notes", "{\"type\":\"md\",\"title\":\"Otra\"}");
+
+        Res marked = call("PUT", "/api/notes/" + noteId + "/important", "{\"until\":\"2026-11-20\"}");
+        assertThat(marked.status).isEqualTo(200);
+        assertThat(marked.json.get("importantUntil").asText()).isEqualTo("2026-11-20");
+        assertThat(marked.json.get("version").asInt()).isEqualTo(2);
+        for (JsonNode node : call("GET", "/api/tree", null).json) {
+            assertThat(node.get("importantUntil").isNull()).isEqualTo(!node.get("id").asText().equals(noteId));
+        }
+
+        JsonNode hits = call("GET", "/api/search?important=2026-11-20", null).json;
+        assertThat(hits).hasSize(1);
+        assertThat(hits.get(0).get("id").asText()).isEqualTo(noteId);
+        assertThat(hits.get(0).get("importantUntil").asText()).isEqualTo("2026-11-20");
+        assertThat(call("GET", "/api/search?important=2026-11-21", null).json).isEmpty();
+        assertThat(call("GET", "/api/search?important=ayer", null).status).isEqualTo(400);
+
+        assertThat(call("PUT", "/api/notes/" + noteId + "/important", "{\"until\":\"20/11/2026\"}").status).isEqualTo(400);
+        assertThat(call("PUT", "/api/notes/nope/important", "{\"until\":\"2026-11-20\"}").status).isEqualTo(404);
+        Res cleared = call("PUT", "/api/notes/" + noteId + "/important", "{\"until\":null}");
+        assertThat(cleared.status).isEqualTo(200);
+        assertThat(cleared.json.get("importantUntil").isNull()).isTrue();
+    }
 }

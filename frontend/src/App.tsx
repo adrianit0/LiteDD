@@ -18,6 +18,7 @@ import { useWorkflowRuns } from './stores/workflowRunStore';
 import { QuickSearch } from './components/QuickSearch';
 import { SettingsDialog } from './components/SettingsDialog';
 import { ConstantsDialog } from './components/ConstantsDialog';
+import { ImportantDialog } from './components/ImportantDialog';
 import { CurlImportDialog } from './components/http/CurlImportDialog';
 import { startPresence } from './presence';
 
@@ -31,6 +32,7 @@ export function App() {
   const settingsOpen = useUi((s) => s.settingsOpen);
   const constantsOpen = useUi((s) => s.constantsOpen);
   const curlImport = useUi((s) => s.curlImport);
+  const importantFor = useUi((s) => s.importantFor);
   const contactLost = useUi((s) => s.contactLost);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -186,6 +188,7 @@ export function App() {
       {settingsOpen && <SettingsDialog />}
       {constantsOpen && <ConstantsDialog />}
       {curlImport && <CurlImportDialog parentId={curlImport.parentId} />}
+      {importantFor && <ImportantDialog key={importantFor} noteId={importantFor} />}
       <DialogHost />
       <ConfirmKeyDialog />
       {quickSearch && <QuickSearch key={quickSearchQuery} />}

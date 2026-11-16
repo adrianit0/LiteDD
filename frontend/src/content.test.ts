@@ -1,6 +1,7 @@
 import { hasFilters, NO_FILTERS, searchParams, sinceFor, splitMarked } from './search';
 import { attachmentIds, imageProblem, linkCandidates, noteLink } from './markdown/links';
 import { renderMarkdown } from './markdown/render';
+import { dateInDays, formatDay, importantLabel, isImportant, localDate } from './important';
 import type { TreeNode } from './types';
 
 const node = (id: string, title: string): TreeNode => ({ id, parentId: null, position: 0, type: 'md', title, description: '', favorite: false, tags: [] });
@@ -16,7 +17,7 @@ describe('búsqueda', () => {
 
   it('N-72 filtros combinables en la petición', () => {
     expect(searchParams('  préstamo ', NO_FILTERS, now)).toBe('q=pr%C3%A9stamo');
-    const all = new URLSearchParams(searchParams('', { type: 'sql', tags: ['demo', 'libros'], favorite: true, since: '7d', obsolete: false }, now));
+    const all = new URLSearchParams(searchParams('', { type: 'sql', tags: ['demo', 'libros'], favorite: true, since: '7d', important: false, obsolete: false }, now));
     expect(all.get('type')).toBe('sql');
     expect(all.get('tags')).toBe('demo,libros');
     expect(all.get('favorite')).toBe('true');
@@ -92,5 +93,36 @@ describe('enlaces e imágenes', () => {
     const block = el.querySelector('.mermaid-block .mermaid-source')!;
     expect(block.textContent).toContain('A-->B');
     expect(el.querySelector('img')).toBeNull();
+  });
+});
+
+describe('notas importantes (ADR-0047)', () => {
+  const lateToday = new Date(2026, 9, 4, 23, 59);
+
+  it('N-97 la nota es importante hasta el final del día de su fecha y al siguiente deja de serlo', () => {
+    expect(isImportant({ importantUntil: '2026-10-04' }, lateToday)).toBe(true);
+    expect(isImportant({ importantUntil: '2026-10-11' }, lateToday)).toBe(true);
+    expect(isImportant({ importantUntil: '2026-10-04' }, new Date(2026, 9, 5, 0, 0))).toBe(false);
+    expect(isImportant({ importantUntil: null }, lateToday)).toBe(false);
+    expect(isImportant({}, lateToday)).toBe(false);
+  });
+
+  it('N-89 los días son locales y los atajos cuentan desde hoy', () => {
+    expect(localDate(lateToday)).toBe('2026-10-04');
+    expect(dateInDays(0, lateToday)).toBe('2026-10-04');
+    expect(dateInDays(1, lateToday)).toBe('2026-10-05');
+    expect(dateInDays(7, new Date(2026, 9, 28, 9, 0))).toBe('2026-11-04');
+  });
+
+  it('N-98 el resalte dice hasta cuándo, y nada si la fecha ya pasó', () => {
+    expect(formatDay('2026-10-04')).toBe('04/10/2026');
+    expect(importantLabel({ importantUntil: '2026-10-11' }, lateToday)).toBe('Importante hasta el 11/10/2026');
+    expect(importantLabel({ importantUntil: '2026-10-03' }, lateToday)).toBeNull();
+  });
+
+  it('N-99 «Solo importantes» es un filtro y envía el día local de hoy', () => {
+    expect(searchParams('', { ...NO_FILTERS, important: true }, lateToday)).toBe('important=2026-10-04');
+    expect(searchParams('x', { ...NO_FILTERS, important: true, favorite: true }, lateToday)).toBe('q=x&favorite=true&important=2026-10-04');
+    expect(hasFilters({ ...NO_FILTERS, important: true })).toBe(true);
   });
 });

@@ -38,7 +38,8 @@ public interface ContentMapper {
     /**
      * Con match, búsqueda de texto completo con fragmento resaltado entre char(2) y char(3); sin él,
      * solo filtros, por fecha de modificación. Nunca notas de la papelera (D-04). Las pizarras no llevan fragmento:
-     * con contenido externo, FTS5 lo sacaría del base64 (B-33). N-84: las obsoletas, solo si se piden.
+     * con contenido externo, FTS5 lo sacaría del base64 (B-33). N-84: las obsoletas, solo si se piden. N-99: con important,
+     * solo las importantes vigentes ese día.
      */
     @Select("""
             <script>
@@ -50,7 +51,7 @@ public interface ContentMapper {
               </when>
               <otherwise>CASE WHEN n.type = 'board' THEN '' ELSE substr(n.content, 1, 160) END AS fragment, NULL AS title_marked</otherwise>
             </choose>,
-            n.obsolete
+            n.obsolete, n.important_until
             FROM note n
             <if test="match != null">JOIN note_fts ON note_fts.rowid = n.rid</if>
             WHERE n.deleted_at IS NULL
@@ -58,6 +59,7 @@ public interface ContentMapper {
             <if test="type != null">AND n.type = #{type}</if>
             <if test="favorite">AND n.favorite = 1</if>
             <if test="!obsolete">AND n.obsolete = 0</if>
+            <if test="important != null">AND n.important_until &gt;= #{important}</if>
             <if test="since != null">AND n.updated_at &gt;= #{since}</if>
             <if test="tags.size() > 0">
               AND (SELECT count(DISTINCT t.id) FROM note_tag nt JOIN tag t ON t.id = nt.tag_id
@@ -68,7 +70,8 @@ public interface ContentMapper {
             LIMIT 200
             </script>""")
     List<SearchHit> search(@Param("match") String match, @Param("type") String type, @Param("favorite") boolean favorite,
-                           @Param("obsolete") boolean obsolete, @Param("since") String since, @Param("tags") List<String> tags,
+                           @Param("obsolete") boolean obsolete, @Param("important") String important,
+                           @Param("since") String since, @Param("tags") List<String> tags,
                            @Param("tagCount") int tagCount);
 
     // --- Etiquetas y favoritas ---
@@ -101,6 +104,10 @@ public interface ContentMapper {
     /** N-82, N-86: como la favorita, no cambia la versión ni la fecha de modificación. */
     @Update("UPDATE note SET obsolete = #{obsolete}, replaced_by = #{replacedBy} WHERE id = #{id} AND deleted_at IS NULL")
     int updateObsolete(@Param("id") String id, @Param("obsolete") boolean obsolete, @Param("replacedBy") String replacedBy);
+
+    /** N-89: como la favorita, no cambia la versión ni la fecha de modificación. */
+    @Update("UPDATE note SET important_until = #{until} WHERE id = #{id} AND deleted_at IS NULL")
+    int updateImportant(@Param("id") String id, @Param("until") String until);
 
     /** N-88 */
     @Update("UPDATE note SET last_run_at = #{now} WHERE id = #{id} AND deleted_at IS NULL")

@@ -81,7 +81,8 @@ public final class Exporter {
             manifestNotes.add(new Manifest.Note(n.id(), n.parentId(), n.position(), n.type(), n.title(), n.description(),
                     tags.getOrDefault(n.id(), List.of()), n.favorite(), n.createdAt(), n.updatedAt(), files.get(n.id()),
                     n.statementId(), n.statementKind(), n.obsolete(),
-                    n.replacedBy() != null && exported.contains(n.replacedBy()) ? n.replacedBy() : null, n.lastRunAt()));
+                    n.replacedBy() != null && exported.contains(n.replacedBy()) ? n.replacedBy() : null, n.lastRunAt(),
+                    n.importantUntil()));
         }
         List<Manifest.Attachment> manifestAttachments = new ArrayList<>();
         for (ExportAttachment a : data.attachments()) {

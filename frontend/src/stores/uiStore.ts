@@ -39,6 +39,9 @@ interface UiState {
   /** N-80: el menú contextual «Etiquetas…» lleva el foco al editor de etiquetas de esa nota. */
   focusTagsFor: string | null;
   setFocusTags: (noteId: string | null) => void;
+  /** N-89: la nota cuyo diálogo «Importante…» está abierto. */
+  importantFor: string | null;
+  setImportantFor: (noteId: string | null) => void;
   /** U-10 */
   config: AppConfig;
   setConfig: (config: AppConfig) => void;
@@ -116,6 +119,8 @@ export const useUi = create<UiState>((set, get) => ({
   setQuickSearch: (open, query = '') => set({ quickSearchOpen: open, quickSearchQuery: open ? query : '' }),
   focusTagsFor: null,
   setFocusTags: (noteId) => set({ focusTagsFor: noteId }),
+  importantFor: null,
+  setImportantFor: (noteId) => set({ importantFor: noteId }),
   config: DEFAULT_CONFIG,
   setConfig: (config) => set({ config }),
   settingsOpen: false,

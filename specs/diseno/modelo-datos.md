@@ -25,7 +25,8 @@ CREATE TABLE note (
   statement_kind TEXT CHECK (statement_kind IN ('select','insert','update','delete')),  -- M-24, V004
   obsolete    INTEGER NOT NULL DEFAULT 0,    -- N-82, V008 (ADR-0046)
   replaced_by TEXT REFERENCES note(id) ON DELETE SET NULL,  -- N-86: la nota que la sustituye
-  last_run_at TEXT                           -- N-88: última ejecución correcta, ISO-8601 UTC
+  last_run_at TEXT,                          -- N-88: última ejecución correcta, ISO-8601 UTC
+  important_until TEXT                       -- N-89, V009 (ADR-0047): importante hasta ese día, AAAA-MM-DD local; NULL = sin marca
 );
 CREATE INDEX idx_note_parent ON note(parent_id, position);
 CREATE UNIQUE INDEX idx_note_statement ON note(parent_id, statement_id) WHERE statement_id IS NOT NULL;

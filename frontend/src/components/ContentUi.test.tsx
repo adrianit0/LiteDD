@@ -5,7 +5,9 @@ import { EditorView } from '@codemirror/view';
 import { api } from '../api';
 import { SearchBox, SearchResults } from './SearchPanel';
 import { QuickSearch } from './QuickSearch';
-import { FavoriteButton, ObsoleteBanner, TagEditor } from './NoteMeta';
+import { FavoriteButton, ImportantButton, ObsoleteBanner, TagEditor } from './NoteMeta';
+import { ImportantDialog } from './ImportantDialog';
+import { dateInDays, localDate } from '../important';
 import { HistoryDialog } from './HistoryDialog';
 import { MarkdownView } from './MarkdownView';
 import { useSearch, SEARCH_DELAY } from '../stores/searchStore';
@@ -30,6 +32,7 @@ vi.mock('../api', async (importOriginal) => {
       saveNote: vi.fn(),
       setFavorite: vi.fn(),
       setObsolete: vi.fn(),
+      setImportant: vi.fn(),
       setTags: vi.fn(),
       versions: vi.fn(),
       restoreVersion: vi.fn(),
@@ -389,5 +392,107 @@ describe('notas obsoletas (ADR-0046)', () => {
   it('N-86 N-91 una sustituta que ya no está en el árbol se ve tachada', () => {
     render(<ObsoleteBanner note={note({ obsolete: true, replacedBy: 'borrada' })} />);
     expect(screen.getByText('una nota eliminada').className).toBe('obsolete-broken');
+  });
+});
+
+describe('notas importantes (ADR-0047)', () => {
+  const FAR = '2999-12-31';
+  const PAST = '2000-01-01';
+  const hit = (importantUntil: string | null) => ({
+    id: 'n1',
+    parentId: 'root',
+    type: 'md' as const,
+    title: 'Préstamos',
+    favorite: false,
+    updatedAt: '',
+    fragment: null,
+    titleMarked: null,
+    importantUntil,
+  });
+
+  beforeEach(() => useUi.setState({ importantFor: null }));
+
+  it('N-99 «Solo importantes» filtra por las vigentes hoy', async () => {
+    vi.useFakeTimers();
+    try {
+      mocked.search.mockResolvedValue([]);
+      render(<SearchBox />);
+      fireEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Solo importantes' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SEARCH_DELAY + 10);
+      });
+      expect(mocked.search).toHaveBeenLastCalledWith(`important=${localDate(new Date())}`);
+      expect(screen.getByRole('button', { name: 'Filtros (1)' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('N-98 N-97 un resultado importante se resalta, y uno caducado no', () => {
+    useSearch.setState({ query: 'presta', results: [hit(FAR)] });
+    const { unmount } = render(<SearchResults />);
+    const button = screen.getByRole('button', { name: /Préstamos/ });
+    expect(button.className).toContain('important');
+    expect(button.title).toBe('Importante hasta el 31/12/2999');
+    unmount();
+
+    useSearch.setState({ query: 'presta', results: [hit(PAST)] });
+    render(<SearchResults />);
+    expect(screen.getByRole('button', { name: /Préstamos/ }).className).not.toContain('important');
+  });
+
+  it('N-89 N-98 el botón de la cabecera dice hasta cuándo y abre el diálogo', () => {
+    const { unmount } = render(<ImportantButton note={note({ importantUntil: FAR })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Importante hasta 31/12/2999' }));
+    expect(useUi.getState().importantFor).toBe('n1');
+    unmount();
+
+    // N-97: con la fecha pasada vuelve a ser el botón de marcar.
+    render(<ImportantButton note={note({ importantUntil: PAST })} />);
+    expect(screen.getByRole('button', { name: 'Importante' }).classList.contains('on')).toBe(false);
+  });
+
+  it('N-89 los atajos guardan al pulsarlos y el campo nace con mañana', async () => {
+    mocked.setImportant.mockResolvedValue(note());
+    useUi.setState({ importantFor: 'n1' });
+    render(<ImportantDialog noteId="n1" />);
+    const dialog = within(screen.getByRole('dialog', { name: 'Importante: «Préstamos»' }));
+    expect(dialog.getByLabelText<HTMLInputElement>('Fecha fin importancia').value).toBe(dateInDays(1, new Date()));
+    expect(dialog.queryByRole('button', { name: 'Quitar la marca' })).toBeNull();
+    await act(async () => {
+      fireEvent.click(dialog.getByRole('button', { name: '1 semana' }));
+    });
+    expect(mocked.setImportant).toHaveBeenCalledWith('n1', dateInDays(7, new Date()));
+    expect(useUi.getState().importantFor).toBeNull();
+  });
+
+  it('N-89 otra fecha se guarda con «Guardar», y un día pasado no se admite', async () => {
+    mocked.setImportant.mockResolvedValue(note());
+    render(<ImportantDialog noteId="n1" />);
+    const field = screen.getByLabelText<HTMLInputElement>('Fecha fin importancia');
+    expect(field.min).toBe(localDate(new Date()));
+    fireEvent.change(field, { target: { value: PAST } });
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Guardar' }).disabled).toBe(true);
+    fireEvent.submit(screen.getByRole('dialog'));
+    expect(mocked.setImportant).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: FAR } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    });
+    expect(mocked.setImportant).toHaveBeenCalledWith('n1', FAR);
+  });
+
+  it('N-89 si ya es importante, el diálogo trae su fecha y permite quitar la marca', async () => {
+    mocked.setImportant.mockResolvedValue(note());
+    useTree.setState({ nodes: [{ ...node('n1', 'Préstamos'), importantUntil: FAR }] });
+    render(<ImportantDialog noteId="n1" />);
+    expect(screen.getByLabelText<HTMLInputElement>('Fecha fin importancia').value).toBe(FAR);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar la marca' }));
+    });
+    expect(mocked.setImportant).toHaveBeenCalledWith('n1', null);
   });
 });

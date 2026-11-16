@@ -265,12 +265,12 @@ class ContentFeaturesTest {
         clock.advance(Duration.ofDays(10));
         md("D", "x");
 
-        assertThat(titles(new SearchQuery("", "sql", List.of(), false, null, false))).containsExactly("B");
-        assertThat(titles(new SearchQuery("", null, List.of("demo"), false, null, false))).containsExactlyInAnyOrder("A", "B");
-        assertThat(titles(new SearchQuery("", null, List.of("DEMO", "libros"), false, null, false))).containsExactly("A");
-        assertThat(titles(new SearchQuery("", null, List.of(), true, null, false))).containsExactly("A");
-        assertThat(titles(new SearchQuery("", null, List.of(), false, "2026-10-10T00:00:00Z", false))).containsExactly("D");
-        assertThat(titles(new SearchQuery("x", "md", List.of("demo"), true, null, false))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", "sql", List.of(), false, null, false, null))).containsExactly("B");
+        assertThat(titles(new SearchQuery("", null, List.of("demo"), false, null, false, null))).containsExactlyInAnyOrder("A", "B");
+        assertThat(titles(new SearchQuery("", null, List.of("DEMO", "libros"), false, null, false, null))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", null, List.of(), true, null, false, null))).containsExactly("A");
+        assertThat(titles(new SearchQuery("", null, List.of(), false, "2026-10-10T00:00:00Z", false, null))).containsExactly("D");
+        assertThat(titles(new SearchQuery("x", "md", List.of("demo"), true, null, false, null))).containsExactly("A");
         assertThat(c).isNotNull();
     }
 
@@ -347,8 +347,8 @@ class ContentFeaturesTest {
         notes.setObsolete(old.id(), true, null);
 
         assertThat(titles(SearchQuery.text("informe"))).containsExactly("Informe nuevo");
-        assertThat(titles(new SearchQuery("", "md", List.of(), false, null, false))).containsExactly("Informe nuevo");
-        List<NoteService.SearchHit> all = notes.search(new SearchQuery("informe", null, List.of(), false, null, true));
+        assertThat(titles(new SearchQuery("", "md", List.of(), false, null, false, null))).containsExactly("Informe nuevo");
+        List<NoteService.SearchHit> all = notes.search(new SearchQuery("informe", null, List.of(), false, null, true, null));
         assertThat(all).extracting(NoteService.SearchHit::title).containsExactlyInAnyOrder("Informe viejo", "Informe nuevo");
         assertThat(all).filteredOn(NoteService.SearchHit::obsolete).extracting(NoteService.SearchHit::title)
                 .containsExactly("Informe viejo");
@@ -406,5 +406,76 @@ class ContentFeaturesTest {
         assertThat(run.updatedAt()).isEqualTo(a.updatedAt());
         // Una nota que ya no está no es un error.
         notes.markRun("nope");
+    }
+
+    // --- N-89, N-97 a N-99 (ADR-0047) ---
+
+    @Test
+    void n89_important_is_set_with_a_date_and_does_not_change_version_or_date() {
+        Note a = md("A", "");
+        Note child = notes.create(a.id(), "sql", "Hija");
+        clock.advance(Duration.ofHours(1));
+
+        Note marked = notes.setImportant(a.id(), " 2026-10-11 ");
+        assertThat(marked.importantUntil()).isEqualTo("2026-10-11");
+        assertThat(marked.version()).isEqualTo(a.version());
+        assertThat(marked.updatedAt()).isEqualTo(a.updatedAt());
+        // La marca es de esa nota: la hija no la hereda.
+        assertThat(notes.tree()).filteredOn(n -> n.importantUntil() != null).extracting(TreeNode::id).containsExactly(a.id());
+        assertThat(notes.get(child.id()).importantUntil()).isNull();
+        // Es independiente de favorita y de obsoleta: conviven.
+        notes.setFavorite(a.id(), true);
+        Note both = notes.setObsolete(a.id(), true, null);
+        assertThat(both.importantUntil()).isEqualTo("2026-10-11");
+        assertThat(both.favorite()).isTrue();
+        assertThat(notes.setImportant(a.id(), "2026-10-20").obsolete()).isTrue();
+
+        assertThat(notes.setImportant(a.id(), null).importantUntil()).isNull();
+        assertThat(notes.setImportant(a.id(), " ").importantUntil()).isNull();
+        assertThatThrownBy(() -> notes.setImportant(a.id(), "mañana"))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(400));
+        assertThatThrownBy(() -> notes.setImportant(a.id(), "2026-02-30"))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(400));
+        assertThatThrownBy(() -> notes.setImportant("nope", "2026-10-11"))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(404));
+    }
+
+    @Test
+    void n97_n99_only_important_keeps_the_notes_whose_date_has_not_passed() {
+        Note today = md("Para hoy", "x");
+        Note week = md("Para la semana", "x");
+        Note past = md("Ya pasó", "x");
+        md("Normal", "x");
+        notes.setImportant(today.id(), "2026-10-04");
+        notes.setImportant(week.id(), "2026-10-11");
+        notes.setImportant(past.id(), "2026-10-03");
+
+        // El día de la fecha todavía cuenta; al siguiente, ya no.
+        assertThat(titles(new SearchQuery("", null, List.of(), false, null, false, "2026-10-04")))
+                .containsExactlyInAnyOrder("Para hoy", "Para la semana");
+        assertThat(titles(new SearchQuery("", null, List.of(), false, null, false, "2026-10-05"))).containsExactly("Para la semana");
+        assertThat(titles(new SearchQuery("", null, List.of(), false, null, false, "2026-10-12"))).isEmpty();
+        // Se combina con el texto y con los demás filtros (N-72).
+        assertThat(titles(new SearchQuery("semana", "md", List.of(), false, null, false, "2026-10-04"))).containsExactly("Para la semana");
+        notes.setFavorite(today.id(), true);
+        assertThat(titles(new SearchQuery("", null, List.of(), true, null, false, "2026-10-04"))).containsExactly("Para hoy");
+        // Sin el filtro salen todas, con su fecha, también la que ya pasó.
+        assertThat(notes.search(SearchQuery.text("x"))).extracting(NoteService.SearchHit::importantUntil)
+                .containsExactlyInAnyOrder("2026-10-04", "2026-10-11", "2026-10-03", null);
+        // N-84: una obsoleta importante sigue fuera salvo que se pidan las obsoletas.
+        notes.setObsolete(week.id(), true, null);
+        assertThat(titles(new SearchQuery("", null, List.of(), false, null, false, "2026-10-05"))).isEmpty();
+        assertThat(titles(new SearchQuery("", null, List.of(), false, null, true, "2026-10-05"))).containsExactly("Para la semana");
+        assertThatThrownBy(() -> notes.search(new SearchQuery("", null, List.of(), false, null, false, "hoy")))
+                .satisfies(e -> assertThat(((ApiError) e).status()).isEqualTo(400));
+    }
+
+    @Test
+    void n08_n89_a_duplicate_is_not_important() {
+        Note task = md("Tarea", "x");
+        notes.setImportant(task.id(), "2026-10-11");
+
+        assertThat(notes.duplicate(task.id()).importantUntil()).isNull();
+        assertThat(notes.get(task.id()).importantUntil()).isEqualTo("2026-10-11");
     }
 }

@@ -27,6 +27,7 @@ import {
 } from '../treeOps';
 import { copyNoteLink, deleteNote, duplicateNote, editTags, moveNote, newNoteItems, openNote, renameNote, setObsolete, toggleFavorite } from '../actions';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { importantLabel } from '../important';
 import { MoveDialog } from './MoveDialog';
 import { TypeIcon } from './TypeIcon';
 import { acceptsChildren, isGenerated, writeMark } from '../mapper';
@@ -125,7 +126,7 @@ export function Tree() {
     if (row) setFocusId(row.node.id);
   };
 
-  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita, obsoleta (N-82), etiquetas y copiar el enlace (N-94). */
+  /** N-04, M-20, M-22: sin «Nuevo» en la nota XML; en sus hijas, solo duplicar, favorita, importante (N-89), obsoleta (N-82), etiquetas y copiar el enlace (N-94). */
   const menuItems = (id: string): MenuItem[] => {
     const node = nodes.find((n) => n.id === id);
     const generated = isGenerated(node);
@@ -140,6 +141,8 @@ export function Tree() {
         label: node?.favorite ? 'Quitar de favoritas' : 'Marcar como favorita',
         onSelect: () => void toggleFavorite(id),
       },
+      // N-89: el diálogo pone la fecha, la cambia o quita la marca.
+      { label: 'Importante…', onSelect: () => useUi.getState().setImportantFor(id) },
       {
         // N-82
         label: node?.obsolete ? 'Quitar la marca de obsoleta' : 'Marcar como obsoleta',
@@ -374,6 +377,9 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
   if (node.description) classes.push('described');
   // N-83
   if (node.obsolete) classes.push('obsolete');
+  // N-98
+  const important = importantLabel(node);
+  if (important) classes.push('important');
 
   return (
     <div
@@ -428,7 +434,7 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
         <RenameInput initial={node.title} onDone={onRenamed} />
       ) : (
         <span className="tree-text">
-          <span className="tree-title" title={node.obsolete ? 'Nota obsoleta' : undefined}>
+          <span className="tree-title" title={[node.obsolete ? 'Nota obsoleta' : null, important].filter(Boolean).join(' · ') || undefined}>
             {node.title}
           </span>
           {/* N-07: una línea, cortada con «…» donde acabe el panel; el texto completo en el título emergente. */}
@@ -443,6 +449,12 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
         // M-24
         <span className="write-mark" title="Sentencia de escritura: LiteDD solo genera su SQL">
           {mark}
+        </span>
+      )}
+      {important && !renaming && (
+        // N-98
+        <span className="important-mark" role="img" aria-label={important} title={important}>
+          !
         </span>
       )}
       {node.favorite && !renaming && (

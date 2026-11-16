@@ -565,4 +565,25 @@ class TransferTest {
         assertThat(notes.get(old.id()).lastRunAt()).isEqualTo(ranAt);
         assertThat(notes.get(next.id()).obsolete()).isFalse();
     }
+
+    @Test
+    void n89_x02_the_important_date_travels_with_the_export() throws Exception {
+        Note task = note(null, "md", "Tarea", "pendiente");
+        note(null, "md", "Normal", "x");
+        notes.setImportant(task.id(), "2026-11-20");
+
+        byte[] zip = exporter.export();
+        Map<String, JsonNode> manifest = new LinkedHashMap<>();
+        JSON.readTree(unzip(zip).get("manifest.json")).get("notes").forEach(n -> manifest.put(n.get("title").asText(), n));
+        assertThat(manifest.get("Tarea").get("importantUntil").asText()).isEqualTo("2026-11-20");
+        assertThat(manifest.get("Normal").has("importantUntil")).isFalse();
+
+        Importer.ImportResult result = importer.importZip(new ByteArrayInputStream(zip), Mode.BRANCH);
+        List<TreeNode> imported = notes.tree().stream().filter(n -> result.rootId().equals(n.parentId())).toList();
+        assertThat(imported).extracting(TreeNode::importantUntil).containsExactly("2026-11-20", null);
+
+        notes.setImportant(task.id(), null);
+        importer.importZip(new ByteArrayInputStream(zip), Mode.REPLACE);
+        assertThat(notes.get(task.id()).importantUntil()).isEqualTo("2026-11-20");
+    }
 }

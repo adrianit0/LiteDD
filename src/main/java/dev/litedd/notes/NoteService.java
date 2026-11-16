@@ -12,6 +12,8 @@ import dev.litedd.workflow.WorkflowContent;
 import org.apache.ibatis.session.SqlSession;
 
 import java.time.Clock;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -46,17 +48,19 @@ public final class NoteService {
      *
      * @param since    fecha ISO-8601 UTC mínima de modificación, o null
      * @param obsolete N-84: incluye también las notas obsoletas
+     * @param important N-99: el día de hoy (AAAA-MM-DD) para dejar solo las importantes vigentes, o null
      */
-    public record SearchQuery(String text, String type, List<String> tags, boolean favorite, String since, boolean obsolete) {
+    public record SearchQuery(String text, String type, List<String> tags, boolean favorite, String since, boolean obsolete,
+                              String important) {
 
         public static SearchQuery text(String text) {
-            return new SearchQuery(text, null, List.of(), false, null, false);
+            return new SearchQuery(text, null, List.of(), false, null, false, null);
         }
     }
 
     /** @param fragment y titleMarked con lo encontrado entre \u0002 y \u0003 (N-71) */
     public record SearchHit(String id, String parentId, String type, String title, boolean favorite, String updatedAt,
-                            String fragment, String titleMarked, boolean obsolete) {
+                            String fragment, String titleMarked, boolean obsolete, String importantUntil) {
     }
 
     public record TagCount(String name, int count) {
@@ -78,7 +82,7 @@ public final class NoteService {
         return store.read(s -> s.getMapper(NoteMapper.class).selectTree().stream()
                 .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.favorite(),
                         r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR)),
-                        r.statementId(), r.statementKind(), r.obsolete()))
+                        r.statementId(), r.statementKind(), r.obsolete(), r.importantUntil()))
                 .toList());
     }
 
@@ -108,7 +112,7 @@ public final class NoteService {
             }
             String now = now();
             NoteRow row = new NoteRow(UUID.randomUUID().toString(), parentId, m.countChildren(parentId), type,
-                    finalTitle, "", "", false, 1, now, now, null, null, false, null, null);
+                    finalTitle, "", "", false, 1, now, now, null, null, false, null, null, null);
             m.insert(row);
             return load(s, row.id());
         });
@@ -205,7 +209,7 @@ public final class NoteService {
             StatementRow row = existing.get(st.id());
             if (row == null) {
                 m.insert(new NoteRow(UUID.randomUUID().toString(), noteId, i, "sql", st.id(), "", st.body(), false, 1, now,
-                        now, st.id(), st.kind(), false, null, null));
+                        now, st.id(), st.kind(), false, null, null, null));
                 continue;
             }
             if (!row.content().equals(st.body()) || !row.statementKind().equals(st.kind())) {
@@ -303,8 +307,9 @@ public final class NoteService {
             }
         }
         String finalMatch = match;
+        String important = q.important() == null || q.important().isBlank() ? null : isoDate(q.important());
         String type = q.type() == null || q.type().isBlank() ? null : q.type();
-        return store.read(s -> s.getMapper(ContentMapper.class).search(finalMatch, type, q.favorite(), q.obsolete(),
+        return store.read(s -> s.getMapper(ContentMapper.class).search(finalMatch, type, q.favorite(), q.obsolete(), important,
                 q.since() == null || q.since().isBlank() ? null : q.since(), List.copyOf(tags.values()), tags.size()));
     }
 
@@ -312,7 +317,7 @@ public final class NoteService {
 
     /**
      * N-08: copia la nota (sin hijas) justo debajo de la original, con su contenido, descripción, tipo,
-     * etiquetas y favorita, pero sin la marca de obsoleta (N-82), y el título con el siguiente «(n)» libre entre sus hermanas. M-31: la copia de una
+     * etiquetas y favorita, pero sin la marca de obsoleta (N-82) ni la de importante (N-89), y el título con el siguiente «(n)» libre entre sus hermanas. M-31: la copia de una
      * nota XML genera sus propias hijas; la de una hija es una nota SQL normal, justo debajo de la nota XML.
      */
     public Note duplicate(String id) {
@@ -325,7 +330,8 @@ public final class NoteService {
             String now = now();
             NoteRow copy = new NoteRow(UUID.randomUUID().toString(), anchor.parentId(), anchor.position() + 1,
                     original.type(), copyTitle(original.title(), m.selectChildTitles(anchor.parentId())),
-                    original.description(), original.content(), original.favorite(), 1, now, now, null, null, false, null, null);
+                    original.description(), original.content(), original.favorite(), 1, now, now, null, null, false, null, null,
+                    null);
             m.insert(copy);
             siblings.add(siblings.indexOf(anchor.id()) + 1, copy.id());
             renumber(m, siblings);
@@ -417,6 +423,28 @@ public final class NoteService {
             }
             return load(s, id);
         });
+    }
+
+    /**
+     * N-89: marca la nota como importante hasta ese día (AAAA-MM-DD), incluido; con null o vacío quita la marca. La
+     * caducidad (N-97) no se guarda: la decide quien compara la fecha con el día de hoy.
+     */
+    public Note setImportant(String id, String until) {
+        String date = until == null || until.isBlank() ? null : isoDate(until);
+        return store.write(s -> {
+            if (s.getMapper(ContentMapper.class).updateImportant(id, date) == 0) {
+                throw notFound();
+            }
+            return load(s, id);
+        });
+    }
+
+    private static String isoDate(String text) {
+        try {
+            return LocalDate.parse(text.strip()).toString();
+        } catch (DateTimeParseException e) {
+            throw new ApiError(400, "invalid_date", "La fecha no es válida");
+        }
     }
 
     /** N-88: anota la ejecución correcta de una nota. Si ya no está activa, no hace nada. */
@@ -579,7 +607,7 @@ public final class NoteService {
         }
         return new Note(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.content(), r.favorite(),
                 r.version(), r.createdAt(), r.updatedAt(), m.selectTags(id), r.statementId(), r.statementKind(), r.obsolete(),
-                r.replacedBy(), r.lastRunAt());
+                r.replacedBy(), r.lastRunAt(), r.importantUntil());
     }
 
     private static ApiError notFound() {

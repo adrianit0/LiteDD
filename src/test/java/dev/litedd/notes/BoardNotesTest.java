@@ -117,7 +117,7 @@ class BoardNotesTest {
         assertThat(notes.search(SearchQuery.text("devoluciones"))).extracting(SearchHit::id).containsExactly(n.id());
         assertThat(notes.search(SearchQuery.text(token))).extracting(SearchHit::id).containsExactly(md.id());
         // Solo con filtros tampoco hay fragmento.
-        List<SearchHit> byType = notes.search(new SearchQuery("", "board", List.of(), false, null, false));
+        List<SearchHit> byType = notes.search(new SearchQuery("", "board", List.of(), false, null, false, null));
         assertThat(byType).extracting(SearchHit::fragment).containsExactly("");
 
         // Cambiar y purgar la pizarra deja el índice coherente.

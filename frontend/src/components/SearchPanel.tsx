@@ -4,6 +4,7 @@ import { useTree } from '../stores/treeStore';
 import { ancestorsOf } from '../tree';
 import { api, type TagCount } from '../api';
 import { openNote } from '../actions';
+import { importantLabel } from '../important';
 import { TypeIcon } from './TypeIcon';
 import { Marked } from './Marked';
 import type { DateRange } from '../search';
@@ -30,7 +31,7 @@ export function SearchBox() {
   const toggleTag = (name: string) =>
     store.setFilters({ tags: filters.tags.includes(name) ? filters.tags.filter((t) => t !== name) : [...filters.tags, name] });
 
-  const filterCount = (filters.type ? 1 : 0) + filters.tags.length + (filters.favorite ? 1 : 0) + (filters.since ? 1 : 0);
+  const filterCount = (filters.type ? 1 : 0) + filters.tags.length + (filters.favorite ? 1 : 0) + (filters.important ? 1 : 0) + (filters.since ? 1 : 0);
 
   return (
     <div className="search-box">
@@ -75,6 +76,11 @@ export function SearchBox() {
             Solo favoritas
           </label>
           <label className="search-check">
+            {/* N-99 */}
+            <input type="checkbox" checked={filters.important} onChange={(e) => store.setFilters({ important: e.target.checked })} />
+            Solo importantes
+          </label>
+          <label className="search-check">
             {/* N-84 */}
             <input type="checkbox" checked={filters.obsolete} onChange={(e) => store.setFilters({ obsolete: e.target.checked })} />
             Mostrar obsoletas
@@ -117,18 +123,21 @@ export function SearchResults() {
     <ul className="search-results" aria-label="Resultados de la búsqueda">
       {results.map((hit) => {
         const path = ancestorsOf(nodes, hit.id).map((n) => n.title).join(' / ');
+        // N-98
+        const important = importantLabel(hit);
         return (
           <li key={hit.id}>
             <button
               type="button"
-              className={`search-hit${hit.obsolete ? ' obsolete' : ''}`}
-              title={hit.obsolete ? 'Nota obsoleta' : undefined}
+              className={`search-hit${hit.obsolete ? ' obsolete' : ''}${important ? ' important' : ''}`}
+              title={[hit.obsolete ? 'Nota obsoleta' : null, important].filter(Boolean).join(' · ') || undefined}
               onClick={() => void openNote(hit.id)}
               onMouseDown={(e) => e.button === 1 && e.preventDefault()}
               onAuxClick={(e) => e.button === 1 && void openNote(hit.id, true)}
             >
               <span className="search-hit-title">
                 <TypeIcon type={hit.type} />
+                {important && <span className="important-mark" aria-label={important}>!</span>}
                 {hit.favorite && <span className="favorite-mark" aria-label="Favorita">★</span>}
                 <Marked text={hit.titleMarked ?? hit.title} />
               </span>

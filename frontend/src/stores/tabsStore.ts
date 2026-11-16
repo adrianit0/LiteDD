@@ -76,7 +76,7 @@ interface TabsState {
   saveNow: (id: string) => Promise<void>;
   /** N-45: sustituye la nota de una pestaña por la versión restaurada. */
   applyRestored: (id: string, note: Note) => void;
-  /** N-80, N-81: etiquetas y favorita sin cambiar la versión, en todas las pestañas de la nota. */
+  /** N-80, N-81, N-82, N-89: etiquetas, favorita, obsoleta e importante sin cambiar la versión, en todas las pestañas de la nota. */
   applyMeta: (note: Note) => void;
   /** N-88: tras ejecutar, trae la fecha de la última ejecución correcta de la nota. */
   refreshMeta: (noteId: string) => Promise<void>;
@@ -481,6 +481,7 @@ export const useTabs = create<TabsState>((set, get) => {
                   obsolete: note.obsolete,
                   replacedBy: note.replacedBy,
                   lastRunAt: note.lastRunAt,
+                  importantUntil: note.importantUntil,
                 },
               }
             : t,

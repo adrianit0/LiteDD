@@ -10,7 +10,7 @@ public interface TransferMapper {
 
     record ExportNote(String id, String parentId, int position, String type, String title, String description, String content,
                       boolean favorite, String createdAt, String updatedAt, String statementId, String statementKind,
-                      boolean obsolete, String replacedBy, String lastRunAt) {
+                      boolean obsolete, String replacedBy, String lastRunAt, String importantUntil) {
     }
 
     record NoteTagRow(String noteId, String name) {
@@ -21,7 +21,7 @@ public interface TransferMapper {
 
     @Select("""
             SELECT id, parent_id, position, type, title, description, content, favorite, created_at, updated_at,
-                   statement_id, statement_kind, obsolete, replaced_by, last_run_at
+                   statement_id, statement_kind, obsolete, replaced_by, last_run_at, important_until
             FROM note WHERE deleted_at IS NULL ORDER BY parent_id, position""")
     List<ExportNote> selectActiveNotes();
 

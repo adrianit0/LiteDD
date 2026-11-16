@@ -349,4 +349,25 @@ class MigratorTest {
             assertThat(scalar(c, "SELECT count(*) FROM note WHERE id = 'a' AND obsolete = 1 AND replaced_by IS NULL")).isEqualTo("1");
         }
     }
+
+    @Test
+    void n89_v009_adds_the_important_date_and_keeps_the_notes() throws Exception {
+        try (Connection c = connect()) {
+            new Migrator(Migrator.MIGRATIONS.subList(0, 8), dir).migrate(c);
+            try (Statement st = c.createStatement()) {
+                st.execute("""
+                        INSERT INTO note (id, parent_id, position, type, title, content, created_at, updated_at, obsolete)
+                        VALUES ('a', NULL, 0, 'md', 'Tarea', 'pendiente', 'now', 'now', 1)""");
+            }
+
+            new Migrator(Migrator.MIGRATIONS, dir).migrate(c);
+
+            assertThat(userVersion(c)).isEqualTo(Migrator.MIGRATIONS.size());
+            assertThat(scalar(c, "SELECT count(*) FROM note WHERE id = 'a' AND obsolete = 1 AND important_until IS NULL")).isEqualTo("1");
+            try (Statement st = c.createStatement()) {
+                st.execute("UPDATE note SET important_until = '2026-11-20' WHERE id = 'a'");
+            }
+            assertThat(scalar(c, "SELECT important_until FROM note WHERE id = 'a'")).isEqualTo("2026-11-20");
+        }
+    }
 }

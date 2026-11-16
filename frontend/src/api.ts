@@ -501,6 +501,9 @@ export const api = {
   /** N-82, N-86 */
   setObsolete: (id: string, obsolete: boolean, replacedBy: string | null) =>
     request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/obsolete`, { obsolete, replacedBy }),
+  /** N-89: until es el día AAAA-MM-DD, o null para quitar la marca. */
+  setImportant: (id: string, until: string | null) =>
+    request<Note>('PUT', `/api/notes/${encodeURIComponent(id)}/important`, { until }),
   tags: () => request<TagCount[]>('GET', '/api/tags'),
   search: (params: string) => request<SearchHit[]>('GET', `/api/search?${params}`),
   uploadAttachment: (noteId: string, file: Blob, name: string) =>

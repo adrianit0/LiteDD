@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -103,7 +104,7 @@ public final class Importer {
                 rootId = UUID.randomUUID().toString();
                 String title = "Importado " + LocalDateTime.now(clock).format(ROOT_STAMP);
                 notes.insert(new NoteRow(rootId, null, notes.countChildren(null), "md", title, "", "", false, 1, now, now, null,
-                        null, false, null, null));
+                        null, false, null, null, null));
             }
 
             // Por niveles: una nota se inserta después de su madre (clave foránea).
@@ -131,7 +132,7 @@ public final class Importer {
                     }
                     notes.insert(new NoteRow(id, parentId, i, n.type(), n.title().strip(), description(n), text, n.favorite(), 1,
                             orNow(n.createdAt(), now), orNow(n.updatedAt(), now), n.statementId(), n.statementKind(), n.obsolete(),
-                            null, n.lastRunAt()));
+                            null, n.lastRunAt(), importantUntil(n)));
                     for (String tag : tags(n.tags())) {
                         content.insertTag(tag);
                         content.insertNoteTag(id, content.selectTagId(tag));
@@ -333,6 +334,15 @@ public final class Importer {
         }
         String d = n.description().strip();
         return d.length() > NoteService.DESCRIPTION_MAX ? d.substring(0, NoteService.DESCRIPTION_MAX) : d;
+    }
+
+    /** N-89: una fecha que no se entiende se importa sin marca. */
+    private static String importantUntil(Manifest.Note n) {
+        try {
+            return n.importantUntil() == null ? null : LocalDate.parse(n.importantUntil().strip()).toString();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static String orNow(String iso, String now) {

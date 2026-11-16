@@ -18,6 +18,8 @@ export interface TreeNode {
   statementKind?: StatementKind | null;
   /** N-82: marcada como obsoleta por el usuario. */
   obsolete?: boolean;
+  /** N-89: importante hasta ese día local (AAAA-MM-DD), incluido; pasado ese día ya no cuenta (N-97). */
+  importantUntil?: string | null;
 }
 
 export interface Note extends TreeNode {
