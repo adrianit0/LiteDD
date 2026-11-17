@@ -6,6 +6,7 @@ import { useTabs } from '../../stores/tabsStore';
 import { useSqlRuns } from '../../stores/sqlRunStore';
 import { useConnection } from '../../stores/connectionStore';
 import { useUi } from '../../stores/uiStore';
+import { useTree } from '../../stores/treeStore';
 import type { Note } from '../../types';
 import type { Analysis, ExecuteResponse } from '../../sql/types';
 
@@ -730,5 +731,153 @@ describe('Q-102 a Q-107 referencias de claves foráneas', () => {
     const panel = screen.getByRole('region', { name: 'Plan de ejecución' });
     expect(panel.querySelector('.ref')).toBeNull();
     expect(cell(0, 1).className).toContain('ref');
+  });
+
+  describe('Q-108 abrir la nota de la referencia', () => {
+    const refNote: Note = { ...note, id: 'n1', title: 'Autor', content: 'SELECT name FROM author WHERE id = #{id}', version: 1 };
+    const refAnalysis = (over: Partial<Analysis> = {}): Analysis =>
+      analysis({ variables: [{ name: 'id', type: 'int', elementType: null, textual: false }], lastValues: { id: '1' }, ...over });
+
+    /** Las promesas simuladas se resuelven antes del siguiente turno. */
+    const settle = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+    const ctrlClick = async (el: HTMLElement) => {
+      await act(async () => {
+        fireEvent.click(el, { ctrlKey: true });
+      });
+      await settle();
+    };
+
+    const notices = () => useUi.getState().notices.map((n) => n.text);
+    const executedNotes = () => mocked.execute.mock.calls.map(([req]) => req.noteId);
+
+    /** El árbol tiene la nota de la referencia, salvo que se diga otra cosa; el análisis depende de la nota. */
+    async function prepare(ref: Analysis = refAnalysis(), nodes = [refNote]) {
+      useTree.setState({ nodes, loaded: true });
+      mocked.getNote.mockImplementation(async (id: string) => (id === 'n1' ? refNote : note));
+      await runWithRefs();
+      vi.useRealTimers();
+      mocked.analyze.mockImplementation(async (_content: string, noteId?: string) => (noteId === 'n1' ? ref : analysis()));
+      useUi.setState({ notices: [] });
+    }
+
+    afterEach(() => {
+      useTree.setState({ nodes: [], loaded: false });
+    });
+
+    it('Q-108 Ctrl+clic en una celda marcada cierra el recuadro y abre la nota en una pestaña nueva, fija y activa, con el valor, y la ejecuta', async () => {
+      await prepare();
+      // El recuadro abierto se cierra.
+      vi.useFakeTimers();
+      fireEvent.mouseEnter(cell(0, 1));
+      await wait(400);
+      expect(screen.getByRole('tooltip').textContent).toBe('Ana');
+      vi.useRealTimers();
+
+      await ctrlClick(cell(0, 1));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      const tabs = useTabs.getState().tabs;
+      expect(tabs).toHaveLength(2);
+      const opened = tabs[1];
+      expect(opened.noteId).toBe('n1');
+      expect(opened.preview).toBe(false);
+      expect(useTabs.getState().activeId).toBe(opened.id);
+      // El valor de la celda sustituye a los últimos ejecutados de la nota (Q-24).
+      expect(opened.sql?.values).toEqual({ id: '7' });
+      expect(mocked.execute).toHaveBeenLastCalledWith(expect.objectContaining({ noteId: 'n1', values: { id: '7' }, page: 1 }));
+      expect(useSqlRuns.getState().runs[opened.id].result).toBeTruthy();
+      expect(mocked.sqlLookup).toHaveBeenCalledTimes(1);
+
+      // Cada Ctrl+clic abre otra pestaña, aunque la nota ya esté abierta.
+      useTabs.getState().activate(tabs[0].id);
+      await settle();
+      await ctrlClick(cell(3, 1));
+      expect(useTabs.getState().tabs.map((t) => t.noteId)).toEqual(['q1', 'n1', 'n1']);
+      expect(useTabs.getState().tabs[2].sql?.values).toEqual({ id: '8' });
+      expect(notices()).toEqual([]);
+    });
+
+    it('Q-108 U-08 Alt+Intro con la celda marcada seleccionada hace lo mismo; en una celda sin marca, Ctrl+clic es un clic normal y Alt+Intro no abre nada', async () => {
+      await prepare();
+      await ctrlClick(cell(0, 0));
+      expect(cell(0, 0).getAttribute('aria-selected')).toBe('true');
+      const grid = screen.getByRole('grid', { name: 'Resultados' });
+      await act(async () => {
+        fireEvent.keyDown(grid, { key: 'Enter', altKey: true });
+      });
+      await settle();
+      expect(useTabs.getState().tabs).toHaveLength(1);
+      expect(screen.queryByRole('region', { name: 'Valor completo' })).toBeNull();
+
+      await act(async () => {
+        fireEvent.keyDown(grid, { key: 'ArrowRight' });
+      });
+      await act(async () => {
+        fireEvent.keyDown(grid, { key: 'Enter', altKey: true });
+      });
+      await settle();
+      const tabs = useTabs.getState().tabs;
+      expect(tabs).toHaveLength(2);
+      expect(tabs[1].noteId).toBe('n1');
+      expect(tabs[1].sql?.values).toEqual({ id: '7' });
+      expect(executedNotes().at(-1)).toBe('n1');
+      // Lo pendiente del recuadro se cancela.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      });
+      expect(mocked.sqlLookup).not.toHaveBeenCalled();
+    });
+
+    it('Q-108 sin la nota en el árbol (no existe o está en la papelera) o si no es SQL, no se abre nada y se avisa', async () => {
+      await prepare(refAnalysis(), []);
+      await ctrlClick(cell(0, 1));
+      expect(useTabs.getState().tabs).toHaveLength(1);
+      expect(notices()).toEqual(['La nota de la referencia «author» no existe o está en la papelera']);
+
+      useTree.setState({ nodes: [{ ...refNote, type: 'md' }] });
+      await ctrlClick(cell(0, 1));
+      expect(useTabs.getState().tabs).toHaveLength(1);
+      expect(notices()).toContain('La nota de la referencia «author» no es una nota SQL');
+      expect(mocked.getNote).not.toHaveBeenCalledWith('n1');
+    });
+
+    it('Q-108 sin una sola variable o sin ser una consulta, se abre sin ejecutar y se avisa', async () => {
+      const two = refAnalysis({
+        variables: [
+          { name: 'id', type: 'int', elementType: null, textual: false },
+          { name: 'other', type: 'string', elementType: null, textual: false },
+        ],
+      });
+      await prepare(two);
+      await ctrlClick(cell(0, 1));
+      expect(useTabs.getState().tabs).toHaveLength(2);
+      expect(useTabs.getState().tabs[1].noteId).toBe('n1');
+      expect(executedNotes()).not.toContain('n1');
+      expect(notices()).toEqual(['La nota de la referencia «author» debe tener una sola variable']);
+
+      useTabs.getState().activate(useTabs.getState().tabs[0].id);
+      await settle();
+      mocked.analyze.mockImplementation(async (_content: string, noteId?: string) =>
+        noteId === 'n1' ? refAnalysis({ kind: 'meta' }) : analysis(),
+      );
+      await ctrlClick(cell(0, 1));
+      expect(useTabs.getState().tabs).toHaveLength(3);
+      expect(useTabs.getState().tabs[2].sql?.values).toEqual({ id: '7' });
+      expect(executedNotes()).not.toContain('n1');
+      expect(notices()).toContain('La nota de la referencia «author» no es una consulta');
+    });
+
+    it('Q-108 con errores de análisis, se abre sin ejecutar, con el valor puesto y sin aviso: los errores se ven en la pestaña', async () => {
+      await prepare(refAnalysis({ kind: null, errors: [{ code: 'xml', message: 'XML mal formado', line: 1, column: 5, variable: null }] }));
+      await ctrlClick(cell(0, 1));
+      const tabs = useTabs.getState().tabs;
+      expect(tabs).toHaveLength(2);
+      expect(tabs[1].sql?.values).toEqual({ id: '7' });
+      expect(executedNotes()).not.toContain('n1');
+      expect(notices()).toEqual([]);
+    });
   });
 });

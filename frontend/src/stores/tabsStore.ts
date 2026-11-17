@@ -60,7 +60,8 @@ interface TabsState {
   activeId: string | null;
   restored: boolean;
   restore: () => Promise<void>;
-  open: (noteId: string, options?: OpenOptions) => Promise<void>;
+  /** Devuelve la pestaña que muestra la nota, abierta o activada. */
+  open: (noteId: string, options?: OpenOptions) => Promise<string>;
   activate: (id: string) => void;
   cycle: (step: 1 | -1) => void;
   close: (id: string) => Promise<void>;
@@ -330,7 +331,7 @@ export const useTabs = create<TabsState>((set, get) => {
         if (existing) {
           set({ activeId: existing.id });
           if (options.mode && options.mode !== existing.mode) await get().toggleMode(existing.id);
-          return;
+          return existing.id;
         }
       }
       // N-10: las notas existentes se abren en consulta.
@@ -344,6 +345,7 @@ export const useTabs = create<TabsState>((set, get) => {
         set({ tabs: [...get().tabs, t], activeId: t.id });
       }
       if (!options.note) await load(t.id, noteId);
+      return t.id;
     },
 
     activate(id) {

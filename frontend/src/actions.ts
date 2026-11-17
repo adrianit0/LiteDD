@@ -1,5 +1,6 @@
-import { api, ApiError } from './api';
+import { api, ApiError, type Reference } from './api';
 import { useTabs } from './stores/tabsStore';
+import { useSqlRuns } from './stores/sqlRunStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import { ask } from './stores/dialogStore';
@@ -23,6 +24,37 @@ export async function openNote(id: string, newTab = false): Promise<void> {
   } catch (e) {
     fail(e, 'No se pudo abrir la nota');
   }
+}
+
+/**
+ * Q-108, ADR-0049: abre la nota de una referencia en una pestaña nueva, fija y activa (P-03), con el valor en su única
+ * variable, y la ejecuta. Comprueba lo mismo que la consulta del recuadro (Q-105): si la nota no existe, está en la
+ * papelera o no es SQL, no la abre; si no tiene una sola variable o no es una consulta, la abre sin ejecutar. Con
+ * errores de análisis la abre sin ejecutar y sin aviso, porque la pestaña ya los muestra.
+ */
+export async function openReference(reference: Reference, value: string): Promise<void> {
+  const warn = (problem: string) => useUi.getState().notify(`La nota de la referencia «${reference.table}» ${problem}`, 'error');
+  const node = useTree.getState().nodes.find((n) => n.id === reference.noteId);
+  if (!node) return warn('no existe o está en la papelera');
+  if (node.type !== 'sql') return warn('no es una nota SQL');
+  let tabId: string;
+  try {
+    tabId = await useTabs.getState().open(node.id, { newTab: true });
+  } catch (e) {
+    return fail(e, 'No se pudo abrir la nota');
+  }
+  await useSqlRuns.getState().analyze(tabId);
+  // Sin análisis, la pestaña ya se cerró o muestra el error.
+  const analysis = useSqlRuns.getState().runs[tabId]?.analysis;
+  if (!analysis) return;
+  const clean = analysis.errors.length === 0;
+  if (clean && analysis.variables.length !== 1) return warn('debe tener una sola variable');
+  if (analysis.variables.length === 1) {
+    useTabs.getState().setSql(tabId, { values: { [analysis.variables[0].name]: value }, page: 1 });
+  }
+  if (!clean) return;
+  if (analysis.kind !== 'query' || analysis.forbiddenClause != null) return warn('no es una consulta');
+  await useSqlRuns.getState().execute(tabId, 1);
 }
 
 /** ADR-0045: lo que llega en el evento open del canal de presencia. */

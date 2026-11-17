@@ -28,6 +28,8 @@ interface Props {
   references?: (Reference | null)[];
   /** Q-107: consulta el valor de una celda marcada. */
   onLookup?: (table: string, value: string) => Promise<LookupResult>;
+  /** Q-108: Ctrl+clic o Alt+Intro en una celda marcada abre la nota de su referencia con el valor. */
+  onOpenReference?: (reference: Reference, value: string) => void;
 }
 
 type Lookup = { state: 'loading' } | { state: 'done'; result: LookupResult } | { state: 'error'; message: string };
@@ -70,7 +72,7 @@ function LookupContent({ lookup }: { lookup: Lookup }) {
  * Q-60 a Q-65, Q-68: cabecera fija, número de fila, desplazamiento en los dos ejes y filas
  * virtualizadas. Q-102 a Q-106: marca y recuadro de las referencias de claves foráneas.
  */
-export function ResultsTable({ columns, rows, firstRowNumber, truncatedCells, sort, onSort, onOpenCell, onCopyCell, references, onLookup }: Props) {
+export function ResultsTable({ columns, rows, firstRowNumber, truncatedCells, sort, onSort, onOpenCell, onCopyCell, references, onLookup, onOpenReference }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
   const widths = useMemo(() => columns.map((c, i) => columnWidth(c, rows, i)), [columns, rows]);
@@ -153,6 +155,15 @@ export function ResultsTable({ columns, rows, firstRowNumber, truncatedCells, so
     }, REFERENCE_DELAY_MS);
   };
 
+  /** Q-108: cierra el recuadro, cancela lo pendiente y abre la nota de la referencia. false si la celda no tiene marca. */
+  const openReference = (row: number, col: number) => {
+    const target = referenceOf(row, col);
+    if (!target || !onOpenReference) return false;
+    hide();
+    onOpenReference(target.reference, target.value);
+    return true;
+  };
+
   const select = (cell: SelectedCell) => {
     setSelected(cell);
     if (shown && (shown.row !== cell.row || shown.col !== cell.col)) hide();
@@ -171,6 +182,12 @@ export function ResultsTable({ columns, rows, firstRowNumber, truncatedCells, so
     if (e.ctrlKey && e.key.toLowerCase() === 'c') {
       e.preventDefault();
       onCopyCell(rows[selected.row][selected.col]);
+      return;
+    }
+    // Q-108, U-08: Alt+Intro, porque Ctrl+Intro ejecuta la nota de la pestaña (Q-23). Sin marca no hace nada.
+    if (e.altKey && e.key === 'Enter') {
+      e.preventDefault();
+      openReference(selected.row, selected.col);
       return;
     }
     const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
@@ -277,7 +294,11 @@ export function ResultsTable({ columns, rows, firstRowNumber, truncatedCells, so
                           aria-describedby={described ? popoverId : undefined}
                           data-cell={marked ? `${item.index}:${col}` : undefined}
                           style={style}
-                          onClick={() => select({ row: item.index, col })}
+                          onClick={(e) => {
+                            // Q-108: en una celda sin marca, Ctrl+clic es un clic normal.
+                            if (e.ctrlKey && openReference(item.index, col)) setSelected({ row: item.index, col });
+                            else select({ row: item.index, col });
+                          }}
                           onMouseEnter={marked ? () => schedule(item.index, col, 'mouse') : undefined}
                           onMouseLeave={
                             marked

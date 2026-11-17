@@ -43,6 +43,7 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 | Ctrl+E | Cambiar entre consulta y edición |
 | Ctrl+S | Guardar ahora |
 | Ctrl+Intro | Ejecutar la consulta |
+| Ctrl+clic, Alt+Intro | Abrir la nota de la referencia de una celda marcada, en los resultados (Q-108) |
 | Esc | Cancelar la ejecución o cerrar el diálogo |
 | Alt+N | Nueva nota Markdown |
 | Alt+Mayús+N | Nueva nota SQL |

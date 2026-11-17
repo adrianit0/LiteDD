@@ -105,7 +105,7 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 
 | ID | Requisito |
 |---|---|
-| Q-40 | Una nota nunca se ejecuta al abrirla. Solo con «Ejecutar». |
+| Q-40 | Una nota nunca se ejecuta al abrirla. Solo con «Ejecutar». La única excepción es abrir la nota de una referencia con Ctrl+clic (Q-108). |
 | Q-41 | Durante la ejecución se muestra un cronómetro en vivo y el botón «Cancelar» (también Esc), que llama a `Statement.cancel()`. |
 | Q-42 | Al terminar se muestra el tiempo total, el tiempo de servidor y las filas: «1,24 s (servidor 1,19 s) · 20 filas». |
 | Q-43 | Tiempo máximo de 30 s, ajustable. Al superarlo se cancela y se informa. |
@@ -146,7 +146,7 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 
 ## Referencias de claves foráneas
 
-Una referencia muestra, al pasar el ratón, el valor al que apunta una clave foránea, con una nota SQL elegida en «Ajustes», igual que la nota de login de las notas HTTP (H-20, ADR-0048).
+Una referencia muestra, al pasar el ratón, el valor al que apunta una clave foránea, con una nota SQL elegida en «Ajustes», igual que la nota de login de las notas HTTP (H-20, ADR-0048). Con Ctrl+clic abre esa nota con el valor (ADR-0049).
 
 | ID | Requisito |
 |---|---|
@@ -158,6 +158,7 @@ Una referencia muestra, al pasar el ratón, el valor al que apunta una clave for
 | Q-105 | El recuadro muestra la primera fila: con una columna, su valor; con varias, cada valor con su etiqueta. NULL se ve como en Q-63; sin filas, «Sin resultados»; mientras se consulta, «Consultando…». Los errores se muestran en el recuadro: los de Q-90 a Q-98 y una referencia cuya nota ya no existe, está en la papelera, no es SQL, no es una consulta o no tiene una sola variable. |
 | Q-106 | Cada valor consultado se recuerda mientras se ven esos resultados: volver a la celda, o pasar por otra con el mismo valor y la misma referencia, lo muestra sin consultar. Una ejecución nueva, otra página o cerrar la pestaña lo olvidan, y los errores no se recuerdan. Nada se guarda en disco. |
 | Q-107 | La consulta va por `POST /api/sql/lookup` con la tabla objetivo y el valor. El servidor busca la referencia en los ajustes y ejecuta su nota en solo lectura (S-01 a S-06), con el tiempo máximo de consulta (Q-43), sin paginación y con una sola fila. No recuerda valores (Q-24), no cuenta como ejecución (N-88) y no registra el valor (S-22). |
+| Q-108 | Ctrl+clic sobre una celda marcada, o Alt+Intro con ella seleccionada (U-08), cierra el recuadro y abre la nota de la referencia en una pestaña nueva, fija y activa (P-03), con el valor de la celda en su única variable, y la ejecuta (ADR-0049). Es una ejecución normal de la pestaña: recuerda los valores (Q-24) y cuenta como ejecución (N-88). Si la nota no existe, está en la papelera o no es SQL, no se abre y un aviso lo dice. Si no tiene una sola variable o no es una consulta, se abre sin ejecutar y un aviso lo dice; si su análisis tiene errores, se abre sin ejecutar y los muestra. En una celda sin marca, Ctrl+clic es un clic normal. |
 
 ## SQL final
 

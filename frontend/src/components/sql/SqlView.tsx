@@ -15,6 +15,7 @@ import { api } from '../../api';
 import { useConnection } from '../../stores/connectionStore';
 import { connectionKey } from '../../sql/schema';
 import { columnReferences, useForeignKeys } from '../../sql/references';
+import { openReference } from '../../actions';
 
 const copy = (text: string, what: string) => copyText(text, `${what} copiado`);
 
@@ -258,6 +259,7 @@ export function SqlView({ tab }: { tab: Tab }) {
             onCopyCell={(value) => void copy(value ?? 'NULL', 'Valor')}
             references={columnRefs}
             onLookup={api.sqlLookup}
+            onOpenReference={(reference, value) => void openReference(reference, value)}
           />
           {cell && fullValue !== undefined && (
             <section className="cell-panel" aria-label="Valor completo">
