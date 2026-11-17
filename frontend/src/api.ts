@@ -1,6 +1,6 @@
 import type { Mode, Note, NoteType, TreeNode, TrashItem } from './types';
 import type { MapperAnalysis } from './mapper';
-import type { Analysis, Column, ExecuteResponse, SchemaTable, Sort } from './sql/types';
+import type { Analysis, Column, ExecuteResponse, ForeignKey, LookupResult, SchemaTable, Sort } from './sql/types';
 import type { SearchHit } from './search';
 import { BASIC_HEADERS, type Row } from './http/content';
 
@@ -144,6 +144,15 @@ export interface AppConfig {
   http: HttpSettings;
   /** R-11: URL del repositorio de actualizaciones; null = sin conexión a GitHub. */
   updateRepository: string | null;
+  /** Q-100, ADR-0048: referencias de claves foráneas, en su orden. */
+  references: Reference[];
+}
+
+/** Q-100: una tabla objetivo, el color de su marca (#rrggbb) y la nota SQL que la consulta (Q-101). */
+export interface Reference {
+  table: string;
+  color: string;
+  noteId: string | null;
 }
 
 /** R-10, R-14: reason dice por qué no está disponible. */
@@ -216,6 +225,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   autosave: true,
   http: DEFAULT_HTTP,
   updateRepository: null,
+  references: [],
 };
 
 export interface HttpHeader {
@@ -534,6 +544,10 @@ export const api = {
   explain: (req: ExecuteRequest) => request<ExecuteResponse>('POST', '/api/sql/explain', req),
   /** Q-84 */
   sqlSchema: () => request<{ tables: SchemaTable[] }>('GET', '/api/sql/schema'),
+  /** Q-103: claves foráneas hacia las tablas objetivo de las referencias. */
+  sqlReferences: () => request<{ foreignKeys: ForeignKey[] }>('GET', '/api/sql/references'),
+  /** Q-107: la primera fila de la nota de la referencia con ese valor. */
+  sqlLookup: (table: string, value: string) => request<LookupResult>('POST', '/api/sql/lookup', { table, value }),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
   /** H-30, H-63: con el perfil que se muestra. H-69: la clave, si el perfil la pide. */
   httpExecute: (noteId: string, version: number, executionId: string, profileId: string, confirmKey?: string) =>

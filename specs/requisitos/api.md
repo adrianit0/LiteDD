@@ -42,6 +42,8 @@ La interfaz habla con el servidor solo a través de esta API JSON, bajo `/api`.
 | POST | /api/sql/cancel | Cancelar por executionId |
 | POST | /api/sql/explain | EXPLAIN del SQL final de una consulta, sin paginación (Q-48) |
 | GET | /api/sql/schema | Tablas y columnas del esquema de la conexión, leídas de `information_schema` (Q-84) |
+| GET | /api/sql/references | Claves foráneas de una columna hacia las tablas objetivo de las referencias de «Ajustes», leídas de `information_schema` (Q-103) |
+| POST | /api/sql/lookup | Ejecutar la nota de la referencia de una tabla objetivo con un valor y devolver la primera fila (Q-107) |
 | POST | /api/mybatis/analyze | Sentencias y errores de un mapper, con los fragmentos de las demás notas XML (M-41, M-05) |
 | GET | /api/constants | Constantes Java: nombre, valor y número de notas que la usan (M-61, M-65) |
 | PUT | /api/constants | Dar o quitar valores en bloque; un valor vacío deja la constante sin valor (M-65, M-66) |
@@ -116,3 +118,5 @@ Petición y respuesta de `POST /api/sql/execute`:
 ```
 
 Los valores de `values` viajan siempre como texto; la conversión de tipos ocurre en el servidor. `total` solo aparece cuando se conoce (Q-53). Los errores de ejecución y recuento posteriores a la generación del SQL (`mysql_error`, `timeout`, `cancelled`, `not_connected`, `schema_unavailable`, `not_configured`) llevan en `details.finalSql` el SQL final de esa llamada, con el mismo formato (Q-74).
+
+Cada columna de `columns` lleva además `table` y `column`, la tabla y la columna de las que sale tal cual, si son del esquema de la conexión; una expresión no los lleva (Q-102). `POST /api/sql/lookup` recibe `{ "table": "author", "value": "7" }` y responde `{ "columns": ["name"], "row": ["Ana"] }`; sin filas, `row` no aparece. Sus errores siguen A-02 y Q-105.

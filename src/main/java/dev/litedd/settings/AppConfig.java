@@ -32,10 +32,37 @@ import java.util.regex.Pattern;
  * @param autosave            N-40: guardado automático; false, guardado manual (N-46). Si falta, true
  * @param http                notas HTTP (H-10, H-20, H-22, H-31, H-35, H-60). Si falta, los valores por defecto
  * @param updateRepository    R-11: URL del repositorio de actualizaciones; null, sin conexión a GitHub
+ * @param references          Q-100, ADR-0048: referencias de claves foráneas, en su orden. Si falta, ninguna
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
-                        Boolean autosave, Http http, String updateRepository) {
+                        Boolean autosave, Http http, String updateRepository, List<Reference> references) {
+
+    /**
+     * Q-100: una tabla objetivo, el color de su marca y la nota SQL que la consulta (ADR-0048).
+     *
+     * @param table  tabla a la que apuntan las claves foráneas; no se repite, sin distinguir mayúsculas
+     * @param color  #rrggbb; si falta, azul cerúleo
+     * @param noteId Q-101: nota SQL con una sola variable; null sin elegir
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Reference(String table, String color, String noteId) {
+
+        public static final String DEFAULT_COLOR = "#007ba7";
+        private static final Pattern COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
+        /** Lo más largo que admite MySQL en un nombre de tabla. */
+        private static final int MAX_TABLE = 64;
+
+        public Reference {
+            table = table == null ? "" : table.strip();
+            color = color == null || color.isBlank() ? DEFAULT_COLOR : color.strip().toLowerCase(Locale.ROOT);
+            noteId = noteId == null || noteId.isBlank() ? null : noteId.strip();
+        }
+
+        boolean sameTable(String other) {
+            return other != null && table.equalsIgnoreCase(other.strip());
+        }
+    }
 
     /**
      * Ajustes de las notas HTTP. Las contraseñas y la clave de confirmación no están aquí: van a http.json (H-21, H-64).
@@ -216,11 +243,22 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         autosave = autosave == null || autosave;
         http = http == null ? Http.DEFAULT : http;
         updateRepository = updateRepository == null || updateRepository.isBlank() ? null : updateRepository.strip();
+        references = references == null ? List.of() : references.stream().filter(Objects::nonNull).toList();
     }
 
     public AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
                      Boolean autosave, Http http) {
         this(defaultPageSize, rowCap, queryTimeoutSeconds, port, autoShutdownMinutes, autosave, http, null);
+    }
+
+    public AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
+                     Boolean autosave, Http http, String updateRepository) {
+        this(defaultPageSize, rowCap, queryTimeoutSeconds, port, autoShutdownMinutes, autosave, http, updateRepository, null);
+    }
+
+    /** Q-107: la referencia de una tabla objetivo, sin distinguir mayúsculas. */
+    public Optional<Reference> reference(String table) {
+        return references.stream().filter(r -> r.sameTable(table)).findFirst();
     }
 
     public static final AppConfig DEFAULT = new AppConfig(20, 10_000, 30, 47600, null, true, Http.DEFAULT);
@@ -253,7 +291,31 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         if (updateRepository != null && !UpdateUrls.isRepository(updateRepository)) {
             throw invalid("La URL del repositorio debe ser https://github.com/<propietario>/<repositorio>");
         }
+        validateReferences();
         return this;
+    }
+
+    /** Q-100 */
+    private void validateReferences() {
+        Set<String> tables = new HashSet<>();
+        for (Reference r : references) {
+            if (r.table().isEmpty()) {
+                throw invalid("Cada referencia necesita una tabla objetivo");
+            }
+            if (r.table().length() > Reference.MAX_TABLE || r.table().chars().anyMatch(ch -> ch < 32 || ch == 127)) {
+                throw invalid("La tabla objetivo «" + r.table() + "» no es válida: como mucho " + Reference.MAX_TABLE
+                        + " caracteres y sin caracteres de control");
+            }
+            if (!tables.add(r.table().toLowerCase(Locale.ROOT))) {
+                throw invalid("La tabla objetivo «" + r.table() + "» está repetida");
+            }
+            if (!Reference.COLOR.matcher(r.color()).matches()) {
+                throw invalid("El color de la referencia «" + r.table() + "» debe ser #rrggbb");
+            }
+            if (r.noteId() == null) {
+                throw invalid("La referencia «" + r.table() + "» necesita una nota SQL");
+            }
+        }
     }
 
     private static ApiError invalid(String message) {

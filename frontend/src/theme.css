@@ -1387,6 +1387,83 @@ button:disabled {
   outline-offset: -2px;
 }
 
+/* Q-102, ADR-0048: esquina inferior derecha del color de la referencia. */
+.results-cell.ref {
+  position: relative;
+}
+
+.results-cell.ref::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-style: solid;
+  border-width: 0 0 8px 8px;
+  border-color: transparent transparent var(--ref-color) transparent;
+  pointer-events: none;
+}
+
+/* Q-104, Q-105: recuadro junto a la celda; el ancho máximo es POPOVER_WIDTH de ResultsTable.tsx. */
+.ref-popover {
+  position: fixed;
+  z-index: 50;
+  max-width: 360px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 40%);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.ref-popover.above {
+  transform: translateY(-100%);
+}
+
+.ref-lines {
+  margin: 0;
+}
+
+.ref-lines > div {
+  display: flex;
+  gap: 8px;
+}
+
+.ref-lines dt {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.ref-lines dt::after {
+  content: ':';
+}
+
+.ref-lines dd {
+  margin: 0;
+}
+
+.ref-lines dd.null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.ref-color-cell {
+  width: 56px;
+}
+
+.ref-table select {
+  width: 100%;
+}
+
+.ref-actions {
+  margin: 8px 0 12px;
+}
+
 .results-empty {
   padding: 10px 12px;
   margin: 0;

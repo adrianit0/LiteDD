@@ -144,6 +144,21 @@ for (ParameterMapping pm : bound.getParameterMappings()) {
 | Q-67 | Los resultados no se guardan en disco. Se pierden al cerrar la pestaña o la aplicación. |
 | Q-68 | Una consulta sin filas muestra las cabeceras y el mensaje «Sin resultados». |
 
+## Referencias de claves foráneas
+
+Una referencia muestra, al pasar el ratón, el valor al que apunta una clave foránea, con una nota SQL elegida en «Ajustes», igual que la nota de login de las notas HTTP (H-20, ADR-0048).
+
+| ID | Requisito |
+|---|---|
+| Q-100 | En «Ajustes → Referencias» hay una lista de referencias, cada una con tabla objetivo, color y nota SQL. La tabla objetivo no se repite, sin distinguir mayúsculas. El color es `#rrggbb`; una referencia nueva nace en azul cerúleo, `#007ba7`. Cada referencia necesita su nota. |
+| Q-101 | La nota de una referencia es una nota SQL con una consulta y una sola variable, que recibe el valor de la celda; por ejemplo `SELECT name FROM author WHERE id = #{id}`. Se ejecuta su contenido guardado. |
+| Q-102 | En la tabla de resultados de una nota SQL, también en las hijas de una nota XML, una columna que sale tal cual de una columna con clave foránea declarada hacia la tabla objetivo de una referencia marca sus celdas no nulas con la esquina inferior derecha del color de la referencia. Vale aunque la columna tenga alias; una expresión, una función o una columna de otro esquema no se marca. Las claves foráneas de varias columnas no cuentan. El plan de «Explicar» y las tablas de los workflows no se marcan. |
+| Q-103 | Las claves foráneas se leen de `information_schema.KEY_COLUMN_USAGE` del esquema de la conexión, con una sentencia fija de solo lectura (principio 3), y solo si hay referencias. Se guardan en memoria hasta que cambian la conexión o las referencias, o falla la petición. Sin conexión no se marca nada. |
+| Q-104 | Con el ratón quieto 400 ms sobre una celda marcada, o con la celda seleccionada con el teclado ese tiempo (U-08), se ejecuta la nota de la referencia con el valor de la celda y el resultado se muestra en un recuadro junto a ella. Si el ratón sale o la selección cambia antes, no se consulta nada. El recuadro se cierra al salir de la celda, al cambiar la selección, con Esc o al desplazar la tabla. |
+| Q-105 | El recuadro muestra la primera fila: con una columna, su valor; con varias, cada valor con su etiqueta. NULL se ve como en Q-63; sin filas, «Sin resultados»; mientras se consulta, «Consultando…». Los errores se muestran en el recuadro: los de Q-90 a Q-98 y una referencia cuya nota ya no existe, está en la papelera, no es SQL, no es una consulta o no tiene una sola variable. |
+| Q-106 | Cada valor consultado se recuerda mientras se ven esos resultados: volver a la celda, o pasar por otra con el mismo valor y la misma referencia, lo muestra sin consultar. Una ejecución nueva, otra página o cerrar la pestaña lo olvidan, y los errores no se recuerdan. Nada se guarda en disco. |
+| Q-107 | La consulta va por `POST /api/sql/lookup` con la tabla objetivo y el valor. El servidor busca la referencia en los ajustes y ejecuta su nota en solo lectura (S-01 a S-06), con el tiempo máximo de consulta (Q-43), sin paginación y con una sola fila. No recuerda valores (Q-24), no cuenta como ejecución (N-88) y no registra el valor (S-22). |
+
 ## SQL final
 
 | ID | Requisito |

@@ -12,12 +12,14 @@ import { useUi, type SettingsCategory } from '../stores/uiStore';
 import { ConnectionSettings, EMPTY_CONNECTION, connectionChanged, type ConnectionDraft } from './ConnectionSettings';
 import { CorporateCaSettings, HttpProfilesSettings, fromProfileForms, toProfileForms, type ProfileForm } from './HttpProfilesSettings';
 import { UpdateSettings } from './UpdateSettings';
+import { ReferencesSettings, fromReferenceForms, referencesProblem, toReferenceForms, type ReferenceForm } from './ReferencesSettings';
 
 /** U-10: categorías, en su orden. */
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'connection', label: 'Conexión' },
   { id: 'sql', label: 'SQL' },
+  { id: 'references', label: 'Referencias' },
   { id: 'http', label: 'HTTP' },
   { id: 'headers', label: 'Cabeceras' },
   { id: 'environments', label: 'Entornos' },
@@ -40,6 +42,7 @@ interface ConfigForm {
   httpMaxResponseMb: string;
   httpHeaders: Row[];
   updateRepository: string;
+  references: ReferenceForm[];
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -57,6 +60,7 @@ function toForm(c: AppConfig): ConfigForm {
     httpMaxResponseMb: String(c.http.maxResponseMb),
     httpHeaders: c.http.headers,
     updateRepository: c.updateRepository ?? '',
+    references: toReferenceForms(c.references),
   };
 }
 
@@ -80,6 +84,7 @@ function fromForm(f: ConfigForm): AppConfig {
         .map((h) => ({ key: h.key.trim(), value: h.value.trim(), enabled: h.enabled })),
     },
     updateRepository: f.updateRepository.trim() === '' ? null : f.updateRepository.trim(),
+    references: fromReferenceForms(f.references),
   };
 }
 
@@ -159,6 +164,12 @@ export function SettingsDialog() {
       if (saveConnection && (connection.form.user.trim() === '' || connection.form.schema === '')) {
         setCategory('connection');
         throw new Error('La conexión necesita usuario y esquema por defecto: prueba la conexión y elige uno.');
+      }
+      // Q-100: se lleva a la categoría del problema antes de enviar nada.
+      const referenceIssue = referencesProblem(form.references);
+      if (referenceIssue) {
+        setCategory('references');
+        throw new Error(`Referencias: ${referenceIssue}.`);
       }
       const next = fromForm(form);
       await api.putSettings({ config: next });
@@ -509,6 +520,7 @@ export function SettingsDialog() {
       <ConnectionSettings draft={connection} hasPassword={hasDbPassword} busy={busy} onChange={setConnection} onTest={testConnection} />
     ),
     sql,
+    references: <ReferencesSettings references={form.references} onChange={(references) => update({ references })} />,
     http,
     headers,
     environments,

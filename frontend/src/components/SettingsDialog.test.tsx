@@ -7,6 +7,7 @@ import { useDialogs } from '../stores/dialogStore';
 import { defaultSqlState, useTabs } from '../stores/tabsStore';
 import { useTree } from '../stores/treeStore';
 import { useUi } from '../stores/uiStore';
+import { useSqlSchema } from '../sql/schema';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
@@ -30,6 +31,7 @@ vi.mock('../api', async (importOriginal) => {
       saveConnection: vi.fn(),
       reconnect: vi.fn(),
       connectionStatus: vi.fn(),
+      sqlSchema: vi.fn(),
     },
   };
 });
@@ -103,6 +105,7 @@ beforeEach(() => {
     hasPassword: true,
   });
   mocked.connectionStatus.mockResolvedValue(status('connected'));
+  mocked.sqlSchema.mockResolvedValue({ tables: [{ name: 'author', columns: ['id', 'name'] }, { name: 'book', columns: ['id'] }] });
   useUi.setState({ config: DEFAULT_CONFIG, settingsOpen: true, settingsCategory: 'general', notices: [] });
   useTabs.setState({ tabs: [], activeId: null });
   useDialogs.setState({ current: null });
@@ -113,7 +116,7 @@ describe('U-13 ventana por categorías', () => {
   it('U-10 U-13 las categorías van en su orden y las flechas las recorren', async () => {
     await renderAt();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'HTTP', 'Cabeceras', 'Entornos', 'Datos', 'Actualizaciones']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'Referencias', 'HTTP', 'Cabeceras', 'Entornos', 'Datos', 'Actualizaciones']);
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'General' })).toBeTruthy();
 
@@ -525,6 +528,79 @@ describe('U-10 «HTTP» y «Entornos»', () => {
     expect(ca.textContent).toContain('CN=LiteDD Demo CA,O=litedd_demo');
     expect(ca.textContent).toMatch(/caduca el 21\/10\/2027/);
     expect(screen.getByRole('status').textContent).toContain('ca.pem');
+  });
+});
+
+describe('Q-100 «Referencias»', () => {
+  beforeEach(() => {
+    useSqlSchema.setState({ tables: [], loadedKey: null, wanted: false });
+    useTree.setState({
+      nodes: [
+        { id: 'q1', parentId: null, position: 0, type: 'sql', title: 'Nombre del autor', description: '', favorite: false, tags: [] },
+        { id: 'h1', parentId: null, position: 1, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
+        { id: 'q2', parentId: null, position: 2, type: 'sql', title: 'Título del libro', description: '', favorite: false, tags: [] },
+      ],
+    });
+  });
+
+  it('Q-100 una referencia nueva nace en azul cerúleo; se eligen tabla, color y nota SQL y se guardan', async () => {
+    await renderAt('Referencias');
+    expect(screen.queryByRole('table', { name: 'Referencias' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir referencia' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Color de la fila 1').value).toBe('#007ba7');
+    // Q-84: la tabla objetivo propone las tablas del esquema.
+    const table = screen.getByLabelText<HTMLInputElement>('Tabla objetivo de la fila 1');
+    const list = document.getElementById(table.getAttribute('list')!)!;
+    expect([...list.querySelectorAll('option')].map((o) => o.value)).toEqual(['author', 'book']);
+    fireEvent.change(table, { target: { value: ' author ' } });
+    const note = screen.getByLabelText<HTMLSelectElement>('Nota SQL de author');
+    // Solo notas SQL.
+    expect([...note.options].map((o) => o.textContent)).toEqual(['Sin elegir', 'Nombre del autor', 'Título del libro']);
+    fireEvent.change(note, { target: { value: 'q1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir referencia' }));
+    fireEvent.change(screen.getByLabelText('Tabla objetivo de la fila 2'), { target: { value: 'book' } });
+    fireEvent.change(screen.getByLabelText('Color de book'), { target: { value: '#ff8800' } });
+    fireEvent.change(screen.getByLabelText('Nota SQL de book'), { target: { value: 'q2' } });
+    // Una fila añadida y dejada vacía no se guarda.
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir referencia' }));
+    await saveSettings();
+    const references = [
+      { table: 'author', color: '#007ba7', noteId: 'q1' },
+      { table: 'book', color: '#ff8800', noteId: 'q2' },
+    ];
+    expect(savedConfig().references).toEqual(references);
+    expect(useUi.getState().config.references).toEqual(references);
+  });
+
+  it('Q-100 una tabla repetida o sin nota se avisa y no se guarda; «×» quita la referencia', async () => {
+    useUi.setState({
+      config: {
+        ...DEFAULT_CONFIG,
+        references: [
+          { table: 'author', color: '#007ba7', noteId: 'q1' },
+          { table: 'loan', color: '#007ba7', noteId: 'borrada' },
+        ],
+      },
+    });
+    await renderAt('General');
+    goTo('Referencias');
+    // Una nota que ya no existe se ve como tal, sin perder la elección.
+    expect(screen.getByLabelText<HTMLSelectElement>('Nota SQL de loan').selectedOptions[0].textContent).toBe('Nota que ya no existe');
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir referencia' }));
+    fireEvent.change(screen.getByLabelText('Tabla objetivo de la fila 3'), { target: { value: 'AUTHOR' } });
+    expect(screen.getAllByText('Tabla objetivo repetida')).toHaveLength(2);
+    goTo('General');
+    await saveSettings();
+    expect(mocked.putSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: 'Referencias' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('alert').textContent).toBe('Referencias: Tabla objetivo repetida: author.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar la referencia de AUTHOR' }));
+    fireEvent.change(screen.getByLabelText('Nota SQL de author'), { target: { value: '' } });
+    expect(screen.getByText('Elige una nota SQL')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar la referencia de author' }));
+    await saveSettings();
+    expect(savedConfig().references).toEqual([{ table: 'loan', color: '#007ba7', noteId: 'borrada' }]);
   });
 });
 

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { api, ApiError } from '../../api';
+import { api, ApiError, DEFAULT_CONFIG } from '../../api';
+import { useForeignKeys } from '../../sql/references';
 import { SqlView } from './SqlView';
 import { useTabs } from '../../stores/tabsStore';
 import { useSqlRuns } from '../../stores/sqlRunStore';
@@ -23,6 +24,8 @@ vi.mock('../../api', async (importOriginal) => {
       putSession: vi.fn(),
       reconnect: vi.fn(),
       tree: vi.fn(),
+      sqlReferences: vi.fn(),
+      sqlLookup: vi.fn(),
     },
   };
 });
@@ -557,5 +560,175 @@ describe('M-25 MyBatis de una hija generada', () => {
     expect(code.querySelector('.cm-mb-param')?.textContent).toBe('#{y,int}');
     await click(within(panel).getByRole('button', { name: 'Copiar' }));
     expect(writeText).toHaveBeenCalledWith(content);
+  });
+});
+
+describe('Q-102 a Q-107 referencias de claves foráneas', () => {
+  const AUTHOR = { table: 'author', color: '#123456', noteId: 'n1' };
+
+  const withRefs = (): ExecuteResponse =>
+    result({
+      columns: [
+        { label: 'id', type: 'INT', numeric: true, table: 'book', column: 'id' },
+        { label: 'autor', type: 'INT', numeric: true, table: 'book', column: 'author_id' },
+        { label: 'doble', type: 'BIGINT', numeric: true },
+      ],
+      rows: [
+        ['1', '7', '2'],
+        ['2', '7', '4'],
+        ['3', null, '6'],
+        ['4', '8', '8'],
+      ],
+    });
+
+  /** La celda de la fila y la columna dadas, desde 0, en los resultados (el plan de «Explicar» va antes). */
+  const cell = (row: number, col: number) =>
+    within(screen.getAllByRole('grid', { name: 'Resultados' }).at(-1)!)
+      .getAllByRole('row')
+      [row + 1].querySelectorAll<HTMLElement>('[role="gridcell"]')[col];
+
+  async function wait(ms: number) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+  }
+
+  async function runWithRefs() {
+    mocked.execute.mockResolvedValue(withRefs());
+    await mount();
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    vi.useFakeTimers();
+  }
+
+  beforeEach(() => {
+    useUi.setState({ config: { ...DEFAULT_CONFIG, references: [AUTHOR] } });
+    useForeignKeys.setState({ foreignKeys: [], loadedKey: null, loadingKey: null });
+    mocked.sqlReferences.mockResolvedValue({ foreignKeys: [{ table: 'book', column: 'author_id', referencedTable: 'author' }] });
+    mocked.sqlLookup.mockResolvedValue({ columns: ['name'], row: ['Ana'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    useUi.setState({ config: DEFAULT_CONFIG });
+  });
+
+  it('Q-102 Q-103 marca las celdas no nulas de la columna con clave foránea hacia la tabla objetivo, con su color', async () => {
+    await runWithRefs();
+    expect(mocked.sqlReferences).toHaveBeenCalledTimes(1);
+    for (const row of [0, 1, 3]) {
+      expect(cell(row, 1).className).toContain('ref');
+      expect(cell(row, 1).style.getPropertyValue('--ref-color')).toBe('#123456');
+    }
+    // NULL no apunta a nada; las demás columnas no tienen clave hacia la tabla objetivo.
+    expect(cell(2, 1).className).not.toContain('ref');
+    expect(cell(0, 0).className).not.toContain('ref');
+    expect(cell(0, 2).className).not.toContain('ref');
+    expect(mocked.sqlLookup).not.toHaveBeenCalled();
+  });
+
+  it('Q-104 Q-106 con el ratón quieto 400 ms consulta y muestra el valor; salir antes no consulta; el mismo valor no repite', async () => {
+    await runWithRefs();
+    fireEvent.mouseEnter(cell(0, 1));
+    await wait(300);
+    fireEvent.mouseLeave(cell(0, 1));
+    await wait(500);
+    expect(mocked.sqlLookup).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+
+    // Una celda sin marca no consulta.
+    fireEvent.mouseEnter(cell(0, 2));
+    await wait(500);
+    expect(mocked.sqlLookup).not.toHaveBeenCalled();
+
+    fireEvent.mouseEnter(cell(0, 1));
+    await wait(400);
+    expect(mocked.sqlLookup).toHaveBeenCalledWith('author', '7');
+    const tip = screen.getByRole('tooltip');
+    expect(tip.textContent).toBe('Ana');
+    expect(cell(0, 1).getAttribute('aria-describedby')).toBe(tip.id);
+    fireEvent.mouseLeave(cell(0, 1));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+
+    // Otra celda con el mismo valor y la misma referencia: sin consultar.
+    fireEvent.mouseEnter(cell(1, 1));
+    await wait(400);
+    expect(screen.getByRole('tooltip').textContent).toBe('Ana');
+    expect(mocked.sqlLookup).toHaveBeenCalledTimes(1);
+    // Esc lo cierra.
+    fireEvent.keyDown(screen.getByRole('grid', { name: 'Resultados' }), { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('Q-105 Q-106 «Consultando…», varias columnas con su etiqueta, «Sin resultados» y errores que no se recuerdan', async () => {
+    await runWithRefs();
+    let answer: (r: { columns: string[]; row?: (string | null)[] }) => void = () => {};
+    mocked.sqlLookup.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    fireEvent.mouseEnter(cell(0, 1));
+    await wait(400);
+    expect(screen.getByRole('tooltip').textContent).toBe('Consultando…');
+    await act(async () => answer({ columns: ['name', 'active'], row: ['Ana', null] }));
+    const tip = screen.getByRole('tooltip');
+    expect([...tip.querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['name', 'active']);
+    expect([...tip.querySelectorAll('dd')].map((d) => d.textContent)).toEqual(['Ana', 'NULL']);
+    expect(tip.querySelector('dd.null')).toBeTruthy();
+    fireEvent.mouseLeave(cell(0, 1));
+
+    mocked.sqlLookup.mockResolvedValueOnce({ columns: ['name'] });
+    fireEvent.mouseEnter(cell(3, 1));
+    await wait(400);
+    expect(screen.getByRole('tooltip').textContent).toBe('Sin resultados');
+    fireEvent.mouseLeave(cell(3, 1));
+
+    // Otra ejecución, con sus filas: lo consultado se olvida.
+    vi.useRealTimers();
+    mocked.execute.mockResolvedValue(withRefs());
+    await click(screen.getByRole('button', { name: 'Ejecutar' }));
+    vi.useFakeTimers();
+    mocked.sqlLookup.mockRejectedValueOnce(new ApiError(422, 'bad_reference', 'La nota de la referencia «author» no es una consulta', null));
+    fireEvent.mouseEnter(cell(0, 1));
+    await wait(400);
+    expect(screen.getByRole('tooltip').textContent).toBe('La nota de la referencia «author» no es una consulta');
+    fireEvent.mouseLeave(cell(0, 1));
+    fireEvent.mouseEnter(cell(0, 1));
+    await wait(400);
+    expect(mocked.sqlLookup).toHaveBeenCalledTimes(4);
+    expect(screen.getByRole('tooltip').textContent).toBe('Ana');
+  });
+
+  it('Q-104 U-08 con el teclado, la celda marcada seleccionada ese tiempo consulta; cambiar la selección antes no', async () => {
+    await runWithRefs();
+    await click(cell(0, 0));
+    const grid = screen.getByRole('grid', { name: 'Resultados' });
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    await wait(400);
+    expect(mocked.sqlLookup).toHaveBeenCalledWith('author', '7');
+    expect(screen.getByRole('tooltip').textContent).toBe('Ana');
+
+    // Cambiar la selección lo cierra; pasar de largo no consulta.
+    fireEvent.keyDown(grid, { key: 'ArrowDown' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await wait(200);
+    fireEvent.keyDown(grid, { key: 'ArrowDown' });
+    fireEvent.keyDown(grid, { key: 'ArrowDown' });
+    await wait(200);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await wait(300);
+    expect(mocked.sqlLookup).toHaveBeenLastCalledWith('author', '8');
+    expect(mocked.sqlLookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('Q-102 Q-103 sin referencias no se piden las claves ni se marca nada; el plan de «Explicar» no se marca', async () => {
+    useUi.setState({ config: DEFAULT_CONFIG });
+    await runWithRefs();
+    expect(mocked.sqlReferences).not.toHaveBeenCalled();
+    expect(cell(0, 1).className).not.toContain('ref');
+
+    vi.useRealTimers();
+    useUi.setState({ config: { ...DEFAULT_CONFIG, references: [AUTHOR] } });
+    mocked.explain.mockResolvedValue({ ...withRefs(), kind: 'explain' });
+    await click(screen.getByRole('button', { name: 'Explicar' }));
+    const panel = screen.getByRole('region', { name: 'Plan de ejecución' });
+    expect(panel.querySelector('.ref')).toBeNull();
+    expect(cell(0, 1).className).toContain('ref');
   });
 });

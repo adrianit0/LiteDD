@@ -6,6 +6,7 @@ import dev.litedd.http.HttpServer;
 import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.VariableValues;
+import dev.litedd.settings.AppConfig;
 import dev.litedd.sqlengine.SqlEngine;
 import dev.litedd.store.Store;
 import org.junit.jupiter.api.AfterAll;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,6 +58,8 @@ class MySqlIntegrationTest {
     MySqlGateway gateway;
     HttpServer server;
     HttpClient client = HttpClient.newHttpClient();
+    /** Q-100: los ajustes que leen las rutas; tiempo máximo corto para las pruebas de S-05. */
+    AtomicReference<AppConfig> config = new AtomicReference<>(new AppConfig(20, SqlApi.DEFAULT_ROW_CAP, TIMEOUT_SECONDS, 47600, null, true, null));
     int port;
 
     @BeforeAll
@@ -75,7 +79,7 @@ class MySqlIntegrationTest {
         gateway = new MySqlGateway();
         gateway.configure(settings);
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, TIMEOUT_SECONDS, SqlApi.DEFAULT_ROW_CAP),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, config::get, Map::of),
                 new ConnectionApi(new ConnectionFile(dir.resolve("connection.json")), gateway))).start();
     }
 
@@ -227,6 +231,44 @@ class MySqlIntegrationTest {
     }
 
     @Test
+    void q102_columns_carry_their_original_table_and_column_even_with_an_alias() throws Exception {
+        JsonNode columns = execute(sqlNote("SELECT b.author_id AS autor, b.id + 1 AS siguiente, a.name FROM book b"
+                + " JOIN author a ON a.id = b.author_id"), Map.of(), 1, 20, null).json.get("columns");
+        assertThat(columns.get(0).get("label").asText()).isEqualTo("autor");
+        assertThat(columns.get(0).get("table").asText()).isEqualTo("book");
+        assertThat(columns.get(0).get("column").asText()).isEqualTo("author_id");
+        assertThat(columns.get(1).has("table")).isFalse();
+        assertThat(columns.get(2).get("table").asText()).isEqualTo("author");
+    }
+
+    @Test
+    void q103_q107_foreign_keys_towards_the_target_and_the_lookup_of_a_value() throws Exception {
+        AppConfig before = config.get();
+        Note lookupNote = sqlNote("SELECT name, active FROM author WHERE id = #{id,int}");
+        config.set(new AppConfig(before.defaultPageSize(), before.rowCap(), before.queryTimeoutSeconds(), before.port(), null, true,
+                null, null, List.of(new AppConfig.Reference("author", null, lookupNote.id()))));
+        try {
+            Res keys = call("GET", "/api/sql/references", null);
+            assertThat(keys.status).isEqualTo(200);
+            assertThat(keys.json.get("foreignKeys")).hasSize(1);
+            assertThat(keys.json.get("foreignKeys").get(0).get("table").asText()).isEqualTo("book");
+            assertThat(keys.json.get("foreignKeys").get(0).get("column").asText()).isEqualTo("author_id");
+            assertThat(keys.json.get("foreignKeys").get(0).get("referencedTable").asText()).isEqualTo("author");
+
+            Res found = call("POST", "/api/sql/lookup", JSON.writeValueAsString(Map.of("table", "author", "value", "2")));
+            assertThat(found.status).isEqualTo(200);
+            assertThat(found.json.get("columns")).extracting(JsonNode::asText).containsExactly("name", "active");
+            assertThat(found.json.get("row")).extracting(JsonNode::asText).containsExactly("Autor Dos", "1");
+
+            Res missing = call("POST", "/api/sql/lookup", JSON.writeValueAsString(Map.of("table", "author", "value", "99")));
+            assertThat(missing.status).isEqualTo(200);
+            assertThat(missing.json.has("row")).isFalse();
+        } finally {
+            config.set(before);
+        }
+    }
+
+    @Test
     void q44_show_runs_as_it_is() throws Exception {
         JsonNode r = execute(sqlNote("SHOW TABLES"), Map.of(), 1, 20, null).json;
         assertThat(r.get("kind").asText()).isEqualTo("meta");
@@ -367,7 +409,8 @@ class MySqlIntegrationTest {
             st.execute("CREATE DATABASE " + SCHEMA + " CHARACTER SET utf8mb4");
             st.execute("USE " + SCHEMA);
             st.execute("CREATE TABLE author (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, active TINYINT(1) NOT NULL)");
-            st.execute("CREATE TABLE book (id INT PRIMARY KEY, title VARCHAR(200) NOT NULL, year INT, author_id INT NOT NULL)");
+            st.execute("CREATE TABLE book (id INT PRIMARY KEY, title VARCHAR(200) NOT NULL, year INT, author_id INT NOT NULL,"
+                    + " CONSTRAINT fk_book_author FOREIGN KEY (author_id) REFERENCES author (id))");
             st.execute("CREATE TABLE loan (id INT AUTO_INCREMENT PRIMARY KEY, book_id INT NOT NULL, loaned_at DATETIME NOT NULL,"
                     + " returned_at DATETIME NULL)");
             st.execute("INSERT INTO author VALUES (1, 'Autora Uno', 1), (2, 'Autor Dos', 1), (3, 'Autora Tres', 0)");

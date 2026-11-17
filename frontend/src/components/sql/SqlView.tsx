@@ -11,6 +11,10 @@ import { FinalSqlPanel } from './FinalSqlPanel';
 import { SqlErrors } from './SqlErrors';
 import { isGenerated, mapperTokens } from '../../mapper';
 import { mybatisClass } from '../../editor/mybatis';
+import { api } from '../../api';
+import { useConnection } from '../../stores/connectionStore';
+import { connectionKey } from '../../sql/schema';
+import { columnReferences, useForeignKeys } from '../../sql/references';
 
 const copy = (text: string, what: string) => copyText(text, `${what} copiado`);
 
@@ -102,6 +106,19 @@ export function SqlView({ tab }: { tab: Tab }) {
   const failedSql = (run.error?.details as { finalSql?: FinalSql } | null)?.finalSql;
   const rows = result?.rows ?? [];
   const isQuery = result?.kind === 'query';
+
+  // Q-102, Q-103: con referencias, las claves foráneas se piden al ver resultados con columnas de alguna tabla.
+  const references = useUi((s) => s.config.references);
+  const connection = useConnection((s) => connectionKey(s.status));
+  const foreignKeys = useForeignKeys((s) => s.foreignKeys);
+  const hasOrigins = result?.columns?.some((c) => c.table) === true;
+  useEffect(() => {
+    if (hasOrigins) void useForeignKeys.getState().ensure(references);
+  }, [result, hasOrigins, references, connection]);
+  const columnRefs = useMemo(
+    () => (result?.columns && references.length > 0 ? columnReferences(result.columns, foreignKeys, references) : undefined),
+    [result, foreignKeys, references],
+  );
 
   const execute = (page = 1) => {
     setCell(null);
@@ -239,6 +256,8 @@ export function SqlView({ tab }: { tab: Tab }) {
             onSort={isQuery ? (column) => rerunWith({ sort: nextSort(sql.sort, column) }) : null}
             onOpenCell={setCell}
             onCopyCell={(value) => void copy(value ?? 'NULL', 'Valor')}
+            references={columnRefs}
+            onLookup={api.sqlLookup}
           />
           {cell && fullValue !== undefined && (
             <section className="cell-panel" aria-label="Valor completo">

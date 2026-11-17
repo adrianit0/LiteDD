@@ -31,6 +31,22 @@ export interface Column {
   label: string;
   type: string;
   numeric: boolean;
+  /** Q-102: tabla y columna de las que sale tal cual, si son del esquema de la conexión. */
+  table?: string;
+  column?: string;
+}
+
+/** Q-103: table.column tiene una clave foránea de una sola columna hacia referencedTable. */
+export interface ForeignKey {
+  table: string;
+  column: string;
+  referencedTable: string;
+}
+
+/** Q-105: etiquetas y primera fila de la nota de una referencia; sin filas, row no llega. */
+export interface LookupResult {
+  columns: string[];
+  row?: (string | null)[];
 }
 
 export interface FinalSql {

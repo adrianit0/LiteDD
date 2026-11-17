@@ -63,6 +63,15 @@ public final class SqlApi implements ApiRoutes {
     record CancelRequest(String executionId) {
     }
 
+    /** Q-107 */
+    record LookupRequest(String table, String value) {
+    }
+
+    /** Q-105: las etiquetas y la primera fila; sin filas, row no aparece. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record LookupResponse(List<String> columns, List<String> row) {
+    }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record ExecuteResponse(String kind, List<Column> columns, List<List<String>> rows, List<List<Integer>> truncatedCells,
                            Boolean hasMore, Long total, Boolean capReached, Long serverMillis, FinalSql finalSql,
@@ -81,6 +90,8 @@ public final class SqlApi implements ApiRoutes {
     private final VariableValues variableValues;
     private final SqlEngine engine;
     private final MySqlGateway gateway;
+    /** Q-100: las referencias se leen de los ajustes en cada petición. */
+    private final Supplier<AppConfig> config;
     /** Plan, ejecución y errores, compartidos con los nodos SQL de un workflow (ADR-0031). */
     private final SqlRunner sql;
 
@@ -105,6 +116,7 @@ public final class SqlApi implements ApiRoutes {
         this.variableValues = variableValues;
         this.engine = engine;
         this.gateway = gateway;
+        this.config = config;
         this.sql = new SqlRunner(engine, gateway, config, constants);
     }
 
@@ -166,6 +178,8 @@ public final class SqlApi implements ApiRoutes {
         });
         routes.post("/api/sql/explain", ctx -> ctx.json(explain(ctx.bodyAsClass(ExecuteRequest.class))));
         routes.get("/api/sql/schema", ctx -> ctx.json(Map.of("tables", schema())));
+        routes.get("/api/sql/references", ctx -> ctx.json(Map.of("foreignKeys", foreignKeys())));
+        routes.post("/api/sql/lookup", ctx -> ctx.json(lookup(ctx.bodyAsClass(LookupRequest.class))));
     }
 
     /** A-04: siempre el contenido guardado, en la versión que tiene la pestaña. */
@@ -242,6 +256,67 @@ public final class SqlApi implements ApiRoutes {
         } catch (SQLException e) {
             throw new ApiError(503, "schema_unavailable", "No se pudo leer el esquema: " + MySqlGateway.rootMessage(e));
         }
+    }
+
+    /** Q-103: claves foráneas hacia las tablas objetivo; sin referencias no llega a MySQL. */
+    private List<SchemaCatalog.ForeignKey> foreignKeys() {
+        List<String> targets = config.get().references().stream().map(AppConfig.Reference::table).toList();
+        if (targets.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return gateway.withConnection(c -> SchemaCatalog.loadForeignKeys(c, timeoutSeconds(), targets));
+        } catch (MySqlGateway.NotConfiguredException e) {
+            throw new ApiError(503, "not_configured", "No hay ninguna conexión a MySQL configurada");
+        } catch (SQLException e) {
+            throw new ApiError(503, "schema_unavailable", "No se pudieron leer las claves foráneas: " + MySqlGateway.rootMessage(e));
+        }
+    }
+
+    /**
+     * Q-101, Q-105, Q-107: ejecuta el contenido guardado de la nota de la referencia con el valor en su única variable,
+     * como una consulta más (S-01 a S-06), sin paginación y con una sola fila. No recuerda valores (Q-24), no marca la
+     * ejecución (N-88) y no registra el valor (S-22).
+     */
+    private LookupResponse lookup(LookupRequest req) {
+        if (req.table() == null || req.value() == null) {
+            throw new ApiError(400, "bad_request", "Faltan la tabla objetivo o el valor");
+        }
+        AppConfig.Reference ref = config.get().reference(req.table()).orElseThrow(() ->
+                new ApiError(404, "no_reference", "No hay ninguna referencia para la tabla «" + req.table() + "» en «Ajustes»"));
+        String name = "La nota de la referencia «" + ref.table() + "»";
+        if (notes.inTrash(ref.noteId())) {
+            throw badReference(name + " está en la papelera");
+        }
+        Note note;
+        try {
+            note = notes.get(ref.noteId());
+        } catch (ApiError e) {
+            throw badReference(name + " ya no existe");
+        }
+        if (!"sql".equals(note.type())) {
+            throw badReference(name + " no es una nota SQL");
+        }
+        Analysis analysis = engine.analyze(note.content(), sql.constants());
+        if (analysis.errors().isEmpty() && analysis.variables().size() != 1) {
+            throw badReference(name + " debe tener una sola variable");
+        }
+        Map<String, String> values = analysis.variables().isEmpty() ? Map.of()
+                : Map.of(analysis.variables().getFirst().name(), req.value());
+        Plan plan = sql.plan(note.content(), values);
+        if (!plan.executable() || plan.classification().kind() != StatementKind.QUERY) {
+            throw badReference(name + " no es una consulta");
+        }
+        FinalSql finalSql = SqlRunner.finalSql(plan);
+        String executionId = UUID.randomUUID().toString();
+        Result result = sql.run(executionId, false, finalSql, () -> gateway.withConnection(c -> QueryRunner.query(c,
+                plan.rendered().sql(), SqlRunner.values(plan), 1, timeoutSeconds(), executionId, gateway.running())));
+        return new LookupResponse(result.columns().stream().map(Column::label).toList(),
+                result.rows().isEmpty() ? null : result.rows().getFirst());
+    }
+
+    private static ApiError badReference(String message) {
+        return new ApiError(422, "bad_reference", message);
     }
 
     /** Q-54: COUNT(*) envuelto; con columnas repetidas (1060), recorriendo la consulta. */

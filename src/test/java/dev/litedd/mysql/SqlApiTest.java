@@ -29,6 +29,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +48,8 @@ class SqlApiTest {
     ConnectionFile file;
     HttpServer server;
     HttpClient client = HttpClient.newHttpClient();
+    /** Q-100: los ajustes que lee la ruta en cada petición. */
+    AtomicReference<AppConfig> config = new AtomicReference<>(AppConfig.DEFAULT);
     int port;
 
     @BeforeEach
@@ -60,7 +63,7 @@ class SqlApiTest {
         file = new ConnectionFile(dir.resolve("config/connection.json"));
         gateway = new MySqlGateway();
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, () -> AppConfig.DEFAULT, constants::values),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, config::get, constants::values),
                 new ConstantsApi(constants),
                 new ConnectionApi(file, gateway))).start();
     }
@@ -163,6 +166,99 @@ class SqlApiTest {
         assertThat(SqlApi.explainSql("SELECT * FROM book WHERE id = ?")).isEqualTo("EXPLAIN SELECT * FROM book WHERE id = ?");
         assertThat(dev.litedd.sqlengine.SqlStatements.classify(SqlApi.explainSql("SELECT 1")).kind())
                 .isEqualTo(dev.litedd.sqlengine.SqlStatements.StatementKind.META);
+    }
+
+    /** Q-100: una referencia hacia author con la nota dada. */
+    private void referTo(String noteId) {
+        AppConfig d = AppConfig.DEFAULT;
+        config.set(new AppConfig(d.defaultPageSize(), d.rowCap(), d.queryTimeoutSeconds(), d.port(), d.autoShutdownMinutes(),
+                d.autosave(), d.http(), null, List.of(new AppConfig.Reference("author", null, noteId))).validate());
+    }
+
+    private Res lookup(String table, String value) throws Exception {
+        java.util.Map<String, String> body = new java.util.HashMap<>();
+        body.put("table", table);
+        body.put("value", value);
+        return call("POST", "/api/sql/lookup", JSON.writeValueAsString(body));
+    }
+
+    @Test
+    void q103_without_references_foreign_keys_do_not_reach_mysql() throws Exception {
+        // Sin conexión configurada: si llegara a MySQL respondería 503.
+        Res r = call("GET", "/api/sql/references", null);
+        assertThat(r.status).isEqualTo(200);
+        assertThat(r.json.get("foreignKeys")).isEmpty();
+
+        referTo(sqlNote("SELECT name FROM author WHERE id = #{id}").id());
+        Res with = call("GET", "/api/sql/references", null);
+        assertThat(with.status).isEqualTo(503);
+        assertThat(with.json.get("code").asText()).isEqualTo("not_configured");
+    }
+
+    @Test
+    void q102_q103_foreign_keys_are_read_only_of_one_column_and_towards_a_target_table() {
+        // Principio 3: la sentencia fija es una consulta del esquema de la conexión.
+        assertThat(dev.litedd.sqlengine.SqlStatements.classify(SchemaCatalog.FOREIGN_KEYS_SQL).kind())
+                .isEqualTo(dev.litedd.sqlengine.SqlStatements.StatementKind.QUERY);
+        assertThat(SchemaCatalog.FOREIGN_KEYS_SQL).contains("information_schema.KEY_COLUMN_USAGE").contains("DATABASE()");
+        List<SchemaCatalog.ForeignKey> keys = SchemaCatalog.foreignKeys(List.of(
+                new String[]{"book", "fk_book_author", "author_id", "author"},
+                new String[]{"loan", "fk_loan_book", "book_id", "book"},
+                // Dos columnas en la misma restricción: la nota recibe un solo valor.
+                new String[]{"loan", "fk_loan_pair", "book_id", "Author"},
+                new String[]{"loan", "fk_loan_pair", "author_id", "Author"},
+                new String[]{"loan", "fk_loan_author", "lender_id", "AUTHOR"}), List.of("author"));
+        assertThat(keys).containsExactly(new SchemaCatalog.ForeignKey("book", "author_id", "author"),
+                new SchemaCatalog.ForeignKey("loan", "lender_id", "AUTHOR"));
+    }
+
+    @Test
+    void q107_lookup_needs_a_reference_for_the_table_in_the_settings() throws Exception {
+        assertThat(call("POST", "/api/sql/lookup", "{\"value\":\"1\"}").status).isEqualTo(400);
+        Res none = lookup("author", "1");
+        assertThat(none.status).isEqualTo(404);
+        assertThat(none.json.get("code").asText()).isEqualTo("no_reference");
+    }
+
+    @Test
+    void q101_q105_a_bad_reference_note_is_reported_and_nothing_reaches_mysql() throws Exception {
+        // Sin conexión configurada: si llegara al driver respondería 503.
+        Map<String, String> cases = new java.util.LinkedHashMap<>();
+        cases.put("no-existe", "ya no existe");
+        Note md = notes.create(null, "md", "Texto");
+        cases.put(md.id(), "no es una nota SQL");
+        cases.put(sqlNote("SELECT name FROM author").id(), "debe tener una sola variable");
+        cases.put(sqlNote("SELECT name FROM author WHERE id = #{id} AND active = #{active}").id(), "debe tener una sola variable");
+        cases.put(sqlNote("UPDATE author SET name = 'x' WHERE id = #{id}").id(), "no es una consulta");
+        cases.put(sqlNote("SHOW COLUMNS FROM author LIKE #{id}").id(), "no es una consulta");
+        Note trashed = sqlNote("SELECT name FROM author WHERE id = #{id}");
+        notes.delete(trashed.id(), false);
+        cases.put(trashed.id(), "está en la papelera");
+        for (Map.Entry<String, String> c : cases.entrySet()) {
+            referTo(c.getKey());
+            Res r = lookup("AUTHOR", "1");
+            assertThat(r.status).as(c.getValue()).isEqualTo(422);
+            assertThat(r.json.get("code").asText()).isEqualTo("bad_reference");
+            assertThat(r.json.get("message").asText()).isEqualTo("La nota de la referencia «author» " + c.getValue());
+        }
+        // Q-93: un valor que no convierte al tipo de la variable.
+        referTo(sqlNote("SELECT name FROM author WHERE id = #{id,int}").id());
+        assertThat(lookup("author", "abc").json.get("code").asText()).isEqualTo("invalid_values");
+    }
+
+    @Test
+    void q107_lookup_runs_the_saved_note_with_the_value_and_does_not_remember_it() throws Exception {
+        Note n = sqlNote("SELECT name FROM author WHERE id = #{authorId,int}");
+        referTo(n.id());
+        Res r = lookup("author", "7");
+        // Sin conexión: el SQL que se iba a enviar lleva el valor en la única variable, sin paginación.
+        assertThat(r.status).isEqualTo(503);
+        assertThat(r.json.get("code").asText()).isEqualTo("not_configured");
+        assertThat(r.json.get("details").get("finalSql").get("inlined").asText()).isEqualTo("SELECT name FROM author WHERE id = 7");
+        // Q-24, N-88: ni valores recordados ni ejecución.
+        Res a = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content(), "noteId", n.id())));
+        assertThat(a.json.get("lastValues").size()).isZero();
+        assertThat(notes.get(n.id()).lastRunAt()).isNull();
     }
 
     @Test

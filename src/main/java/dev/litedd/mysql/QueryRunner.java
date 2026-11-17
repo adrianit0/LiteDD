@@ -1,5 +1,7 @@
 package dev.litedd.mysql;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -14,8 +16,16 @@ import java.util.Set;
 /** Ejecución JDBC directa (Q-32) con tiempo máximo y cancelación (S-05, Q-41). */
 final class QueryRunner {
 
-    /** Q-61: etiqueta de la columna; se admiten repetidas. */
-    record Column(String label, String type, boolean numeric) {
+    /**
+     * Q-61: etiqueta de la columna; se admiten repetidas. Q-102: table y column son la tabla y la columna originales,
+     * solo si la columna sale tal cual de una tabla del esquema de la conexión; si no, null.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record Column(String label, String type, boolean numeric, String table, String column) {
+
+        Column(String label, String type, boolean numeric) {
+            this(label, type, numeric, null, null);
+        }
     }
 
     /** @param truncatedCells pares [fila, columna] de celdas recortadas por el servidor (Q-64) */
@@ -41,9 +51,11 @@ final class QueryRunner {
             try (ResultSet rs = ps.executeQuery()) {
                 ResultSetMetaData md = rs.getMetaData();
                 int n = md.getColumnCount();
+                String schema = c.getCatalog();
                 List<Column> columns = new ArrayList<>(n);
                 for (int i = 1; i <= n; i++) {
-                    columns.add(new Column(md.getColumnLabel(i), md.getColumnTypeName(i), NUMERIC.contains(md.getColumnType(i))));
+                    columns.add(column(md.getColumnLabel(i), md.getColumnTypeName(i), NUMERIC.contains(md.getColumnType(i)),
+                            schema, md.getCatalogName(i), md.getTableName(i), md.getColumnName(i)));
                 }
                 List<List<String>> rows = new ArrayList<>();
                 List<List<Integer>> truncated = new ArrayList<>();
@@ -64,6 +76,16 @@ final class QueryRunner {
                 running.unregister(executionId);
             }
         }
+    }
+
+    /**
+     * Q-102, ADR-0048: Connector/J da en getTableName y getColumnName la tabla y la columna originales, no los alias,
+     * y en getCatalogName su esquema. Una expresión no tiene tabla; una columna de otro esquema no cuenta.
+     */
+    static Column column(String label, String type, boolean numeric, String schema, String catalog, String table, String name) {
+        boolean origin = schema != null && schema.equalsIgnoreCase(catalog) && table != null && !table.isEmpty()
+                && name != null && !name.isEmpty();
+        return origin ? new Column(label, type, numeric, table, name) : new Column(label, type, numeric);
     }
 
     /** Q-54: COUNT(*) con el envoltorio, o recorriendo la consulta en streaming. */
