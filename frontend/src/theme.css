@@ -1425,17 +1425,19 @@ button:disabled {
   transform: translateY(-100%);
 }
 
+/* Rejilla de dos columnas: los valores de todas las líneas empiezan a la misma altura. */
 .ref-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
   margin: 0;
 }
 
 .ref-lines > div {
-  display: flex;
-  gap: 8px;
+  display: contents;
 }
 
 .ref-lines dt {
-  flex: none;
   color: var(--text-muted);
 }
 
