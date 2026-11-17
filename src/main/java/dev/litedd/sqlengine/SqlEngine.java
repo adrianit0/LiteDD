@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /** Fachada del motor: análisis para el editor y plan de ejecución con valores. */
 public final class SqlEngine {
@@ -47,6 +48,21 @@ public final class SqlEngine {
     }
 
     private final SqlRenderer renderer = new SqlRenderer();
+    /** Q-111: los tipos personalizados de «Ajustes», leídos en cada análisis y plan. */
+    private final Supplier<CustomTypes> types;
+
+    public SqlEngine() {
+        this(() -> CustomTypes.NONE);
+    }
+
+    public SqlEngine(Supplier<CustomTypes> types) {
+        this.types = types;
+    }
+
+    /** Q-111 */
+    public CustomTypes customTypes() {
+        return types.get();
+    }
 
     /**
      * Q-82: variables, clase de sentencia y errores. Se renderiza con todas las variables a null; los
@@ -59,7 +75,7 @@ public final class SqlEngine {
     /** M-63: con las constantes Java; las que no tienen valor son un error. */
     public Analysis analyze(String content, Map<String, String> constants) {
         JavaConstants.Applied applied = JavaConstants.apply(content, constants);
-        PreparedNote note = NoteSource.prepare(applied.content());
+        PreparedNote note = NoteSource.prepare(applied.content(), types.get());
         if (!note.errors().isEmpty()) {
             return new Analysis(note.variables(), null, null, note.errors());
         }
@@ -90,7 +106,7 @@ public final class SqlEngine {
     /** M-62, M-63: con las constantes Java; una sin valor impide generar el SQL. */
     public Plan plan(String content, Map<String, String> values, Map<String, String> constants) {
         JavaConstants.Applied applied = JavaConstants.apply(content, constants);
-        PreparedNote note = NoteSource.prepare(applied.content());
+        PreparedNote note = NoteSource.prepare(applied.content(), types.get());
         if (!note.errors().isEmpty()) {
             throw new SqlException(note.errors());
         }

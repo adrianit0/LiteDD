@@ -19,7 +19,7 @@ export interface Notice {
 export type SidebarView = 'tree' | 'trash';
 
 /** U-10: categorías de «Ajustes», en su orden. */
-export type SettingsCategory = 'general' | 'connection' | 'sql' | 'references' | 'http' | 'headers' | 'environments' | 'data' | 'updates';
+export type SettingsCategory = 'general' | 'connection' | 'sql' | 'references' | 'types' | 'http' | 'headers' | 'environments' | 'data' | 'updates';
 
 interface UiState {
   /** ADR-0009: el panel izquierdo muestra el árbol o la papelera. */

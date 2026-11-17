@@ -33,6 +33,8 @@ export function SqlAnalysisPanel({ content }: { content: string }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [failed, setFailed] = useState(false);
   const constantsVersion = useUi((s) => s.constantsVersion);
+  // Q-111: también al guardar los tipos personalizados.
+  const types = useUi((s) => s.config.types);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +53,7 @@ export function SqlAnalysisPanel({ content }: { content: string }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [content, constantsVersion]);
+  }, [content, constantsVersion, types]);
 
   return (
     <section className="sql-analysis" aria-label="Análisis de la consulta" aria-live="polite">
@@ -65,7 +67,7 @@ export function SqlAnalysisPanel({ content }: { content: string }) {
             ) : (
               analysis.variables.map((v) => (
                 <span key={v.name} className="sql-chip">
-                  {v.name} <span className="muted">{typeLabel(v.type, v.elementType)}</span>
+                  {v.name} <span className="muted">{typeLabel(v.type, v.elementType, v.customType)}</span>
                   {v.textual ? ' $' : ''}
                 </span>
               ))

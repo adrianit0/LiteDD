@@ -146,6 +146,14 @@ export interface AppConfig {
   updateRepository: string | null;
   /** Q-100, ADR-0048: referencias de claves foráneas, en su orden. */
   references: Reference[];
+  /** Q-110, ADR-0050: tipos personalizados de variable, en su orden. */
+  types: CustomType[];
+}
+
+/** Q-110: nombre del tipo, con un parámetro opcional al final (catalogo#{id}), y la nota SQL de sus opciones (Q-113). */
+export interface CustomType {
+  name: string;
+  noteId: string | null;
 }
 
 /** Q-100: una tabla objetivo, el color de su marca (#rrggbb) y la nota SQL que la consulta (Q-101). */
@@ -226,6 +234,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   http: DEFAULT_HTTP,
   updateRepository: null,
   references: [],
+  types: [],
 };
 
 export interface HttpHeader {
@@ -548,6 +557,8 @@ export const api = {
   sqlReferences: () => request<{ foreignKeys: ForeignKey[] }>('GET', '/api/sql/references'),
   /** Q-107: la primera fila de la nota de la referencia con ese valor. */
   sqlLookup: (table: string, value: string) => request<LookupResult>('POST', '/api/sql/lookup', { table, value }),
+  /** Q-114: pares [key, value] de la nota del tipo, tal como se usa (catalogo5). */
+  sqlOptions: (type: string) => request<{ options: [string, string | null][]; capReached: boolean }>('POST', '/api/sql/options', { type }),
   cancel: (executionId: string) => request<{ cancelled: boolean }>('POST', '/api/sql/cancel', { executionId }),
   /** H-30, H-63: con el perfil que se muestra. H-69: la clave, si el perfil la pide. */
   httpExecute: (noteId: string, version: number, executionId: string, profileId: string, confirmKey?: string) =>

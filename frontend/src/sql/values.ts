@@ -22,7 +22,8 @@ export function initialValues(lastValues: Record<string, string | null> | undefi
   return out;
 }
 
-/** Etiqueta del tipo en el formulario (Q-20). */
-export function typeLabel(type: SqlType, elementType: SqlType | null): string {
+/** Etiqueta del tipo en el formulario (Q-20); un tipo personalizado, tal como se usa (Q-117). */
+export function typeLabel(type: SqlType, elementType: SqlType | null, customType?: string | null): string {
+  if (customType) return customType;
   return type === 'list' && elementType && elementType !== 'string' ? `list<${elementType}>` : type;
 }

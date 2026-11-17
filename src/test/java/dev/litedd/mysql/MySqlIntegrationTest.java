@@ -79,7 +79,7 @@ class MySqlIntegrationTest {
         gateway = new MySqlGateway();
         gateway.configure(settings);
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, config::get, Map::of),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(() -> config.get().customTypes()), gateway, config::get, Map::of),
                 new ConnectionApi(new ConnectionFile(dir.resolve("connection.json")), gateway))).start();
     }
 
@@ -263,6 +263,27 @@ class MySqlIntegrationTest {
             Res missing = call("POST", "/api/sql/lookup", JSON.writeValueAsString(Map.of("table", "author", "value", "99")));
             assertThat(missing.status).isEqualTo(200);
             assertThat(missing.json.has("row")).isFalse();
+        } finally {
+            config.set(before);
+        }
+    }
+
+    @Test
+    void q113_q114_options_of_a_custom_type_with_and_without_parameter() throws Exception {
+        AppConfig before = config.get();
+        Note all = sqlNote("SELECT name AS value, id AS `KEY` FROM author ORDER BY id");
+        Note byActive = sqlNote("SELECT id, name FROM author WHERE active = #{active,int} ORDER BY id");
+        config.set(new AppConfig(before.defaultPageSize(), before.rowCap(), before.queryTimeoutSeconds(), before.port(), null, true,
+                null, null, null, List.of(new AppConfig.CustomType("author", all.id()), new AppConfig.CustomType("author#{a}", byActive.id()))));
+        try {
+            Res r = call("POST", "/api/sql/options", JSON.writeValueAsString(Map.of("type", "author")));
+            assertThat(r.status).isEqualTo(200);
+            assertThat(r.json.get("options").toString())
+                    .isEqualTo("[[\"1\",\"Autora Uno\"],[\"2\",\"Autor Dos\"],[\"3\",\"Autora Tres\"]]");
+            assertThat(r.json.get("capReached").asBoolean()).isFalse();
+            // Sin etiquetas key y value, la primera y la segunda columna.
+            Res inactive = call("POST", "/api/sql/options", JSON.writeValueAsString(Map.of("type", "author0")));
+            assertThat(inactive.json.get("options").toString()).isEqualTo("[[\"3\",\"Autora Tres\"]]");
         } finally {
             config.set(before);
         }

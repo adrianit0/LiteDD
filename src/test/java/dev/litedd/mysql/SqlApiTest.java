@@ -63,7 +63,8 @@ class SqlApiTest {
         file = new ConnectionFile(dir.resolve("config/connection.json"));
         gateway = new MySqlGateway();
         server = new HttpServer(port, TOKEN, List.of(
-                new SqlApi(notes, new VariableValues(store), new SqlEngine(), gateway, config::get, constants::values),
+                new SqlApi(notes, new VariableValues(store), new SqlEngine(() -> config.get().customTypes()), gateway, config::get,
+                        constants::values),
                 new ConstantsApi(constants),
                 new ConnectionApi(file, gateway))).start();
     }
@@ -244,6 +245,93 @@ class SqlApiTest {
         // Q-93: un valor que no convierte al tipo de la variable.
         referTo(sqlNote("SELECT name FROM author WHERE id = #{id,int}").id());
         assertThat(lookup("author", "abc").json.get("code").asText()).isEqualTo("invalid_values");
+    }
+
+    /** Q-110: los tipos personalizados dados. */
+    private void types(AppConfig.CustomType... types) {
+        AppConfig d = AppConfig.DEFAULT;
+        config.set(new AppConfig(d.defaultPageSize(), d.rowCap(), d.queryTimeoutSeconds(), d.port(), d.autoShutdownMinutes(),
+                d.autosave(), d.http(), null, List.of(), List.of(types)).validate());
+    }
+
+    private Res options(String type) throws Exception {
+        return call("POST", "/api/sql/options", JSON.writeValueAsString(Map.of("type", type)));
+    }
+
+    @Test
+    void q111_q117_analyze_knows_the_custom_types_of_the_settings() throws Exception {
+        String content = JSON.writeValueAsString(Map.of("content", "SELECT * FROM book WHERE type_id = #{tipoId, catalogo5}"));
+        Res unknown = call("POST", "/api/sql/analyze", content);
+        assertThat(unknown.json.get("errors").get(0).get("message").asText()).isEqualTo("Tipo desconocido «catalogo5» en la variable «tipoId»");
+
+        types(new AppConfig.CustomType("catalogo#{id}", sqlNote("SELECT id, name FROM item WHERE catalog_id = #{id}").id()));
+        Res r = call("POST", "/api/sql/analyze", content);
+        assertThat(r.json.get("errors")).isEmpty();
+        JsonNode v = r.json.get("variables").get(0);
+        assertThat(v.get("type").asText()).isEqualTo("string");
+        assertThat(v.get("customType").asText()).isEqualTo("catalogo5");
+    }
+
+    @Test
+    void q114_options_need_a_type_in_the_settings() throws Exception {
+        assertThat(call("POST", "/api/sql/options", "{}").status).isEqualTo(400);
+        Res none = options("lang");
+        assertThat(none.status).isEqualTo(404);
+        assertThat(none.json.get("code").asText()).isEqualTo("no_type");
+        assertThat(none.json.get("message").asText()).isEqualTo("No hay ningún tipo «lang» en «Ajustes»");
+    }
+
+    @Test
+    void q113_q114_a_bad_type_note_is_reported_and_nothing_reaches_mysql() throws Exception {
+        // Sin conexión configurada: si llegara al driver respondería 503.
+        Map<String, String> plain = new java.util.LinkedHashMap<>();
+        plain.put("no-existe", "ya no existe");
+        plain.put(notes.create(null, "md", "Texto").id(), "no es una nota SQL");
+        plain.put(sqlNote("SELECT id, name FROM lang WHERE id > #{min}").id(), "no puede tener variables: el tipo no tiene parámetro");
+        plain.put(sqlNote("UPDATE lang SET name = 'x'").id(), "no es una consulta");
+        Note trashed = sqlNote("SELECT id, name FROM lang");
+        notes.delete(trashed.id(), false);
+        plain.put(trashed.id(), "está en la papelera");
+        for (Map.Entry<String, String> c : plain.entrySet()) {
+            types(new AppConfig.CustomType("lang", c.getKey()));
+            Res r = options("LANG");
+            assertThat(r.status).as(c.getValue()).isEqualTo(422);
+            assertThat(r.json.get("code").asText()).isEqualTo("bad_type");
+            assertThat(r.json.get("message").asText()).isEqualTo("La nota del tipo «lang» " + c.getValue());
+        }
+        for (String content : List.of("SELECT id, name FROM item", "SELECT id, name FROM item WHERE a = #{a} AND b = #{b}")) {
+            types(new AppConfig.CustomType("catalogo#{id}", sqlNote(content).id()));
+            Res r = options("catalogo5");
+            assertThat(r.json.get("message").asText()).as(content)
+                    .isEqualTo("La nota del tipo «catalogo#{id}» debe tener una sola variable, que recibe el parámetro «id»");
+        }
+        // Q-93: un parámetro que no convierte al tipo de la variable.
+        types(new AppConfig.CustomType("catalogo#{id}", sqlNote("SELECT id, name FROM item WHERE catalog_id = #{id,int}").id()));
+        assertThat(options("catalogoX").json.get("code").asText()).isEqualTo("invalid_values");
+    }
+
+    @Test
+    void q114_options_run_the_saved_note_with_the_parameter_and_do_not_remember_it() throws Exception {
+        Note n = sqlNote("SELECT id AS `key`, name AS value FROM item WHERE catalog_id = #{catalogId,int}");
+        types(new AppConfig.CustomType("catalogo#{id}", n.id()));
+        Res r = options("catalogo5");
+        // Sin conexión: el SQL que se iba a enviar lleva el parámetro en la única variable.
+        assertThat(r.status).isEqualTo(503);
+        assertThat(r.json.get("code").asText()).isEqualTo("not_configured");
+        assertThat(r.json.get("details").get("finalSql").get("inlined").asText())
+                .isEqualTo("SELECT id AS `key`, name AS value FROM item WHERE catalog_id = 5");
+        // Q-24, N-88: ni valores recordados ni ejecución.
+        Res a = call("POST", "/api/sql/analyze", JSON.writeValueAsString(Map.of("content", n.content(), "noteId", n.id())));
+        assertThat(a.json.get("lastValues").size()).isZero();
+        assertThat(notes.get(n.id()).lastRunAt()).isNull();
+    }
+
+    @Test
+    void q113_key_and_value_are_the_labelled_columns_or_the_first_two() {
+        assertThat(SqlApi.columnIndex(List.of("name", "KEY", "Value"), "key", 0)).isEqualTo(1);
+        assertThat(SqlApi.columnIndex(List.of("name", "KEY", "Value"), "value", 1)).isEqualTo(2);
+        assertThat(SqlApi.columnIndex(List.of("id", "name"), "key", 0)).isZero();
+        assertThat(SqlApi.columnIndex(List.of("id", "name"), "value", 1)).isEqualTo(1);
     }
 
     @Test

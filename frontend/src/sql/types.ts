@@ -6,6 +6,8 @@ export interface SqlVariable {
   type: SqlType;
   elementType: SqlType | null;
   textual: boolean;
+  /** Q-111: el tipo personalizado tal como se usa (catalogo5); type es string. */
+  customType?: string | null;
 }
 
 export interface SqlError {

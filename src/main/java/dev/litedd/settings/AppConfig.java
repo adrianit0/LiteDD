@@ -8,6 +8,8 @@ import dev.litedd.http.ApiError;
 import dev.litedd.httpnotes.HttpNoteContent.Row;
 import dev.litedd.httpnotes.HttpUrls;
 import dev.litedd.httpnotes.RequestHeaders;
+import dev.litedd.sqlengine.CustomTypes;
+import dev.litedd.sqlengine.SqlType;
 import dev.litedd.update.UpdateUrls;
 
 import java.util.ArrayList;
@@ -33,10 +35,27 @@ import java.util.regex.Pattern;
  * @param http                notas HTTP (H-10, H-20, H-22, H-31, H-35, H-60). Si falta, los valores por defecto
  * @param updateRepository    R-11: URL del repositorio de actualizaciones; null, sin conexión a GitHub
  * @param references          Q-100, ADR-0048: referencias de claves foráneas, en su orden. Si falta, ninguna
+ * @param types               Q-110, ADR-0050: tipos personalizados de variable, en su orden. Si falta, ninguno
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
-                        Boolean autosave, Http http, String updateRepository, List<Reference> references) {
+                        Boolean autosave, Http http, String updateRepository, List<Reference> references,
+                        List<CustomType> types) {
+
+    /**
+     * Q-110: un tipo personalizado de variable y la nota SQL con sus opciones (ADR-0050).
+     *
+     * @param name   identificador, con un parámetro opcional al final: «lang» o «catalogo#{id}»
+     * @param noteId Q-113: nota SQL con una consulta; null sin elegir
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CustomType(String name, String noteId) {
+
+        public CustomType {
+            name = name == null ? "" : name.strip();
+            noteId = noteId == null || noteId.isBlank() ? null : noteId.strip();
+        }
+    }
 
     /**
      * Q-100: una tabla objetivo, el color de su marca y la nota SQL que la consulta (ADR-0048).
@@ -244,6 +263,7 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         http = http == null ? Http.DEFAULT : http;
         updateRepository = updateRepository == null || updateRepository.isBlank() ? null : updateRepository.strip();
         references = references == null ? List.of() : references.stream().filter(Objects::nonNull).toList();
+        types = types == null ? List.of() : types.stream().filter(Objects::nonNull).toList();
     }
 
     public AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
@@ -256,7 +276,23 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
         this(defaultPageSize, rowCap, queryTimeoutSeconds, port, autoShutdownMinutes, autosave, http, updateRepository, null);
     }
 
+    public AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSeconds, int port, Integer autoShutdownMinutes,
+                     Boolean autosave, Http http, String updateRepository, List<Reference> references) {
+        this(defaultPageSize, rowCap, queryTimeoutSeconds, port, autoShutdownMinutes, autosave, http, updateRepository, references, null);
+    }
+
     /** Q-107: la referencia de una tabla objetivo, sin distinguir mayúsculas. */
+    /** Q-111: los nombres de los tipos personalizados, para el motor SQL. */
+    @JsonIgnore
+    public CustomTypes customTypes() {
+        return CustomTypes.of(types.stream().map(CustomType::name).toList());
+    }
+
+    /** Q-114: el tipo personalizado de un nombre de «Ajustes», como «catalogo#{id}». */
+    public Optional<CustomType> customType(String name) {
+        return types.stream().filter(t -> t.name().equals(name)).findFirst();
+    }
+
     public Optional<Reference> reference(String table) {
         return references.stream().filter(r -> r.sameTable(table)).findFirst();
     }
@@ -292,6 +328,7 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
             throw invalid("La URL del repositorio debe ser https://github.com/<propietario>/<repositorio>");
         }
         validateReferences();
+        validateTypes();
         return this;
     }
 
@@ -314,6 +351,32 @@ public record AppConfig(Integer defaultPageSize, int rowCap, int queryTimeoutSec
             }
             if (r.noteId() == null) {
                 throw invalid("La referencia «" + r.table() + "» necesita una nota SQL");
+            }
+        }
+    }
+
+    /** Q-110 */
+    private void validateTypes() {
+        Set<String> names = new HashSet<>();
+        for (CustomType t : types) {
+            if (t.name().isEmpty()) {
+                throw invalid("Cada tipo necesita un nombre");
+            }
+            if (t.name().length() > CustomTypes.MAX_NAME || !CustomTypes.NAME.matcher(t.name()).matches()) {
+                throw invalid("El nombre del tipo «" + t.name() + "» no es válido: letras, números y _, sin empezar por número,"
+                        + " con un parámetro opcional al final como catalogo#{id}, y como mucho " + CustomTypes.MAX_NAME + " caracteres");
+            }
+            String prefix = CustomTypes.prefix(t.name()).orElseThrow();
+            boolean parameter = !prefix.equals(t.name());
+            if (!parameter && SqlType.fromName(prefix) != null) {
+                throw invalid("El tipo «" + t.name() + "» ya es un tipo de LiteDD");
+            }
+            // Un tipo con parámetro y otro sin él pueden compartir nombre: «cat» y «cat#{id}».
+            if (!names.add(prefix.toLowerCase(Locale.ROOT) + (parameter ? "#" : ""))) {
+                throw invalid("El tipo «" + t.name() + "» está repetido");
+            }
+            if (t.noteId() == null) {
+                throw invalid("El tipo «" + t.name() + "» necesita una nota SQL");
             }
         }
     }

@@ -46,7 +46,7 @@ Esta nota muestra tres campos: title (string), minYear (int) y authorIds (list).
 | Q-10 | Se detectan los nombres usados en `#{...}` y `${...}` (la raíz, antes de un punto o corchete), y los identificadores usados en `test`, en `collection` de `<foreach>` y en `value` de `<bind>`. |
 | Q-11 | Se excluyen: variables locales (`item` e `index` de `<foreach>`, `name` de `<bind>`), palabras y literales de OGNL (null, true, false, and, or, not, in, eq, neq, lt, lte, gt, gte, números y cadenas), `_parameter`, `_databaseId` y nombres de método tras un punto. |
 | Q-12 | El tipo se declara en el propio token: `#{nombre}` o `#{nombre,tipo}`. También se acepta la forma nativa `#{nombre, javaType=tipo}`. LiteDD extrae el tipo y entrega a MyBatis `#{nombre}`. |
-| Q-13 | Sin tipo declarado, la variable es string. |
+| Q-13 | Sin tipo declarado, la variable es string. Además de los de la tabla, valen los tipos personalizados de «Ajustes» (Q-110 a Q-117). |
 | Q-14 | Una variable usada como `collection` de un `<foreach>` es list automáticamente. Si el token del item declara tipo, se convierte cada elemento. |
 | Q-15 | Una variable que solo aparece en un test se tipa con un comentario XML, que MyBatis ignora: `<!-- #{onlyActive,boolean} -->`. |
 | Q-16 | Tipos contradictorios para la misma variable son un error, visible en edición y en consulta. Si un token declara tipo y los demás no, vale el declarado. |
@@ -159,6 +159,21 @@ Una referencia muestra, al pasar el ratón, el valor al que apunta una clave for
 | Q-106 | Cada valor consultado se recuerda mientras se ven esos resultados: volver a la celda, o pasar por otra con el mismo valor y la misma referencia, lo muestra sin consultar. Una ejecución nueva, otra página o cerrar la pestaña lo olvidan, y los errores no se recuerdan. Nada se guarda en disco. |
 | Q-107 | La consulta va por `POST /api/sql/lookup` con la tabla objetivo y el valor. El servidor busca la referencia en los ajustes y ejecuta su nota en solo lectura (S-01 a S-06), con el tiempo máximo de consulta (Q-43), sin paginación y con una sola fila. No recuerda valores (Q-24), no cuenta como ejecución (N-88) y no registra el valor (S-22). |
 | Q-108 | Ctrl+clic sobre una celda marcada, o Alt+Intro con ella seleccionada (U-08), cierra el recuadro y abre la nota de la referencia en una pestaña nueva, fija y activa (P-03), con el valor de la celda en su única variable, y la ejecuta (ADR-0049). Es una ejecución normal de la pestaña: recuerda los valores (Q-24) y cuenta como ejecución (N-88). Si la nota no existe, está en la papelera o no es SQL, no se abre y un aviso lo dice. Si no tiene una sola variable o no es una consulta, se abre sin ejecutar y un aviso lo dice; si su análisis tiene errores, se abre sin ejecutar y los muestra. En una celda sin marca, Ctrl+clic es un clic normal. |
+
+## Tipos personalizados
+
+Un tipo personalizado convierte el campo de una variable en un combo con las opciones que devuelve una nota SQL elegida en «Ajustes», como las referencias (ADR-0050).
+
+| ID | Requisito |
+|---|---|
+| Q-110 | En «Ajustes → Tipos» hay una lista de tipos, cada uno con nombre y nota SQL. El nombre es un identificador de hasta 64 caracteres y puede terminar en un parámetro, `catalogo#{id}`. No se repite, sin distinguir mayúsculas, ni coincide con un tipo de la tabla de Q-12. Cada tipo necesita su nota. |
+| Q-111 | Un tipo que no es de la tabla de Q-12, en `#{x, t}`, `#{x, javaType=t}` o un comentario (Q-15), se busca entre los tipos personalizados, sin distinguir mayúsculas: primero uno sin parámetro con ese nombre; si no, uno con parámetro cuyo nombre sea el principio de `t` y tenga algo detrás, que es el valor del parámetro (`catalogo5` es `catalogo#{id}` con `5`); con varios, el de nombre más largo. Si no hay ninguno, es un tipo desconocido (Q-92). Guardar los tipos vuelve a analizar las notas abiertas, como las constantes (M-67). |
+| Q-112 | Una variable de un tipo personalizado es string: recibe la `key` elegida. Usarla en `${…}`, como colección o item de un `<foreach>`, o con otro tipo, es un error de tipos contradictorios (Q-92). |
+| Q-113 | La nota de un tipo es una nota SQL con una consulta, sin variables o, si el tipo tiene parámetro, con una sola, que recibe su valor. Se ejecuta su contenido guardado en solo lectura (S-01 a S-06), con el tiempo máximo de consulta (Q-43) y el tope de filas (Q-55). La `key` es la columna de etiqueta `key` y el `value` la de etiqueta `value`, sin distinguir mayúsculas; si no están, la primera y la segunda columna, o la primera para las dos. Las filas con `key` nula no se ofrecen. |
+| Q-114 | Las opciones van por `POST /api/sql/options` con el tipo tal como se usa. El servidor busca el tipo en los ajustes. No recuerda valores (Q-24), no cuenta como ejecución (N-88) y no registra el parámetro (S-22). Los errores son los de Q-90 a Q-98 y un tipo cuya nota ya no existe, está en la papelera, no es SQL, no es una consulta o no tiene las variables que pide su parámetro. |
+| Q-115 | En consulta, el campo de una variable de tipo personalizado es un combo. Cada opción se ve como «key — value», en el orden de la consulta, y la primera es «(Vacío)», que vale null y es la de por defecto. Al escribir se ven las opciones que contienen el texto, sin distinguir mayúsculas ni acentos, hasta 200, con aviso si hay más. Flechas para moverse, Intro o clic para elegir y Esc para cerrar la lista; con la lista cerrada, Intro ejecuta (Q-23). Al salir sin elegir, vuelve a verse la opción elegida. |
+| Q-116 | Las opciones de cada tipo se piden al mostrar el formulario en la pestaña y se guardan en memoria por pestaña hasta cerrarla, cambiar la conexión o guardar los tipos. Mientras llegan, la lista dice «Consultando…». Si fallan, el error se ve bajo el campo, la lista solo ofrece «(Vacío)» y el fallo no se recuerda. Nada se guarda en disco. |
+| Q-117 | Un valor recordado (Q-24) que no está entre las opciones se conserva y se ve con su `key`. En el editor (Q-82) la variable se lista con el nombre de su tipo; en los workflows (W-50) su campo es de texto. |
 
 ## SQL final
 

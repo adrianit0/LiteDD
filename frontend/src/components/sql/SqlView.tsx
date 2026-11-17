@@ -65,11 +65,13 @@ export function SqlView({ tab }: { tab: Tab }) {
   const [, setTick] = useState(0);
   const version = tab.note?.version;
   const constantsVersion = useUi((s) => s.constantsVersion);
+  // Q-111: los tipos personalizados de «Ajustes» cambian el análisis.
+  const customTypes = useUi((s) => s.config.types);
 
   // Q-40: al abrir solo se analiza; nunca se ejecuta. M-67: también al guardar las constantes.
   useEffect(() => {
     void useSqlRuns.getState().analyze(tab.id);
-  }, [tab.id, version, constantsVersion]);
+  }, [tab.id, version, constantsVersion, customTypes]);
 
   // Q-41: cronómetro en vivo y Esc para cancelar.
   useEffect(() => {
@@ -141,6 +143,7 @@ export function SqlView({ tab }: { tab: Tab }) {
       {isGenerated(tab.note) && <MybatisPanel content={tab.content} />}
 
       <VariablesForm
+        tabId={tab.id}
         variables={variables}
         values={sql.values}
         errors={run.fieldErrors}

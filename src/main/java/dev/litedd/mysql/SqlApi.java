@@ -10,6 +10,7 @@ import dev.litedd.notes.Note;
 import dev.litedd.notes.NoteService;
 import dev.litedd.notes.VariableValues;
 import dev.litedd.settings.AppConfig;
+import dev.litedd.sqlengine.CustomTypes;
 import dev.litedd.sqlengine.MapperSource;
 import dev.litedd.sqlengine.MapperSource.ParsedMapper;
 import dev.litedd.sqlengine.SqlEngine.Analysis;
@@ -26,9 +27,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -65,6 +68,14 @@ public final class SqlApi implements ApiRoutes {
 
     /** Q-107 */
     record LookupRequest(String table, String value) {
+    }
+
+    /** Q-114: el tipo tal como se usa, como «catalogo5». */
+    record OptionsRequest(String type) {
+    }
+
+    /** Q-113, Q-114: pares [key, value] en el orden de la consulta y si se llegó al tope de filas. */
+    record OptionsResponse(List<List<String>> options, boolean capReached) {
     }
 
     /** Q-105: las etiquetas y la primera fila; sin filas, row no aparece. */
@@ -180,6 +191,7 @@ public final class SqlApi implements ApiRoutes {
         routes.get("/api/sql/schema", ctx -> ctx.json(Map.of("tables", schema())));
         routes.get("/api/sql/references", ctx -> ctx.json(Map.of("foreignKeys", foreignKeys())));
         routes.post("/api/sql/lookup", ctx -> ctx.json(lookup(ctx.bodyAsClass(LookupRequest.class))));
+        routes.post("/api/sql/options", ctx -> ctx.json(options(ctx.bodyAsClass(OptionsRequest.class))));
     }
 
     /** A-04: siempre el contenido guardado, en la versión que tiene la pestaña. */
@@ -285,18 +297,7 @@ public final class SqlApi implements ApiRoutes {
         AppConfig.Reference ref = config.get().reference(req.table()).orElseThrow(() ->
                 new ApiError(404, "no_reference", "No hay ninguna referencia para la tabla «" + req.table() + "» en «Ajustes»"));
         String name = "La nota de la referencia «" + ref.table() + "»";
-        if (notes.inTrash(ref.noteId())) {
-            throw badReference(name + " está en la papelera");
-        }
-        Note note;
-        try {
-            note = notes.get(ref.noteId());
-        } catch (ApiError e) {
-            throw badReference(name + " ya no existe");
-        }
-        if (!"sql".equals(note.type())) {
-            throw badReference(name + " no es una nota SQL");
-        }
+        Note note = settingsNote(ref.noteId(), name, SqlApi::badReference);
         Analysis analysis = engine.analyze(note.content(), sql.constants());
         if (analysis.errors().isEmpty() && analysis.variables().size() != 1) {
             throw badReference(name + " debe tener una sola variable");
@@ -317,6 +318,79 @@ public final class SqlApi implements ApiRoutes {
 
     private static ApiError badReference(String message) {
         return new ApiError(422, "bad_reference", message);
+    }
+
+    /** Q-105, Q-114: la nota SQL elegida en «Ajustes» para una referencia o un tipo. */
+    private Note settingsNote(String noteId, String name, Function<String, ApiError> bad) {
+        if (notes.inTrash(noteId)) {
+            throw bad.apply(name + " está en la papelera");
+        }
+        Note note;
+        try {
+            note = notes.get(noteId);
+        } catch (ApiError e) {
+            throw bad.apply(name + " ya no existe");
+        }
+        if (!"sql".equals(note.type())) {
+            throw bad.apply(name + " no es una nota SQL");
+        }
+        return note;
+    }
+
+    /**
+     * Q-113, Q-114: ejecuta el contenido guardado de la nota del tipo, con el valor del parámetro en su única variable si
+     * el tipo lo tiene, como una consulta más (S-01 a S-06) y hasta el tope de filas. No recuerda valores (Q-24), no
+     * marca la ejecución (N-88) y no registra el parámetro (S-22).
+     */
+    private OptionsResponse options(OptionsRequest req) {
+        if (req.type() == null || req.type().isBlank()) {
+            throw new ApiError(400, "bad_request", "Falta el tipo");
+        }
+        AppConfig settings = config.get();
+        ApiError missing = new ApiError(404, "no_type", "No hay ningún tipo «" + req.type().strip() + "» en «Ajustes»");
+        CustomTypes.Resolved type = settings.customTypes().resolve(req.type()).orElseThrow(() -> missing);
+        AppConfig.CustomType definition = settings.customType(type.name()).orElseThrow(() -> missing);
+        String name = "La nota del tipo «" + definition.name() + "»";
+        Note note = settingsNote(definition.noteId(), name, SqlApi::badType);
+        Analysis analysis = engine.analyze(note.content(), sql.constants());
+        int wanted = type.parameter() == null ? 0 : 1;
+        if (analysis.errors().isEmpty() && analysis.variables().size() != wanted) {
+            throw badType(wanted == 0 ? name + " no puede tener variables: el tipo no tiene parámetro"
+                    : name + " debe tener una sola variable, que recibe el parámetro «" + type.parameter() + "»");
+        }
+        Map<String, String> values = wanted == 0 || analysis.variables().isEmpty() ? Map.of()
+                : Map.of(analysis.variables().getFirst().name(), type.value());
+        Plan plan = sql.plan(note.content(), values);
+        if (!plan.executable() || plan.classification().kind() != StatementKind.QUERY) {
+            throw badType(name + " no es una consulta");
+        }
+        int cap = sql.rowCap();
+        String executionId = UUID.randomUUID().toString();
+        Result result = sql.run(executionId, false, SqlRunner.finalSql(plan), () -> gateway.withConnection(c -> QueryRunner.query(c,
+                plan.rendered().sql(), SqlRunner.values(plan), cap + 1, timeoutSeconds(), executionId, gateway.running())));
+        List<String> labels = result.columns().stream().map(Column::label).toList();
+        int key = columnIndex(labels, "key", 0);
+        int value = columnIndex(labels, "value", Math.min(1, labels.size() - 1));
+        List<List<String>> options = result.rows().stream().limit(cap)
+                // Q-113: null es «(Vacío)».
+                .filter(r -> r.get(key) != null)
+                .map(r -> Arrays.asList(r.get(key), r.get(value)))
+                .toList();
+        return new OptionsResponse(options, result.rows().size() > cap);
+    }
+
+    /** Q-113: la columna con esa etiqueta, sin distinguir mayúsculas, o la de esa posición. */
+    static int columnIndex(List<String> labels, String label, int fallback) {
+        for (int i = 0; i < labels.size(); i++) {
+            if (labels.get(i).equalsIgnoreCase(label)) {
+                return i;
+            }
+        }
+        return fallback;
+    }
+
+    private static ApiError badType(String message) {
+        return new ApiError(422, "bad_type", message);
     }
 
     /** Q-54: COUNT(*) envuelto; con columnas repetidas (1060), recorriendo la consulta. */

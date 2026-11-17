@@ -20,11 +20,11 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Prepara el contenido de una nota SQL para MyBatis: valida el XML (Q-04), quita el elemento
@@ -56,6 +56,11 @@ public final class NoteSource {
     }
 
     public static PreparedNote prepare(String content) {
+        return prepare(content, CustomTypes.NONE);
+    }
+
+    /** Q-111: con los tipos personalizados de «Ajustes». */
+    public static PreparedNote prepare(String content, CustomTypes types) {
         Document doc;
         try {
             doc = parse(OPEN + content + "</script>");
@@ -95,7 +100,7 @@ public final class NoteSource {
             body = m.group(2);
         }
 
-        Analysis analysis = new Analysis();
+        Analysis analysis = new Analysis(types);
         analysis.collectLocals(container);
         analysis.walk(container);
         List<Variable> variables = analysis.variables();
@@ -160,12 +165,25 @@ public final class NoteSource {
         private final Map<String, String> itemCollection = new HashMap<>();
         private final Map<String, Set<SqlType>> itemTypes = new HashMap<>();
         private final Map<String, Set<SqlType>> commentTypes = new HashMap<>();
+        /** Q-111: tipos personalizados declarados en comentarios, tal como se usan. */
+        private final Map<String, Set<String>> commentCustom = new HashMap<>();
         private final List<SqlError> errors = new ArrayList<>();
+        private final CustomTypes types;
+
+        Analysis(CustomTypes types) {
+            this.types = types;
+        }
 
         private static final class Usage {
             final Set<SqlType> declared = new LinkedHashSet<>();
+            /** Q-111: tipos personalizados, tal como se usan. */
+            final Set<String> custom = new LinkedHashSet<>();
             boolean textual;
             boolean collection;
+        }
+
+        /** Tipo de un token: uno de la tabla de Q-12 o uno personalizado (Q-111). */
+        private record Declared(SqlType type, String custom) {
         }
 
         /** Q-11: item e index de foreach y name de bind son locales en toda la nota. */
@@ -239,30 +257,40 @@ public final class NoteSource {
                 if (root.isEmpty() || reserved(root)) {
                     continue;
                 }
-                SqlType declared = declaredType(parts, root);
+                Declared declared = declaredType(parts, root);
                 if (locals.contains(root)) {
                     if (declared != null && !comment) {
-                        itemTypes.computeIfAbsent(root, k -> new LinkedHashSet<>()).add(declared);
+                        if (declared.custom() != null) {
+                            // Q-112: el item de un <foreach> no admite tipos personalizados.
+                            errors.add(new SqlError("type", "La variable «" + root + "» es el item de un <foreach> y no admite el tipo «"
+                                    + declared.custom() + "»", null, null, root));
+                        } else {
+                            itemTypes.computeIfAbsent(root, k -> new LinkedHashSet<>()).add(declared.type());
+                        }
                     }
                     continue;
                 }
                 if (comment) {
-                    if (declared != null) {
-                        commentTypes.computeIfAbsent(root, k -> new LinkedHashSet<>()).add(declared);
+                    if (declared != null && declared.custom() != null) {
+                        commentCustom.computeIfAbsent(root, k -> new LinkedHashSet<>()).add(declared.custom());
+                    } else if (declared != null) {
+                        commentTypes.computeIfAbsent(root, k -> new LinkedHashSet<>()).add(declared.type());
                     }
                     continue;
                 }
                 Usage u = use(root);
                 u.textual |= m.group(1).equals("$");
-                if (declared != null) {
-                    u.declared.add(declared);
+                if (declared != null && declared.custom() != null) {
+                    u.custom.add(declared.custom());
+                } else if (declared != null) {
+                    u.declared.add(declared.type());
                 }
             }
         }
 
         /** Tipo de #{x,tipo} o #{x, javaType=tipo}; null si no se declara. */
-        private SqlType declaredType(String[] parts, String root) {
-            SqlType found = null;
+        private Declared declaredType(String[] parts, String root) {
+            Declared found = null;
             for (int i = 1; i < parts.length; i++) {
                 String option = parts[i].strip();
                 String name;
@@ -276,11 +304,14 @@ public final class NoteSource {
                     name = option;
                 }
                 SqlType type = SqlType.fromName(name);
-                if (type == null) {
+                if (type != null) {
+                    found = new Declared(type, null);
+                } else if (types.resolve(name).isPresent()) {
+                    // Q-111: un tipo personalizado de «Ajustes».
+                    found = new Declared(SqlType.STRING, name);
+                } else {
                     errors.add(new SqlError("type", "Tipo desconocido «" + name + "» en la variable «" + root + "»",
                             null, null, root));
-                } else {
-                    found = type;
                 }
             }
             return found;
@@ -346,6 +377,22 @@ public final class NoteSource {
                 Set<SqlType> declared = new LinkedHashSet<>(u.declared);
                 // ADR-0011: el comentario solo tipa variables que aparecen en otro sitio.
                 declared.addAll(commentTypes.getOrDefault(name, Set.of()));
+                Set<String> custom = distinctIgnoringCase(u.custom, commentCustom.getOrDefault(name, Set.of()));
+                if (!custom.isEmpty()) {
+                    // Q-112: es string, solo en #{…}, fuera de un <foreach> y sin otro tipo.
+                    List<String> all = new ArrayList<>(declared.stream().map(SqlType::label).toList());
+                    all.addAll(custom);
+                    String why = u.collection ? "es la colección de un <foreach> y por tanto list"
+                            : u.textual ? "se usa en ${…}, que siempre es string"
+                            : all.size() > 1 ? "tiene tipos contradictorios" : null;
+                    if (why != null) {
+                        conflict(name, why, all);
+                    }
+                    if (!u.collection) {
+                        out.add(new Variable(name, SqlType.STRING, null, u.textual, custom.iterator().next()));
+                        return;
+                    }
+                }
                 SqlType type;
                 SqlType element = null;
                 if (u.collection) {
@@ -385,8 +432,20 @@ public final class NoteSource {
         }
 
         private void conflict(String name, String why, Set<SqlType> types) {
-            String list = types.stream().map(SqlType::label).collect(Collectors.joining(", "));
-            errors.add(new SqlError("type", "La variable «" + name + "» " + why + ": " + list, null, null, name));
+            conflict(name, why, types.stream().map(SqlType::label).toList());
+        }
+
+        private void conflict(String name, String why, List<String> labels) {
+            errors.add(new SqlError("type", "La variable «" + name + "» " + why + ": " + String.join(", ", labels), null, null, name));
+        }
+
+        /** Q-111: los nombres de los tipos personalizados no distinguen mayúsculas. */
+        private static Set<String> distinctIgnoringCase(Set<String> a, Set<String> b) {
+            Map<String, String> byKey = new LinkedHashMap<>();
+            for (Set<String> s : List.of(a, b)) {
+                s.forEach(t -> byKey.putIfAbsent(t.toLowerCase(Locale.ROOT), t));
+            }
+            return new LinkedHashSet<>(byKey.values());
         }
     }
 }

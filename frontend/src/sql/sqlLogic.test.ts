@@ -77,6 +77,11 @@ describe('valores', () => {
     expect(typeLabel('list', 'string')).toBe('list');
     expect(typeLabel('int', null)).toBe('int');
   });
+
+  it('Q-117 un tipo personalizado se muestra tal como se usa', () => {
+    expect(typeLabel('string', null, 'catalogo5')).toBe('catalogo5');
+    expect(typeLabel('string', null, null)).toBe('string');
+  });
 });
 
 describe('Q-81 inserciones del editor SQL', () => {

@@ -116,7 +116,7 @@ describe('U-13 ventana por categorías', () => {
   it('U-10 U-13 las categorías van en su orden y las flechas las recorren', async () => {
     await renderAt();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'Referencias', 'HTTP', 'Cabeceras', 'Entornos', 'Datos', 'Actualizaciones']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['General', 'Conexión', 'SQL', 'Referencias', 'Tipos', 'HTTP', 'Cabeceras', 'Entornos', 'Datos', 'Actualizaciones']);
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tabpanel', { name: 'General' })).toBeTruthy();
 
@@ -601,6 +601,73 @@ describe('Q-100 «Referencias»', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Quitar la referencia de author' }));
     await saveSettings();
     expect(savedConfig().references).toEqual([{ table: 'loan', color: '#007ba7', noteId: 'borrada' }]);
+  });
+});
+
+describe('Q-110 «Tipos»', () => {
+  beforeEach(() => {
+    useTree.setState({
+      nodes: [
+        { id: 'q1', parentId: null, position: 0, type: 'sql', title: 'Lenguajes', description: '', favorite: false, tags: [] },
+        { id: 'h1', parentId: null, position: 1, type: 'http', title: 'Login', description: '', favorite: false, tags: [] },
+        { id: 'q2', parentId: null, position: 2, type: 'sql', title: 'Catálogo', description: '', favorite: false, tags: [] },
+      ],
+    });
+  });
+
+  it('Q-110 se añaden tipos con nombre, con o sin parámetro, y nota SQL, y se guardan en su orden', async () => {
+    await renderAt('Tipos');
+    expect(screen.queryByRole('table', { name: 'Tipos' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir tipo' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la fila 1'), { target: { value: ' lang ' } });
+    const note = screen.getByLabelText<HTMLSelectElement>('Nota SQL de lang');
+    // Solo notas SQL.
+    expect([...note.options].map((o) => o.textContent)).toEqual(['Sin elegir', 'Lenguajes', 'Catálogo']);
+    fireEvent.change(note, { target: { value: 'q1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir tipo' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la fila 2'), { target: { value: 'catalogo#{id}' } });
+    fireEvent.change(screen.getByLabelText('Nota SQL de catalogo#{id}'), { target: { value: 'q2' } });
+    // Un tipo con parámetro y otro sin él pueden compartir nombre.
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir tipo' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la fila 3'), { target: { value: 'lang#{id}' } });
+    fireEvent.change(screen.getByLabelText('Nota SQL de lang#{id}'), { target: { value: 'q1' } });
+    // Una fila añadida y dejada vacía no se guarda.
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir tipo' }));
+    await saveSettings();
+    const types = [
+      { name: 'lang', noteId: 'q1' },
+      { name: 'catalogo#{id}', noteId: 'q2' },
+      { name: 'lang#{id}', noteId: 'q1' },
+    ];
+    expect(savedConfig().types).toEqual(types);
+    expect(useUi.getState().config.types).toEqual(types);
+  });
+
+  it('Q-110 un nombre no válido, repetido, de LiteDD o sin nota se avisa y no se guarda; «×» quita el tipo', async () => {
+    useUi.setState({ config: { ...DEFAULT_CONFIG, types: [{ name: 'lang', noteId: 'borrada' }] } });
+    await renderAt('Tipos');
+    expect(screen.getByLabelText<HTMLSelectElement>('Nota SQL de lang').selectedOptions[0].textContent).toBe('Nota que ya no existe');
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir tipo' }));
+    const name = screen.getByLabelText('Nombre de la fila 2');
+    for (const [value, warning] of [
+      ['LANG', 'Tipo repetido'],
+      ['5lang', 'Nombre no válido'],
+      ['cat#{id}x', 'Nombre no válido'],
+      ['Integer', 'Ya es un tipo de LiteDD'],
+    ]) {
+      fireEvent.change(name, { target: { value } });
+      expect(screen.getAllByText(warning).length).toBeGreaterThan(0);
+    }
+    fireEvent.change(name, { target: { value: 'cat' } });
+    expect(screen.getByText('Elige una nota SQL')).toBeTruthy();
+    goTo('General');
+    await saveSettings();
+    expect(mocked.putSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: 'Tipos' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('alert').textContent).toBe('Tipos: Elige una nota SQL: cat.');
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar el tipo cat' }));
+    await saveSettings();
+    expect(savedConfig().types).toEqual([{ name: 'lang', noteId: 'borrada' }]);
   });
 });
 

@@ -161,7 +161,7 @@ public final class Main {
             return minutes == null ? null : Duration.ofMinutes(minutes);
         });
 
-        SqlEngine sqlEngine = new SqlEngine();
+        SqlEngine sqlEngine = new SqlEngine(() -> settings.get().customTypes());
         VariableValues variableValues = new VariableValues(store);
         HttpRunner httpRunner = new HttpRunner(notes, settings::get, httpCredentials, new HttpCaller(corporateCa));
         WorkflowRunner workflowRunner = new WorkflowRunner(notes, httpRunner,

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { api, ApiError, DEFAULT_CONFIG } from '../../api';
 import { useForeignKeys } from '../../sql/references';
+import { useTypeOptions } from '../../sql/options';
 import { SqlView } from './SqlView';
 import { useTabs } from '../../stores/tabsStore';
 import { useSqlRuns } from '../../stores/sqlRunStore';
@@ -27,6 +28,7 @@ vi.mock('../../api', async (importOriginal) => {
       tree: vi.fn(),
       sqlReferences: vi.fn(),
       sqlLookup: vi.fn(),
+      sqlOptions: vi.fn(),
     },
   };
 });
@@ -879,5 +881,139 @@ describe('Q-102 a Q-107 referencias de claves foráneas', () => {
       expect(executedNotes()).not.toContain('n1');
       expect(notices()).toEqual([]);
     });
+  });
+});
+
+describe('Q-115 a Q-117 tipos personalizados', () => {
+  const OPTIONS: [string, string | null][] = [
+    ['1', 'Java'],
+    ['2', 'Python'],
+    ['10', 'Español'],
+  ];
+
+  const typed = (over: Partial<Analysis> = {}) =>
+    analysis({
+      variables: [
+        { name: 'lenguajeId', type: 'string', elementType: null, textual: false, customType: 'lang' },
+        { name: 'title', type: 'string', elementType: null, textual: false },
+      ],
+      ...over,
+    });
+
+  const combo = () => screen.getByRole<HTMLInputElement>('combobox', { name: /lenguajeId/ });
+  const optionTexts = () =>
+    within(screen.getByRole('listbox', { name: 'Opciones' }))
+      .getAllByRole('option')
+      .map((o) => o.textContent);
+  const key = async (el: HTMLElement, k: string, init: object = {}) => {
+    await act(async () => {
+      fireEvent.keyDown(el, { key: k, ...init });
+    });
+  };
+
+  beforeEach(() => {
+    useTypeOptions.setState({ byTab: {}, key: '' });
+    useUi.setState({ config: { ...DEFAULT_CONFIG, types: [{ name: 'lang', noteId: 'n1' }] } });
+    mocked.sqlOptions.mockResolvedValue({ options: OPTIONS, capReached: false });
+    mocked.execute.mockResolvedValue(result());
+  });
+
+  afterEach(() => {
+    useUi.setState({ config: DEFAULT_CONFIG });
+  });
+
+  it('Q-115 Q-116 el campo es un combo con su tipo; las opciones se piden al abrir la pestaña y «(Vacío)» va primero y por defecto', async () => {
+    await mount(typed());
+    expect(mocked.sqlOptions).toHaveBeenCalledWith('lang');
+    expect(screen.getByRole('group', { name: 'Variables' }).querySelector('.sql-field-type')!.textContent).toBe('lang');
+    expect(combo().value).toBe('');
+    expect(combo().placeholder).toBe('(Vacío)');
+    await click(combo());
+    expect(optionTexts()).toEqual(['(Vacío)', '1 — Java', '2 — Python', '10 — Español']);
+    // Q-40: no se ejecuta.
+    expect(mocked.execute).not.toHaveBeenCalled();
+  });
+
+  it('Q-115 se elige con las flechas e Intro o con clic; «(Vacío)» vale null; con la lista cerrada, Intro ejecuta', async () => {
+    await mount(typed());
+    await key(combo(), 'ArrowDown');
+    await key(combo(), 'ArrowDown');
+    await key(combo(), 'ArrowDown');
+    await key(combo(), 'Enter');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(combo().value).toBe('2 — Python');
+    expect(tab().sql!.values).toEqual({ lenguajeId: '2' });
+    expect(mocked.execute).not.toHaveBeenCalled();
+    await key(combo(), 'Enter');
+    expect(mocked.execute).toHaveBeenCalledWith(expect.objectContaining({ values: { lenguajeId: '2' } }));
+
+    await click(combo());
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole('option', { name: '(Vacío)' }));
+    });
+    expect(combo().value).toBe('');
+    expect(tab().sql!.values).toEqual({ lenguajeId: '' });
+  });
+
+  it('Q-115 al escribir se filtra sin mayúsculas ni acentos; Esc cierra y al salir vuelve la opción elegida', async () => {
+    await mount(typed());
+    await act(async () => {
+      fireEvent.change(combo(), { target: { value: 'ESPAN' } });
+    });
+    expect(optionTexts()).toEqual(['(Vacío)', '10 — Español']);
+    // La primera coincidencia queda activa.
+    expect(combo().getAttribute('aria-activedescendant')).toBe('var-lenguajeId-opt-1');
+    await key(combo(), 'Enter');
+    expect(tab().sql!.values).toEqual({ lenguajeId: '10' });
+
+    await act(async () => {
+      fireEvent.change(combo(), { target: { value: 'zzz' } });
+    });
+    expect(screen.getByText('Sin coincidencias')).toBeTruthy();
+    await key(combo(), 'Escape');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(combo().value).toBe('10 — Español');
+    await act(async () => {
+      fireEvent.change(combo(), { target: { value: 'java' } });
+    });
+    await act(async () => {
+      fireEvent.blur(combo());
+    });
+    expect(combo().value).toBe('10 — Español');
+    expect(tab().sql!.values).toEqual({ lenguajeId: '10' });
+  });
+
+  it('Q-116 «Consultando…» mientras llegan; un fallo se ve bajo el campo y solo queda «(Vacío)»', async () => {
+    let resolve!: (v: { options: [string, string | null][]; capReached: boolean }) => void;
+    mocked.sqlOptions.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    await mount(typed());
+    await click(combo());
+    expect(screen.getByText('Consultando…')).toBeTruthy();
+    await act(async () => resolve({ options: OPTIONS, capReached: false }));
+    expect(screen.queryByText('Consultando…')).toBeNull();
+    expect(optionTexts()).toHaveLength(4);
+  });
+
+  it('Q-116 un fallo de la nota del tipo se ve bajo el campo', async () => {
+    mocked.sqlOptions.mockRejectedValue(new ApiError(422, 'bad_type', 'La nota del tipo «lang» no es una consulta', null));
+    await mount(typed());
+    expect(screen.getByText('La nota del tipo «lang» no es una consulta')).toBeTruthy();
+    await click(combo());
+    expect(optionTexts()).toEqual(['(Vacío)']);
+  });
+
+  it('Q-111 al guardar los tipos se vuelve a analizar la nota', async () => {
+    await mount(typed());
+    expect(mocked.analyze).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      useUi.setState({ config: { ...DEFAULT_CONFIG, types: [{ name: 'lang', noteId: 'n2' }] } });
+    });
+    expect(mocked.analyze).toHaveBeenCalledTimes(2);
+  });
+
+  it('Q-117 un valor recordado que no está entre las opciones se conserva y se ve con su key', async () => {
+    await mount(typed({ lastValues: { lenguajeId: '99', title: null } }));
+    expect(combo().value).toBe('99');
+    expect(tab().sql!.values.lenguajeId).toBe('99');
   });
 });

@@ -13,6 +13,7 @@ import { ConnectionSettings, EMPTY_CONNECTION, connectionChanged, type Connectio
 import { CorporateCaSettings, HttpProfilesSettings, fromProfileForms, toProfileForms, type ProfileForm } from './HttpProfilesSettings';
 import { UpdateSettings } from './UpdateSettings';
 import { ReferencesSettings, fromReferenceForms, referencesProblem, toReferenceForms, type ReferenceForm } from './ReferencesSettings';
+import { TypesSettings, fromTypeForms, toTypeForms, typesProblem, type TypeForm } from './TypesSettings';
 
 /** U-10: categorías, en su orden. */
 const CATEGORIES: { id: SettingsCategory; label: string }[] = [
@@ -20,6 +21,7 @@ const CATEGORIES: { id: SettingsCategory; label: string }[] = [
   { id: 'connection', label: 'Conexión' },
   { id: 'sql', label: 'SQL' },
   { id: 'references', label: 'Referencias' },
+  { id: 'types', label: 'Tipos' },
   { id: 'http', label: 'HTTP' },
   { id: 'headers', label: 'Cabeceras' },
   { id: 'environments', label: 'Entornos' },
@@ -43,6 +45,7 @@ interface ConfigForm {
   httpHeaders: Row[];
   updateRepository: string;
   references: ReferenceForm[];
+  types: TypeForm[];
 }
 
 function toForm(c: AppConfig): ConfigForm {
@@ -61,6 +64,7 @@ function toForm(c: AppConfig): ConfigForm {
     httpHeaders: c.http.headers,
     updateRepository: c.updateRepository ?? '',
     references: toReferenceForms(c.references),
+    types: toTypeForms(c.types),
   };
 }
 
@@ -85,6 +89,7 @@ function fromForm(f: ConfigForm): AppConfig {
     },
     updateRepository: f.updateRepository.trim() === '' ? null : f.updateRepository.trim(),
     references: fromReferenceForms(f.references),
+    types: fromTypeForms(f.types),
   };
 }
 
@@ -170,6 +175,12 @@ export function SettingsDialog() {
       if (referenceIssue) {
         setCategory('references');
         throw new Error(`Referencias: ${referenceIssue}.`);
+      }
+      // Q-110
+      const typeIssue = typesProblem(form.types);
+      if (typeIssue) {
+        setCategory('types');
+        throw new Error(`Tipos: ${typeIssue}.`);
       }
       const next = fromForm(form);
       await api.putSettings({ config: next });
@@ -521,6 +532,7 @@ export function SettingsDialog() {
     ),
     sql,
     references: <ReferencesSettings references={form.references} onChange={(references) => update({ references })} />,
+    types: <TypesSettings types={form.types} onChange={(types) => update({ types })} />,
     http,
     headers,
     environments,
