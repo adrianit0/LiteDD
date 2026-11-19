@@ -377,6 +377,11 @@ input {
   color: var(--cyan);
 }
 
+/* N-100: nota Markdown, SQL o XML sin contenido. */
+.type-icon.type-empty {
+  color: var(--text-muted);
+}
+
 /* M-24: marca de las sentencias de escritura generadas desde un mapper. */
 .write-mark,
 .statement-kind {

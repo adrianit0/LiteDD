@@ -13,7 +13,8 @@ import java.util.List;
 public interface NoteMapper {
 
     record TreeRow(String id, String parentId, int position, String type, String title, String description, boolean favorite,
-                   String tags, String statementId, String statementKind, boolean obsolete, String importantUntil) {
+                   String tags, String statementId, String statementKind, boolean obsolete, String importantUntil,
+                   boolean empty) {
     }
 
     /**
@@ -38,7 +39,8 @@ public interface NoteMapper {
                    (SELECT group_concat(name, char(31)) FROM (
                        SELECT t.name FROM note_tag nt JOIN tag t ON t.id = nt.tag_id
                        WHERE nt.note_id = n.id ORDER BY t.name)) AS tags,
-                   n.statement_id, n.statement_kind, n.obsolete, n.important_until
+                   n.statement_id, n.statement_kind, n.obsolete, n.important_until,
+                   trim(n.content, ' ' || char(9) || char(10) || char(13)) = '' AS empty
             FROM note n
             WHERE n.deleted_at IS NULL
             ORDER BY n.parent_id, n.position""")

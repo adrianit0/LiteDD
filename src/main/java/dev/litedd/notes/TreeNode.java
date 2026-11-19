@@ -2,9 +2,9 @@ package dev.litedd.notes;
 
 import java.util.List;
 
-/** Nodo del árbol: sin contenido (N-01). */
+/** Nodo del árbol: sin contenido (N-01), solo si está vacío (N-100). */
 public record TreeNode(String id, String parentId, int position, String type, String title, String description,
                        boolean favorite,
                        List<String> tags, String statementId, String statementKind, boolean obsolete,
-                       String importantUntil) {
+                       String importantUntil, boolean empty) {
 }

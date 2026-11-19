@@ -82,7 +82,7 @@ public final class NoteService {
         return store.read(s -> s.getMapper(NoteMapper.class).selectTree().stream()
                 .map(r -> new TreeNode(r.id(), r.parentId(), r.position(), r.type(), r.title(), r.description(), r.favorite(),
                         r.tags() == null ? List.of() : Arrays.asList(r.tags().split(NoteMapper.TAG_SEPARATOR)),
-                        r.statementId(), r.statementKind(), r.obsolete(), r.importantUntil()))
+                        r.statementId(), r.statementKind(), r.obsolete(), r.importantUntil(), r.empty()))
                 .toList());
     }
 

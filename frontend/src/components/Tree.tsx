@@ -429,7 +429,8 @@ function TreeRow({ row, start, active, focusable, dropZone, renaming, onOpen, on
       >
         {row.expanded ? '▾' : '▸'}
       </button>
-      <TypeIcon type={node.type} />
+      {/* N-100: las hijas generadas de una nota XML nunca van en gris. */}
+      <TypeIcon type={node.type} empty={node.empty && !node.statementId} />
       {renaming ? (
         <RenameInput initial={node.title} onDone={onRenamed} />
       ) : (

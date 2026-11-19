@@ -114,6 +114,17 @@ class NoteServiceTest {
     }
 
     @Test
+    void n100_tree_marks_notes_without_content_as_empty() {
+        Note blank = notes.create(null, "md", "Carpeta");
+        Note spaces = notes.create(null, "sql", "Espacios");
+        notes.save(spaces.id(), "Espacios", " \n\t \r\n", spaces.version());
+        Note full = notes.create(null, "xml", "Mapper");
+        notes.save(full.id(), "Mapper", "<mapper/>", full.version());
+        Map<String, Boolean> empty = notes.tree().stream().collect(Collectors.toMap(TreeNode::title, TreeNode::empty));
+        assertThat(empty).containsEntry("Carpeta", true).containsEntry("Espacios", true).containsEntry("Mapper", false);
+    }
+
+    @Test
     void n40_save_updates_content_title_and_version() {
         Note n = notes.create(null, "md", null);
         Note saved = notes.save(n.id(), "Guía", "# Hola", n.version());

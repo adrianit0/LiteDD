@@ -20,6 +20,8 @@ export interface TreeNode {
   obsolete?: boolean;
   /** N-89: importante hasta ese día local (AAAA-MM-DD), incluido; pasado ese día ya no cuenta (N-97). */
   importantUntil?: string | null;
+  /** N-100: sin contenido; lo calcula el servidor y lo mantiene applyNote al guardar. */
+  empty?: boolean;
 }
 
 export interface Note extends TreeNode {

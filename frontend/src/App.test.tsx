@@ -797,3 +797,41 @@ describe('N-89 N-97 N-98 notas importantes (ADR-0047)', () => {
     expect(screen.getByRole('button', { name: 'Importante' })).toBeTruthy();
   });
 });
+
+describe('N-100 notas vacías en gris (ADR-0051)', () => {
+  const nodes: Note[] = [
+    { ...created, id: 'a', title: 'Carpeta', empty: true },
+    { ...created, id: 'b', title: 'Consulta vacía', type: 'sql', position: 1, empty: true },
+    { ...created, id: 'c', title: 'Mapper', type: 'xml', position: 2, empty: false, content: '<mapper/>' },
+    { ...created, id: 'd', title: 'Petición', type: 'http', position: 3, empty: true },
+  ];
+
+  beforeEach(() => {
+    mocked.tree.mockResolvedValue(nodes);
+    useTree.setState({ nodes: [], loaded: false });
+    useUi.setState({ quickSearchOpen: false, quickSearchQuery: '', notices: [] });
+  });
+
+  it('N-100 el icono de las Markdown, SQL y XML vacías va en gris; el de HTTP no', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ width: 280, height: 600 }));
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280);
+    render(<App />);
+    const folder = await screen.findByRole('treeitem', { name: /Carpeta/ });
+    expect(within(folder).getByRole('img', { name: 'Markdown vacía' }).className).toContain('type-empty');
+    expect(within(screen.getByRole('treeitem', { name: /Consulta vacía/ })).getByRole('img', { name: 'SQL vacía' })).toBeTruthy();
+    expect(within(screen.getByRole('treeitem', { name: /Mapper/ })).getByRole('img', { name: 'XML MyBatis' }).className).not.toContain('type-empty');
+    expect(within(screen.getByRole('treeitem', { name: /Petición/ })).getByRole('img', { name: 'HTTP' }).className).not.toContain('type-empty');
+  });
+
+  it('N-100 al guardar con contenido recupera el color y al vaciarla lo pierde', async () => {
+    useTree.setState({ nodes, loaded: true });
+    useTree.getState().applyNote({ id: 'a', title: 'Carpeta', content: '# Algo' });
+    expect(useTree.getState().nodes.find((n) => n.id === 'a')!.empty).toBe(false);
+    useTree.getState().applyNote({ id: 'a', title: 'Carpeta', content: ' \n ' });
+    expect(useTree.getState().nodes.find((n) => n.id === 'a')!.empty).toBe(true);
+    // Sin contenido (solo el título) no cambia.
+    useTree.getState().applyNote({ id: 'c', title: 'Mapper 2' });
+    expect(useTree.getState().nodes.find((n) => n.id === 'c')!.empty).toBe(false);
+  });
+});
