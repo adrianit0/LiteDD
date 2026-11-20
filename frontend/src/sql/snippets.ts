@@ -1,7 +1,8 @@
 import { EditorSelection, type EditorState, type TransactionSpec } from '@codemirror/state';
+import { makeOptional } from './optional';
 
-/** Q-81: inserciones de la barra del editor SQL. */
-export type SnippetKind = 'param' | 'if' | 'where' | 'choose' | 'foreach' | 'trim' | 'cdata';
+/** Q-81: inserciones de la barra del editor SQL; «optional» es «Hacer opcional» (Q-86). */
+export type SnippetKind = 'param' | 'if' | 'where' | 'choose' | 'foreach' | 'trim' | 'cdata' | 'optional';
 
 interface Snippet {
   before: string;
@@ -10,7 +11,7 @@ interface Snippet {
   placeholder: string;
 }
 
-const SNIPPETS: Record<SnippetKind, Snippet> = {
+const SNIPPETS: Record<Exclude<SnippetKind, 'optional'>, Snippet> = {
   param: { before: '#{', after: '}', placeholder: 'nombre' },
   if: { before: '<if test="nombre != null">\n  ', after: '\n</if>', placeholder: 'AND columna = #{nombre}' },
   where: { before: '<where>\n  ', after: '\n</where>', placeholder: '<if test="nombre != null">AND columna = #{nombre}</if>' },
@@ -30,6 +31,7 @@ const SNIPPETS: Record<SnippetKind, Snippet> = {
 
 /** Envuelve la selección o inserta la plantilla con el hueco seleccionado. */
 export function insertSnippet(state: EditorState, kind: SnippetKind): TransactionSpec {
+  if (kind === 'optional') return makeOptional(state) ?? {};
   const { before, after, placeholder } = SNIPPETS[kind];
   const { from, to } = state.selection.main;
   const inner = from === to ? placeholder : state.sliceDoc(from, to);
@@ -47,4 +49,5 @@ export const SNIPPET_BUTTONS: { kind: SnippetKind; label: string; text: string }
   { kind: 'foreach', label: 'Lista <foreach>', text: '<foreach>' },
   { kind: 'trim', label: 'Recorte <trim>', text: '<trim>' },
   { kind: 'cdata', label: 'Texto literal CDATA', text: 'CDATA' },
+  { kind: 'optional', label: 'Hacer opcional (Ctrl+Mayús+F)', text: 'Opcional' },
 ];

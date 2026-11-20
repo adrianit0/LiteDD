@@ -190,11 +190,13 @@ Un tipo personalizado convierte el campo de una variable en un combo con las opc
 | ID | Requisito |
 |---|---|
 | Q-80 | Resaltado de SQL (dialecto MySQL), de etiquetas MyBatis y de tokens `#{}` y `${}`. |
-| Q-81 | Barra con inserciones: `#{}`, `<if>`, `<where>`, `<choose>`, `<foreach>`, `<trim>` y `<![CDATA[ ]]>`. |
+| Q-81 | Barra con inserciones: `#{}`, `<if>`, `<where>`, `<choose>`, `<foreach>`, `<trim>`, `<![CDATA[ ]]>` y «Hacer opcional» (Q-86). |
 | Q-82 | Bajo el editor se listan en vivo las variables detectadas con su tipo y los errores de análisis. |
 | Q-83 | Intro mantiene la sangría de la línea actual: la línea nueva empieza con los mismos tabuladores o espacios que hay antes del cursor. |
 | Q-84 | Autocompletado de tablas y columnas del esquema de la conexión, leídas de `information_schema.COLUMNS` (solo lectura, principio 3). Propone tablas y vistas al escribir y, tras `tabla.` o `alias.`, sus columnas. No completa palabras clave. Vale en las notas SQL y en las notas XML MyBatis (ADR-0043). |
 | Q-85 | El esquema se pide al abrir el primer editor SQL o XML y se guarda en memoria hasta que cambia la conexión o falla la petición. Sin conexión, no se propone nada y el editor funciona igual. |
+| Q-86 | «Hacer opcional», con su botón de la barra (Q-81) o con Ctrl+Mayús+F, convierte en condiciones opcionales las líneas que toca la selección o, sin selección, la del cursor. Cada línea con variables `#{…}` o `${…}` queda dentro de `<if test="a != null">`, con una comparación por variable distinta unidas con `and`, y sangrada dos espacios más que la línea. Las líneas vacías, las que empiezan por `<` y las que no tienen variables no cambian. `IN #{lista}` pasa a `IN <foreach collection="lista" item="item" open="(" separator="," close=")">#{item}</foreach>`; si el token declara un tipo distinto de `list`, lo lleva el item (Q-14). El resultado es MyBatis estándar y se deshace con Ctrl+Z (ADR-0052). |
+| Q-87 | Si la sentencia que contiene las líneas (la etiqueta `<select>`, `<insert>`, `<update>` o `<delete>` que las rodea o, si no hay, la nota entera) no tiene `<where>`, `<set>`, `<trim>` ni las palabras `WHERE` o `SET`, las líneas de la primera a la última convertida se envuelven además en un `<where>` con la sangría de la primera; las de antes y después no cambian. Si ninguna línea se convierte, no cambia nada. |
 
 ## Errores
 

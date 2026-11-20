@@ -9,6 +9,7 @@ import { tags } from '@lezer/highlight';
 import { applyFormat, type FormatAction } from './formatting';
 import { mapperHighlight, mybatisHighlight } from './mybatis';
 import { insertSnippet, type SnippetKind } from '../sql/snippets';
+import { makeOptional } from '../sql/optional';
 import { schemaCompletion, useSqlSchema } from '../sql/schema';
 import { imageDrop, noteLinkCompletion, startNoteLink } from './noteExtensions';
 import type { TreeNode } from '../types';
@@ -126,6 +127,14 @@ export function sqlBindings(): KeyBinding[] {
   return [{ key: 'Enter', run: newlineKeepIndent }, indentWithTab];
 }
 
+/** Q-86: Ctrl+Mayús+F hace opcionales las condiciones; sin nada que convertir, no hace nada. */
+export const makeOptionalCommand: Command = (view) => {
+  if (view.state.readOnly) return false;
+  const spec = makeOptional(view.state);
+  if (spec) view.dispatch(spec);
+  return true;
+};
+
 /**
  * Editor de texto plano (N-11): Markdown con barra de formato y atajos (N-20 a N-22), o SQL de MySQL con
  * resaltado de MyBatis (Q-80).
@@ -184,7 +193,7 @@ export function NoteEditor({ type, value, onChange, onBlur, onReady, initialScro
         sql({ dialect: MySQL }),
         type === 'xml' ? mapperHighlight : mybatisHighlight,
         completion.of(schemaCompletion(useSqlSchema.getState().tables)),
-        keymap.of(sqlBindings()),
+        keymap.of([{ key: 'Shift-Mod-f', run: makeOptionalCommand }, ...sqlBindings()]),
       );
     } else {
       extensions.push(keymap.of(sqlBindings()));

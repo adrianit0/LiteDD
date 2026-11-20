@@ -54,3 +54,4 @@ La ventana tiene tres zonas fijas: barra superior, panel izquierdo con el árbol
 | Supr | Eliminar, en el árbol |
 | Alt+flechas | Mover la nota, en el árbol (N-63) |
 | Ctrl+B, Ctrl+I | Negrita y cursiva, en el editor Markdown |
+| Ctrl+Mayús+F | Hacer opcionales las condiciones, en el editor SQL y XML MyBatis (Q-86) |

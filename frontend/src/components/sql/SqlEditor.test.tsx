@@ -27,13 +27,15 @@ describe('Q-80 resaltado de MyBatis', () => {
 });
 
 describe('Q-81 barra de inserciones', () => {
-  it('tiene #{}, <if>, <where>, <choose>, <foreach>, <trim> y CDATA', () => {
+  it('tiene #{}, <if>, <where>, <choose>, <foreach>, <trim>, CDATA y «Hacer opcional» (Q-86)', () => {
     const onInsert = vi.fn();
     render(<SqlToolbar onInsert={onInsert} />);
     const buttons = screen.getByRole('toolbar', { name: 'Inserciones SQL' }).querySelectorAll('button');
-    expect([...buttons].map((b) => b.textContent)).toEqual(['#{}', '<if>', '<where>', '<choose>', '<foreach>', '<trim>', 'CDATA']);
+    expect([...buttons].map((b) => b.textContent)).toEqual(['#{}', '<if>', '<where>', '<choose>', '<foreach>', '<trim>', 'CDATA', 'Opcional']);
     fireEvent.click(buttons[4]);
     expect(onInsert).toHaveBeenCalledWith('foreach');
+    fireEvent.click(screen.getByRole('button', { name: 'Hacer opcional (Ctrl+Mayús+F)' }));
+    expect(onInsert).toHaveBeenCalledWith('optional');
   });
 });
 
