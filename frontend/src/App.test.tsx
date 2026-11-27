@@ -835,3 +835,85 @@ describe('N-100 notas vacías en gris (ADR-0051)', () => {
     expect(useTree.getState().nodes.find((n) => n.id === 'c')!.empty).toBe(false);
   });
 });
+
+describe('P-15 a P-18 vista dividida (ADR-0053)', () => {
+  const openThree = async () => {
+    await act(async () => {
+      for (const t of ['Uno', 'Dos', 'Tres']) await useTabs.getState().open(t, { note: { ...created, id: t, title: t } });
+    });
+  };
+  const menuOf = (name: string) => {
+    fireEvent.contextMenu(screen.getByRole('tab', { name: new RegExp(name) }));
+    return screen.getAllByRole('menuitem').map((i) => i.firstChild?.textContent);
+  };
+
+  it('P-15 «Mover a la derecha» abre el panel derecho y «Mover a la izquierda» lo cierra', async () => {
+    render(<App />);
+    await openThree();
+    expect(menuOf('Tres')).toContain('Mover a la derecha');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /Mover a la derecha/ }));
+    });
+    const left = screen.getByRole('region', { name: 'Panel izquierdo' });
+    const right = screen.getByRole('region', { name: 'Panel derecho' });
+    expect(within(left).getAllByRole('tab').map((t) => t.title)).toEqual(['Uno', 'Dos']);
+    expect(within(right).getAllByRole('tab').map((t) => t.title)).toEqual(['Tres']);
+    // Cada panel muestra su nota.
+    expect(within(left).getByRole('heading', { name: 'Dos' })).toBeTruthy();
+    expect(within(right).getByRole('heading', { name: 'Tres' })).toBeTruthy();
+    expect(screen.getByRole('separator', { name: 'Reparto de los paneles' })).toBeTruthy();
+
+    expect(menuOf('Tres')).toContain('Mover a la izquierda');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /Mover a la izquierda/ }));
+    });
+    expect(screen.queryByRole('region', { name: 'Panel derecho' })).toBeNull();
+    expect(within(screen.getByRole('tablist', { name: 'Pestañas' })).getAllByRole('tab').map((t) => t.title)).toEqual(['Uno', 'Dos', 'Tres']);
+  });
+
+  it('P-15 la única pestaña del panel izquierdo no ofrece moverse', async () => {
+    render(<App />);
+    await act(async () => {
+      await useTabs.getState().open('Uno', { note: { ...created, id: 'Uno', title: 'Uno' } });
+    });
+    expect(menuOf('Uno')).not.toContain('Mover a la derecha');
+  });
+
+  it('P-16 pulsar en un panel le da el foco y Alt+W actúa sobre él', async () => {
+    render(<App />);
+    await openThree();
+    act(() => useTabs.getState().moveToSide(useTabs.getState().tabs[2].id, 'right'));
+    const left = screen.getByRole('region', { name: 'Panel izquierdo' });
+    const right = screen.getByRole('region', { name: 'Panel derecho' });
+    expect(right.className).toContain('focused');
+    act(() => {
+      fireEvent.pointerDown(within(left).getByRole('heading', { name: 'Dos' }));
+    });
+    expect(left.className).toContain('focused');
+    expect(right.className).not.toContain('focused');
+    expect(useTabs.getState().tabs.find((t) => t.id === useTabs.getState().activeId)?.noteId).toBe('Dos');
+    // Alt+W cierra la pestaña del panel con el foco.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'w', altKey: true });
+    });
+    expect(within(left).getAllByRole('tab').map((t) => t.title)).toEqual(['Uno']);
+    expect(within(right).getAllByRole('tab').map((t) => t.title)).toEqual(['Tres']);
+  });
+
+  it('P-18 el separador se mueve con las flechas y el reparto se recuerda', async () => {
+    mocked.getSettings.mockResolvedValue({ 'ui.splitRatio': 0.6 });
+    render(<App />);
+    await openThree();
+    act(() => useTabs.getState().moveToSide(useTabs.getState().tabs[2].id, 'right'));
+    const separator = screen.getByRole('separator', { name: 'Reparto de los paneles' });
+    expect(separator.getAttribute('aria-valuenow')).toBe('60');
+    fireEvent.keyDown(separator, { key: 'ArrowRight', shiftKey: true });
+    fireEvent.keyDown(separator, { key: 'ArrowRight', shiftKey: true });
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+    // No pasa del 80 %.
+    expect(separator.getAttribute('aria-valuenow')).toBe('80');
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+    expect(separator.getAttribute('aria-valuenow')).toBe('78');
+    await vi.waitFor(() => expect(mocked.putSettings).toHaveBeenCalledWith(expect.objectContaining({ 'ui.splitRatio': 0.78 })));
+  });
+});

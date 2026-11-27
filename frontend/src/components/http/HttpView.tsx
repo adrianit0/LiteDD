@@ -75,7 +75,8 @@ export function HttpView({ tab }: { tab: Tab }) {
     if (!run.running) return;
     const timer = setInterval(() => setTick((t) => t + 1), 100);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') void useHttpRuns.getState().cancel(tab.id);
+      // P-16: con la vista dividida, solo la del panel con el foco.
+      if (e.key === 'Escape' && useTabs.getState().activeId === tab.id) void useHttpRuns.getState().cancel(tab.id);
     };
     window.addEventListener('keydown', onKey);
     return () => {

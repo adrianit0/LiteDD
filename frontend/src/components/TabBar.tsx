@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { useTabs, type Tab } from '../stores/tabsStore';
+import { isSplit, paneTabs, useTabs, visibleIdOf, type Side, type Tab } from '../stores/tabsStore';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { TypeIcon } from './TypeIcon';
 import { STATUS_TEXT } from './NotePane';
@@ -12,33 +12,37 @@ interface MenuState {
   items: MenuItem[];
 }
 
-/** Barra de pestañas (P-01 a P-05, P-10, P-11). */
-export function TabBar() {
-  const tabs = useTabs((s) => s.tabs);
-  const activeId = useTabs((s) => s.activeId);
+export const PANE_NAME: Record<Side, string> = { left: 'izquierdo', right: 'derecho' };
+
+/** Barra de pestañas de un panel (P-01 a P-05, P-10, P-11, P-15, P-17). El arrastre lo gestiona TabsArea. */
+export function TabBar({ side }: { side: Side }) {
+  const allTabs = useTabs((s) => s.tabs);
+  const visibleId = useTabs((s) => visibleIdOf(s.tabs, s.shown, s.activeId, side));
+  const tabs = paneTabs(allTabs, side);
+  const split = isSplit(allTabs);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const strip = useRef<HTMLDivElement>(null);
-  // Una distancia mínima evita que un clic se tome por un arrastre.
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // P-15: soltar sobre la barra lleva la pestaña a este panel.
+  const { setNodeRef } = useDroppable({ id: `bar:${side}` });
 
-  // P-10: la pestaña activa siempre queda a la vista.
+  // P-10: la pestaña visible siempre queda a la vista.
   useEffect(() => {
-    if (!activeId) return;
-    strip.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeId)}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [activeId]);
-
-  const onDragEnd = (e: DragEndEvent) => {
-    if (e.over && e.active.id !== e.over.id) useTabs.getState().reorder(String(e.active.id), String(e.over.id));
-  };
+    if (!visibleId) return;
+    strip.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(visibleId)}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [visibleId]);
 
   const tabMenu = (tab: Tab): MenuItem[] => {
     const s = useTabs.getState();
-    return [
+    const items: MenuItem[] = [
       { label: 'Cerrar', shortcut: 'Alt+W', onSelect: () => void s.close(tab.id) },
       { label: 'Cerrar las demás', onSelect: () => void s.closeOthers(tab.id) },
       { label: 'Cerrar las de la derecha', onSelect: () => void s.closeRight(tab.id) },
       { label: 'Duplicar', onSelect: () => void s.duplicate(tab.id) },
     ];
+    // P-15: la única pestaña de la izquierda no se mueve, para no dejar el panel vacío.
+    if (side === 'right') items.push({ label: 'Mover a la izquierda', onSelect: () => s.moveToSide(tab.id, 'left') });
+    else if (tabs.length > 1) items.push({ label: 'Mover a la derecha', onSelect: () => s.moveToSide(tab.id, 'right') });
+    return items;
   };
 
   const listMenu = (e: MouseEvent<HTMLButtonElement>) => {
@@ -53,24 +57,22 @@ export function TabBar() {
   if (tabs.length === 0) return null;
 
   return (
-    <div className="tabbar">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-          <div className="tab-strip" ref={strip} role="tablist" aria-label="Pestañas">
-            {tabs.map((t) => (
-              <TabItem
-                key={t.id}
-                tab={t}
-                active={t.id === activeId}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, items: tabMenu(t) });
-                }}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+    <div className="tabbar" ref={setNodeRef}>
+      <SortableContext id={`tabs-${side}`} items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+        <div className="tab-strip" ref={strip} role="tablist" aria-label={split ? `Pestañas del panel ${PANE_NAME[side]}` : 'Pestañas'}>
+          {tabs.map((t) => (
+            <TabItem
+              key={t.id}
+              tab={t}
+              active={t.id === visibleId}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, items: tabMenu(t) });
+              }}
+            />
+          ))}
+        </div>
+      </SortableContext>
       <button type="button" className="tab-list-button" aria-label="Todas las pestañas" title="Todas las pestañas" onClick={listMenu}>
         ▾
       </button>

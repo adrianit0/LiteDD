@@ -1,5 +1,5 @@
 import { api, ApiError, DEFAULT_CONFIG } from '../api';
-import { AUTOSAVE_DELAY, isDirty, sessionSnapshot, useTabs } from './tabsStore';
+import { AUTOSAVE_DELAY, isDirty, isSplit, paneTabs, sessionSnapshot, useTabs, visibleIdOf } from './tabsStore';
 import { useTree } from './treeStore';
 import { useDialogs } from './dialogStore';
 import { useUi } from './uiStore';
@@ -465,5 +465,155 @@ describe('N-82 N-88 marca de obsoleta y última ejecución (ADR-0046)', () => {
     mocked.getNote.mockRejectedValue(new Error('sin servidor'));
     await s().refreshMeta('n1');
     expect(active().note?.lastRunAt).toBe('2026-11-01T12:00:00Z');
+  });
+});
+
+describe('vista dividida (ADR-0053)', () => {
+  const ids = (side: 'left' | 'right') => paneTabs(s().tabs, side).map((t) => t.noteId);
+  const visible = (side: 'left' | 'right') => s().tabs.find((t) => t.id === visibleIdOf(s().tabs, s().shown, s().activeId, side))?.noteId;
+  const byNote = (noteId: string) => s().tabs.find((t) => t.noteId === noteId)!;
+
+  beforeEach(async () => {
+    await s().open('n2');
+    await s().open('n3');
+  });
+
+  it('P-15 mover a la derecha abre el panel derecho con la pestaña y deja la izquierda con su vecina', () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    expect(ids('left')).toEqual(['n1', 'n2']);
+    expect(ids('right')).toEqual(['n3']);
+    expect(isSplit(s().tabs)).toBe(true);
+    expect(visible('left')).toBe('n2');
+    expect(visible('right')).toBe('n3');
+    expect(active().noteId).toBe('n3');
+  });
+
+  it('P-15 la única pestaña de la izquierda no se mueve, para no dejar el panel vacío', () => {
+    s().moveToSide(byNote('n2').id, 'right');
+    s().moveToSide(byNote('n3').id, 'right');
+    s().moveToSide(byNote('n1').id, 'right');
+    expect(ids('left')).toEqual(['n1']);
+    expect(ids('right')).toEqual(['n2', 'n3']);
+  });
+
+  it('P-15 el panel derecho desaparece sin pestañas; sin las de la izquierda, las de la derecha pasan a la izquierda', async () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    s().moveToSide(byNote('n3').id, 'left');
+    expect(isSplit(s().tabs)).toBe(false);
+    expect(ids('left')).toEqual(['n1', 'n2', 'n3']);
+
+    s().moveToSide(byNote('n2').id, 'right');
+    s().moveToSide(byNote('n3').id, 'right');
+    await s().close(byNote('n1').id);
+    expect(isSplit(s().tabs)).toBe(false);
+    expect(ids('left')).toEqual(['n2', 'n3']);
+    expect(visible('left')).toBe('n3');
+    expect(active().noteId).toBe('n3');
+  });
+
+  it('P-15 mover a una posición del otro panel la coloca en su sitio y la fija', async () => {
+    await s().open('n4', { preview: true });
+    s().moveToSide(byNote('n3').id, 'right');
+    s().moveToSide(byNote('n2').id, 'right');
+    s().moveToSide(byNote('n4').id, 'right', 1);
+    expect(ids('right')).toEqual(['n3', 'n4', 'n2']);
+    expect(byNote('n4').preview).toBe(false);
+  });
+
+  it('P-16 activar una pestaña da el foco a su panel; el otro conserva su pestaña visible', () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    s().activate(byNote('n1').id);
+    expect(active().noteId).toBe('n1');
+    expect(visible('right')).toBe('n3');
+    s().activate(byNote('n3').id);
+    expect(visible('left')).toBe('n1');
+  });
+
+  it('P-17 Alt+RePág y Alt+AvPág recorren solo el panel con el foco', () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    s().activate(byNote('n2').id);
+    s().cycle(1);
+    expect(active().noteId).toBe('n1');
+    s().cycle(1);
+    expect(active().noteId).toBe('n2');
+  });
+
+  it('P-17 las pestañas nuevas se abren en el panel con el foco y una nota abierta en el otro activa la suya', async () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    await s().open('n4');
+    expect(ids('right')).toEqual(['n3', 'n4']);
+    await s().open('n1');
+    expect(active().noteId).toBe('n1');
+    expect(visible('right')).toBe('n4');
+    await s().open('n5', { newTab: true });
+    expect(ids('left')).toEqual(['n1', 'n2', 'n5']);
+  });
+
+  it('P-17 P-14 hay una pestaña provisional por panel', async () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    await s().open('p1', { preview: true });
+    s().activate(byNote('n1').id);
+    await s().open('p2', { preview: true });
+    await s().open('p3', { preview: true });
+    expect(ids('left')).toEqual(['n1', 'n2', 'p3']);
+    expect(ids('right')).toEqual(['n3', 'p1']);
+  });
+
+  it('P-17 cerrar, cerrar las demás, cerrar las de la derecha y duplicar actúan dentro del panel', async () => {
+    await s().open('n4');
+    s().moveToSide(byNote('n3').id, 'right');
+    s().moveToSide(byNote('n4').id, 'right');
+    await s().open('n5');
+    // Cerrar la visible del panel derecho muestra su vecina del mismo panel.
+    await s().close(byNote('n5').id);
+    expect(visible('right')).toBe('n4');
+    expect(visible('left')).toBe('n2');
+
+    await s().duplicate(byNote('n3').id);
+    expect(ids('right')).toEqual(['n3', 'n3', 'n4']);
+    await s().closeRight(byNote('n1').id);
+    expect(ids('left')).toEqual(['n1']);
+    expect(ids('right')).toEqual(['n3', 'n3', 'n4']);
+    await s().closeOthers(byNote('n4').id);
+    expect(ids('left')).toEqual(['n1']);
+    expect(ids('right')).toEqual(['n4']);
+  });
+
+  it('P-17 reordenar arrastrando dentro de un panel no toca el otro', () => {
+    s().moveToSide(byNote('n2').id, 'right');
+    s().reorder(byNote('n3').id, byNote('n1').id);
+    expect(ids('left')).toEqual(['n3', 'n1']);
+    expect(ids('right')).toEqual(['n2']);
+  });
+
+  it('P-09 la sesión guarda el panel de cada pestaña y la visible de cada panel, y los restaura', async () => {
+    s().moveToSide(byNote('n3').id, 'right');
+    s().activate(byNote('n1').id);
+    const snapshot = sessionSnapshot(s().tabs, s().activeId, s().shown);
+    expect(snapshot.map((t) => [t.noteId, t.active, t.state?.side, t.state?.shown])).toEqual([
+      ['n1', true, 'left', true],
+      ['n2', false, 'left', false],
+      ['n3', false, 'right', true],
+    ]);
+    mocked.getSession.mockResolvedValue({ tabs: snapshot });
+    useTabs.setState({ tabs: [], activeId: null, restored: false });
+    await s().restore();
+    expect(ids('left')).toEqual(['n1', 'n2']);
+    expect(ids('right')).toEqual(['n3']);
+    expect(active().noteId).toBe('n1');
+    expect(visible('right')).toBe('n3');
+  });
+
+  it('P-09 una sesión sin paneles se restaura entera a la izquierda', async () => {
+    mocked.getSession.mockResolvedValue({
+      tabs: [
+        { id: 't1', noteId: 'n2', mode: 'view', active: true, state: { scroll: 0 } },
+        { id: 't2', noteId: 'n1', mode: 'view', active: false, state: null },
+      ],
+    });
+    useTabs.setState({ tabs: [], activeId: null, restored: false });
+    await s().restore();
+    expect(isSplit(s().tabs)).toBe(false);
+    expect(ids('left')).toEqual(['n2', 'n1']);
   });
 });

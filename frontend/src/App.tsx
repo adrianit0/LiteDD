@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { matchShortcut } from './keyboard';
 import { createAndOpen } from './actions';
-import { autosaveEnabled, isDirty, useActiveTab, useTabs } from './stores/tabsStore';
+import { autosaveEnabled, isDirty, useTabs } from './stores/tabsStore';
 import { useTree } from './stores/treeStore';
 import { useUi } from './stores/uiStore';
 import { Sidebar } from './components/Sidebar';
-import { NotePane } from './components/NotePane';
-import { TabBar } from './components/TabBar';
+import { TabsArea } from './components/TabsArea';
 import { DialogHost } from './components/DialogHost';
 import { HttpProfileSelect } from './components/HttpProfileSelect';
 import { ConfirmKeyDialog } from './components/ConfirmKeyDialog';
@@ -22,11 +21,11 @@ import { ImportantDialog } from './components/ImportantDialog';
 import { CurlImportDialog } from './components/http/CurlImportDialog';
 import { startPresence } from './presence';
 
-/** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas. */
+/** Disposición de tres zonas: barra superior, panel izquierdo y área principal con pestañas, en uno o dos paneles (P-15). */
 export function App() {
   const sidebarVisible = useUi((s) => s.sidebarVisible);
   const notices = useUi((s) => s.notices);
-  const activeTab = useActiveTab();
+  const hasTabs = useTabs((s) => s.tabs.length > 0);
   const quickSearch = useUi((s) => s.quickSearchOpen);
   const quickSearchQuery = useUi((s) => s.quickSearchQuery);
   const settingsOpen = useUi((s) => s.settingsOpen);
@@ -160,9 +159,9 @@ export function App() {
             </div>
           ) : (
             <>
-              <TabBar />
-              {activeTab ? (
-                <NotePane key={activeTab.id} tab={activeTab} />
+              {hasTabs ? (
+                // P-15: uno o dos paneles, cada uno con su barra de pestañas.
+                <TabsArea />
               ) : (
                 // P-12: sin pestañas, accesos a nueva nota.
                 <div className="empty">

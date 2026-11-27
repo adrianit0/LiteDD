@@ -453,6 +453,31 @@ describe('nota HTTP', () => {
     expect(screen.queryByRole('timer')).toBeNull();
   });
 
+  it('P-16 con dos paneles, Esc no cancela la llamada del panel sin el foco', async () => {
+    mocked.httpExecute.mockImplementation(() => new Promise(() => {}));
+    await mount('{"endpoint":"/lenta","login":"none"}');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    });
+    const running = useTabs.getState().tabs[0].id;
+    // La otra nota se abre en el panel derecho y se lleva el foco.
+    await act(async () => {
+      await useTabs.getState().open('h2', { note: httpNote('{"endpoint":"/otra","login":"none"}', { id: 'h2', title: 'Otra' }), newTab: true });
+      useTabs.getState().moveToSide(useTabs.getState().tabs[1].id, 'right');
+    });
+    const tab = useTabs.getState().tabs.find((t) => t.id === running)!;
+    render(<NotePane tab={tab} />);
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(mocked.httpCancel).not.toHaveBeenCalled();
+    await act(async () => {
+      useTabs.getState().activate(running);
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(mocked.httpCancel).toHaveBeenCalled();
+  });
+
   it('H-36 cerrar la pestaña olvida la respuesta', async () => {
     mocked.httpExecute.mockResolvedValue(ok);
     await mount('{"endpoint":"/x","login":"none"}');

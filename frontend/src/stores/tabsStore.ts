@@ -37,6 +37,41 @@ export interface Tab {
   workflow: WorkflowTabState | null;
   /** P-14: pestaña provisional (en cursiva) que se sustituye al abrir otra nota. */
   preview: boolean;
+  /** P-15: panel de la vista dividida. */
+  side: Side;
+}
+
+/** P-15, ADR-0053: los dos paneles de la vista dividida. */
+export type Side = 'left' | 'right';
+
+export type Shown = Record<Side, string | null>;
+
+const sideOf = (tab: Pick<Tab, 'side'>): Side => (tab.side === 'right' ? 'right' : 'left');
+const otherSide = (side: Side): Side => (side === 'left' ? 'right' : 'left');
+
+/** P-15: pestañas de un panel, en su orden. */
+export function paneTabs(tabs: Tab[], side: Side): Tab[] {
+  return tabs.filter((t) => sideOf(t) === side);
+}
+
+/** P-15: hay vista dividida mientras el panel derecho tenga pestañas. */
+export function isSplit(tabs: Tab[]): boolean {
+  return tabs.some((t) => sideOf(t) === 'right');
+}
+
+/**
+ * P-16: pestaña visible de un panel. La del panel con el foco es la activa; la del otro, la que se mostraba
+ * (o la primera si ya no está).
+ */
+export function visibleIdOf(tabs: Tab[], shown: Shown, activeId: string | null, side: Side): string | null {
+  const pane = paneTabs(tabs, side);
+  if (pane.some((t) => t.id === activeId)) return activeId;
+  if (pane.some((t) => t.id === shown[side])) return shown[side];
+  return pane[0]?.id ?? null;
+}
+
+function visibleIds(tabs: Tab[], shown: Shown, activeId: string | null): Shown {
+  return { left: visibleIdOf(tabs, shown, activeId, 'left'), right: visibleIdOf(tabs, shown, activeId, 'right') };
 }
 
 /** U-10: el tamaño de página inicial sale de los ajustes. */
@@ -57,7 +92,10 @@ interface OpenOptions {
 
 interface TabsState {
   tabs: Tab[];
+  /** Pestaña activa: la visible del panel con el foco (P-16). */
   activeId: string | null;
+  /** P-15: última pestaña visible de cada panel; para el panel con el foco manda activeId (visibleIdOf). */
+  shown: Shown;
   restored: boolean;
   restore: () => Promise<void>;
   /** Devuelve la pestaña que muestra la nota, abierta o activada. */
@@ -69,6 +107,8 @@ interface TabsState {
   closeRight: (id: string) => Promise<void>;
   duplicate: (id: string) => Promise<void>;
   reorder: (fromId: string, toId: string) => void;
+  /** P-15: lleva la pestaña al otro panel, al final o en la posición indicada de ese panel, y la fija. */
+  moveToSide: (id: string, side: Side, index?: number) => void;
   /** N-54: cierra las pestañas de una nota eliminada, sin guardar. */
   dropNote: (noteId: string) => void;
   edit: (id: string, changes: { title?: string; description?: string; content?: string }) => void;
@@ -120,7 +160,7 @@ function newTabId(): string {
   return crypto.randomUUID();
 }
 
-function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = false, preview = false): Tab {
+function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = false, preview = false, side: Side = 'left'): Tab {
   return {
     id: newTabId(),
     noteId,
@@ -136,6 +176,7 @@ function blankTab(noteId: string, mode: Mode, note: Note | null, focusTitle = fa
     sql: null,
     workflow: null,
     preview,
+    side,
   };
 }
 
@@ -164,17 +205,55 @@ export const useTabs = create<TabsState>((set, get) => {
     }
   };
 
-  /** Quita la pestaña y activa la de la derecha o, si no hay, la de la izquierda. */
+  /** Pestaña visible de cada panel en el estado actual. */
+  const visible = (): Shown => visibleIds(get().tabs, get().shown, get().activeId);
+  const focusedSide = (): Side => {
+    const t = tab(get().activeId ?? '');
+    return t ? sideOf(t) : 'left';
+  };
+
+  /**
+   * Fija pestañas, activa y visibles. P-15: el panel izquierdo nunca queda vacío mientras haya derecho; sus
+   * pestañas pasan a la izquierda.
+   */
+  const commit = (tabs: Tab[], activeId: string | null, shown: Shown) => {
+    if (tabs.length > 0 && !tabs.some((t) => sideOf(t) === 'left')) {
+      tabs = tabs.map((t) => ({ ...t, side: 'left' }));
+      shown = { left: shown.right, right: null };
+    }
+    if (!tabs.some((t) => t.id === activeId)) {
+      activeId = [shown.left, shown.right].find((v) => tabs.some((t) => t.id === v)) ?? tabs[0]?.id ?? null;
+    }
+    set({ tabs, activeId, shown: visibleIds(tabs, shown, activeId) });
+  };
+
+  /** Vecina de una pestaña en su panel: la de la derecha o, si no hay, la de la izquierda. */
+  const neighbor = (id: string): string | null => {
+    const t = tab(id);
+    if (!t) return null;
+    const pane = paneTabs(get().tabs, sideOf(t));
+    const index = pane.findIndex((x) => x.id === id);
+    const rest = pane.filter((x) => x.id !== id);
+    return (rest[index] ?? rest[index - 1])?.id ?? null;
+  };
+
+  /** Quita la pestaña; si era la visible de su panel, se muestra su vecina del mismo panel (P-04, P-17). */
   const remove = (id: string) => {
     clearTimeout(timers.get(id));
     timers.delete(id);
-    const tabs = get().tabs;
-    const index = tabs.findIndex((t) => t.id === id);
-    if (index < 0) return;
-    const rest = tabs.filter((t) => t.id !== id);
+    const t = tab(id);
+    if (!t) return;
+    const side = sideOf(t);
+    const shown = visible();
+    const next = neighbor(id);
+    if (shown[side] === id) shown[side] = next;
     let activeId = get().activeId;
-    if (activeId === id) activeId = (rest[index] ?? rest[index - 1])?.id ?? null;
-    set({ tabs: rest, activeId });
+    if (activeId === id) activeId = next ?? shown[otherSide(side)];
+    commit(
+      get().tabs.filter((x) => x.id !== id),
+      activeId,
+      shown,
+    );
   };
 
   const doSave = async (id: string) => {
@@ -300,6 +379,7 @@ export const useTabs = create<TabsState>((set, get) => {
   return {
     tabs: [],
     activeId: null,
+    shown: { left: null, right: null },
     restored: false,
 
     async restore() {
@@ -312,11 +392,15 @@ export const useTabs = create<TabsState>((set, get) => {
           sql: s.state?.sql ?? null,
           workflow: s.state?.workflow ?? null,
           preview: s.state?.preview === true,
+          // P-09, P-15: una sesión anterior a la vista dividida va entera a la izquierda.
+          side: s.state?.side === 'right' ? 'right' : 'left',
         }));
+        const shownOf = (side: Side) =>
+          session.tabs.find((s) => s.state?.shown === true && (s.state.side === 'right' ? 'right' : 'left') === side)?.id ?? null;
         // Lo que se haya abierto mientras se restauraba se conserva detrás.
         const opened = get().tabs;
         const active = get().activeId ?? session.tabs.find((s) => s.active)?.id ?? tabs[0]?.id ?? null;
-        set({ tabs: [...tabs, ...opened], activeId: active });
+        commit([...tabs, ...opened], active, { left: shownOf('left'), right: shownOf('right') });
         // P-09: los resultados no se restauran; las notas se piden de nuevo.
         await Promise.all(tabs.map((t) => load(t.id, t.noteId)));
       } finally {
@@ -329,34 +413,44 @@ export const useTabs = create<TabsState>((set, get) => {
         // P-02: si ya está abierta, se activa la primera pestaña que la contiene.
         const existing = get().tabs.find((t) => t.noteId === noteId);
         if (existing) {
-          set({ activeId: existing.id });
+          get().activate(existing.id);
           if (options.mode && options.mode !== existing.mode) await get().toggleMode(existing.id);
           return existing.id;
         }
       }
+      // P-17: las pestañas nuevas van al panel con el foco.
+      const side = focusedSide();
       // N-10: las notas existentes se abren en consulta.
-      const t = blankTab(noteId, options.mode ?? 'view', options.note ?? null, options.focusTitle, options.preview === true);
-      // P-14: una pestaña provisional sustituye a la provisional anterior, en su sitio.
-      const previous = options.preview ? get().tabs.find((x) => x.preview) : undefined;
+      const t = blankTab(noteId, options.mode ?? 'view', options.note ?? null, options.focusTitle, options.preview === true, side);
+      // P-14, P-17: una pestaña provisional sustituye a la provisional anterior de su panel, en su sitio.
+      const previous = options.preview ? get().tabs.find((x) => x.preview && sideOf(x) === side) : undefined;
+      const shown = { ...visible(), [side]: t.id };
       if (previous) {
         clearTimeout(timers.get(previous.id));
-        set({ tabs: get().tabs.map((x) => (x.id === previous.id ? t : x)), activeId: t.id });
+        commit(
+          get().tabs.map((x) => (x.id === previous.id ? t : x)),
+          t.id,
+          shown,
+        );
       } else {
-        set({ tabs: [...get().tabs, t], activeId: t.id });
+        commit([...get().tabs, t], t.id, shown);
       }
       if (!options.note) await load(t.id, noteId);
       return t.id;
     },
 
     activate(id) {
-      if (tab(id)) set({ activeId: id });
+      const t = tab(id);
+      // P-16: activar una pestaña da el foco a su panel; el otro conserva su pestaña visible.
+      if (t && get().activeId !== id) commit(get().tabs, id, { ...visible(), [sideOf(t)]: id });
     },
 
     cycle(step) {
-      const { tabs, activeId } = get();
-      if (tabs.length === 0) return;
-      const index = tabs.findIndex((t) => t.id === activeId);
-      set({ activeId: tabs[(index + step + tabs.length) % tabs.length].id });
+      // P-17: solo dentro del panel con el foco.
+      const pane = paneTabs(get().tabs, focusedSide());
+      if (pane.length === 0) return;
+      const index = pane.findIndex((t) => t.id === get().activeId);
+      get().activate(pane[(index + step + pane.length) % pane.length].id);
     },
 
     async close(id) {
@@ -364,19 +458,23 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     async closeOthers(id) {
-      for (const t of get().tabs.filter((x) => x.id !== id)) {
-        if (!(await closeSafely(t.id))) return;
+      const t = tab(id);
+      if (!t) return;
+      for (const other of paneTabs(get().tabs, sideOf(t)).filter((x) => x.id !== id)) {
+        if (!(await closeSafely(other.id))) return;
       }
-      set({ activeId: id });
+      get().activate(id);
     },
 
     async closeRight(id) {
-      const tabs = get().tabs;
-      const index = tabs.findIndex((t) => t.id === id);
-      for (const t of tabs.slice(index + 1)) {
-        if (!(await closeSafely(t.id))) return;
+      const t = tab(id);
+      if (!t) return;
+      const pane = paneTabs(get().tabs, sideOf(t));
+      const index = pane.findIndex((x) => x.id === id);
+      for (const other of pane.slice(index + 1)) {
+        if (!(await closeSafely(other.id))) return;
       }
-      if (!tab(get().activeId ?? '')) set({ activeId: id });
+      if (!tab(get().activeId ?? '')) get().activate(id);
     },
 
     async duplicate(id) {
@@ -392,7 +490,7 @@ export const useTabs = create<TabsState>((set, get) => {
       };
       const tabs = get().tabs;
       const index = tabs.findIndex((t) => t.id === id);
-      set({ tabs: [...tabs.slice(0, index + 1), copy, ...tabs.slice(index + 1)], activeId: copy.id });
+      commit([...tabs.slice(0, index + 1), copy, ...tabs.slice(index + 1)], copy.id, { ...visible(), [sideOf(copy)]: copy.id });
     },
 
     reorder(fromId, toId) {
@@ -400,9 +498,34 @@ export const useTabs = create<TabsState>((set, get) => {
       const from = tabs.findIndex((t) => t.id === fromId);
       const to = tabs.findIndex((t) => t.id === toId);
       if (from < 0 || to < 0 || from === to) return;
+      // P-15: soltar sobre una pestaña del otro panel la lleva a ese panel, en su sitio.
+      if (sideOf(tabs[from]) !== sideOf(tabs[to])) {
+        const side = sideOf(tabs[to]);
+        get().moveToSide(fromId, side, paneTabs(tabs, side).findIndex((t) => t.id === toId));
+        return;
+      }
       const [moved] = tabs.splice(from, 1);
       tabs.splice(to, 0, moved);
       set({ tabs });
+    },
+
+    moveToSide(id, side, index) {
+      const t = tab(id);
+      if (!t) return;
+      const from = sideOf(t);
+      if (from === side) return;
+      // P-15: la única pestaña de la izquierda no se mueve, para no dejar el panel vacío.
+      if (from === 'left' && paneTabs(get().tabs, 'left').length === 1) return;
+      const shown = visible();
+      if (shown[from] === id) shown[from] = neighbor(id);
+      shown[side] = id;
+      // P-14: mover la pestaña la fija.
+      const moved: Tab = { ...t, side, preview: false };
+      const rest = get().tabs.filter((x) => x.id !== id);
+      const target = paneTabs(rest, side);
+      const before = index !== undefined ? target[index] : undefined;
+      const at = before ? rest.indexOf(before) : rest.length;
+      commit([...rest.slice(0, at), moved, ...rest.slice(at)], id, shown);
     },
 
     dropNote(noteId) {
@@ -572,14 +695,30 @@ export function useActiveTab(): Tab | undefined {
   return useTabs((s) => s.tabs.find((t) => t.id === s.activeId));
 }
 
-/** P-09: la sesión se guarda en cada cambio de pestañas, orden, activa, modo o desplazamiento. */
-export function sessionSnapshot(tabs: Tab[], activeId: string | null): SessionTab[] {
+/** P-15: pestaña visible de un panel, para los componentes. */
+export function useVisibleTab(side: Side): Tab | undefined {
+  return useTabs((s) => {
+    const id = visibleIdOf(s.tabs, s.shown, s.activeId, side);
+    return s.tabs.find((t) => t.id === id);
+  });
+}
+
+/** P-09: la sesión se guarda en cada cambio de pestañas, orden, activa, modo, desplazamiento o panel. */
+export function sessionSnapshot(tabs: Tab[], activeId: string | null, shown: Shown = { left: null, right: null }): SessionTab[] {
+  const visibleNow = visibleIds(tabs, shown, activeId);
   return tabs.map((t) => ({
     id: t.id,
     noteId: t.noteId,
     mode: t.mode,
     active: t.id === activeId,
-    state: { scroll: t.scroll, sql: t.sql, workflow: t.workflow, preview: t.preview },
+    state: {
+      scroll: t.scroll,
+      sql: t.sql,
+      workflow: t.workflow,
+      preview: t.preview,
+      side: sideOf(t),
+      shown: visibleNow[sideOf(t)] === t.id,
+    },
   }));
 }
 
@@ -588,7 +727,7 @@ let lastSession = '';
 
 useTabs.subscribe((state) => {
   if (!state.restored) return;
-  const snapshot = sessionSnapshot(state.tabs, state.activeId);
+  const snapshot = sessionSnapshot(state.tabs, state.activeId, state.shown);
   const serialized = JSON.stringify(snapshot);
   if (serialized === lastSession) return;
   lastSession = serialized;

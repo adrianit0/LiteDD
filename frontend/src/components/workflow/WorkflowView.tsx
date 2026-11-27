@@ -112,7 +112,8 @@ export function WorkflowView({ tab, editMode }: { tab: Tab; editMode: boolean })
     if (!run.running) return;
     const timer = setInterval(() => setTick((t) => t + 1), 100);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') void useWorkflowRuns.getState().cancel(tab.id);
+      // P-16: con la vista dividida, solo la del panel con el foco.
+      if (e.key === 'Escape' && useTabs.getState().activeId === tab.id) void useWorkflowRuns.getState().cancel(tab.id);
     };
     window.addEventListener('keydown', onKey);
     return () => {

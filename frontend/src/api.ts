@@ -333,8 +333,15 @@ export interface SessionTab {
   noteId: string;
   mode: Mode;
   active: boolean;
-  /** P-14: preview = pestaña provisional, en cursiva. */
-  state: { scroll?: number; sql?: SqlTabState | null; workflow?: WorkflowTabState | null; preview?: boolean } | null;
+  /** P-14: preview = pestaña provisional, en cursiva. P-15: side = panel; shown = pestaña visible de su panel. */
+  state: {
+    scroll?: number;
+    sql?: SqlTabState | null;
+    workflow?: WorkflowTabState | null;
+    preview?: boolean;
+    side?: 'left' | 'right';
+    shown?: boolean;
+  } | null;
 }
 
 /** W-23 a W-26: la nota de un nodo de workflow. state: active, trash o missing. */
